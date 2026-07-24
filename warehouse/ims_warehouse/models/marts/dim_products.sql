@@ -6,4 +6,4 @@ SELECT
     name,
     sku,
     created_at
-FROM read_parquet('{{ env_var("WAREHOUSE_ROOT", "/home/sinan/Desktop/projects/ims-manual/warehouse") }}/dim_products.parquet')
+FROM read_parquet('{{ env_var("WAREHOUSE_ROOT", "..") }}/dim_products.parquet')

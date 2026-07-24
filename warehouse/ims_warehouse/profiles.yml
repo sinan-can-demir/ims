@@ -1,0 +1,15 @@
+# Committed so dbt works out of the box for any contributor and in CI —
+# previously this only existed as an untracked ~/.dbt/profiles.yml on one
+# dev's machine, so nobody else (including CI) could run `make dbt-run`.
+# No secrets here: duckdb has no credentials, just a local file path.
+# `--profiles-dir .` (see Makefile) is what makes dbt look here instead of
+# the ~/.dbt/ default.
+ims_warehouse:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      # Relative to the cwd dbt runs from (warehouse/ims_warehouse/), so
+      # this resolves to warehouse/ims.duckdb with no env var needed.
+      path: "{{ env_var('WAREHOUSE_ROOT', '..') }}/ims.duckdb"
+      threads: 4

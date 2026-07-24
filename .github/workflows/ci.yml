@@ -67,6 +67,59 @@ jobs:
 
       - run: docker build -f docker/Dockerfile .
 
+  # Exercises the export -> warehouse -> dbt pipeline end-to-end against a
+  # real Postgres with real (seeded) data, catching regressions that
+  # lint/test/docker-build can't — e.g. a broken dbt model or schema test
+  # only ever surfaces here, never in the API test suite.
+  pipeline:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ims_pipeline
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d ims_pipeline"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ims_pipeline
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Apply migrations
+        run: alembic upgrade head
+
+      - name: Seed demo data
+        run: python scripts/seed_data.py
+
+      - name: Export events to data lake
+        run: make export
+
+      - name: Build warehouse dimension/fact tables
+        run: make warehouse
+
+      - name: dbt run
+        run: make dbt-run
+
+      - name: dbt test
+        run: make dbt-test
+
   scan:
     runs-on: ubuntu-latest
     steps:
@@ -113,7 +166,7 @@ jobs:
   # Opt-in: skipped entirely until AWS_DEPLOY_ROLE_ARN is set (i.e. until
   # someone runs the Terraform bootstrap), rather than failing CI.
   deploy:
-    needs: [lint, test, docker-build, scan]
+    needs: [lint, test, docker-build, scan, pipeline]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.AWS_DEPLOY_ROLE_ARN != ''
     runs-on: ubuntu-latest
     permissions:

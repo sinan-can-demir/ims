@@ -36,29 +36,24 @@ models:
     columns:
       - name: event_id
         description: "Natural key from source — unique per event"
+        tests:
+          - unique
+          - not_null
       - name: product_id
         description: "Foreign key to dim_products"
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_products')
+                field: product_id
       - name: date_id
         description: "Foreign key to dim_dates — YYYY-MM-DD"
       - name: event_type
         description: "PURCHASE, SALE, DAMAGE, ADJUSTMENT, or RETURN"
       - name: quantity
         description: "Normalized quantity delta"
+        tests:
+          - not_null
       - name: created_at
         description: "Original event timestamp"
-
-  - name: fact_inventory_events
-    columns:
-      - name: event_id
-        tests:
-          - unique
-          - not_null
-      - name: product_id
-        tests:
-          - not_null
-          - relationships:
-              to: ref('dim_products')
-              field: product_id
-      - name: quantity
-        tests:
-          - not_null

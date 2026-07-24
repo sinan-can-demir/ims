@@ -2,3 +2,7 @@
 target/
 dbt_packages/
 logs/
+
+# dbt's own anonymous-usage-stats id file, written here now that we point
+# --profiles-dir at this directory instead of the ~/.dbt/ default.
+.user.yml
