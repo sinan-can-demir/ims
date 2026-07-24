@@ -1,6 +1,7 @@
 # tests/test_rate_limit.py
 
 from contextlib import contextmanager
+import uuid
 
 from slowapi.wrappers import LimitGroup
 from starlette.requests import Request
@@ -31,21 +32,34 @@ def _tight_limit(limit_string: str):
 
 def test_requests_within_limit_pass(client):
     with _tight_limit("3/minute"):
+        # create a product to ensure /api/inventory/<id> exists
+        r = client.post("/api/products", json={"name": "Rate limit test", "sku": str(uuid.uuid4())})
+        assert r.status_code in (200, 201)
+        prod_id = r.json()["id"]
+
         for _ in range(3):
-            assert client.get("/api/inventory/1").status_code != 429
+            assert client.get(f"/api/inventory/{prod_id}").status_code != 429
 
 
 def test_limit_exceeded_returns_429(client):
     with _tight_limit("2/minute"):
-        statuses = [client.get("/api/inventory/1").status_code for _ in range(3)]
+        r = client.post("/api/products", json={"name": "Rate limit test", "sku": str(uuid.uuid4())})
+        assert r.status_code in (200, 201)
+        prod_id = r.json()["id"]
+
+        statuses = [client.get(f"/api/inventory/{prod_id}").status_code for _ in range(3)]
 
         assert 429 in statuses
 
 
 def test_limit_exceeded_response_has_clear_message(client):
     with _tight_limit("1/minute"):
-        client.get("/api/inventory/1")
-        response = client.get("/api/inventory/1")
+        r = client.post("/api/products", json={"name": "Rate limit test", "sku": str(uuid.uuid4())})
+        assert r.status_code in (200, 201)
+        prod_id = r.json()["id"]
+
+        client.get(f"/api/inventory/{prod_id}")
+        response = client.get(f"/api/inventory/{prod_id}")
 
         assert response.status_code == 429
         assert "Rate limit exceeded" in response.json()["error"]
