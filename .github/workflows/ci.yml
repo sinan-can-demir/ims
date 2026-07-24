@@ -98,7 +98,7 @@ jobs:
       # failing CI on elsewhere — keeps this from blocking on low-severity
       # findings that have no fix available yet.
       - name: Scan image for vulnerabilities
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ims-api:scan
           severity: CRITICAL,HIGH
