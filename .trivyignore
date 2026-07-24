@@ -1,0 +1,13 @@
+# Both findings live under /usr/local/lib/python3.11/site-packages, the
+# *system* Python bundled in the pinned python:3.11-slim base image (see
+# docker/Dockerfile's PYTHON_BASE_IMAGE comment). The app runs out of
+# /opt/venv, which PATH puts first, so this copy of pip/setuptools/wheel is
+# never invoked at runtime. Not fixable from this repo without patching the
+# base image directly; Dependabot's docker ecosystem entry will flag base
+# image bumps that may resolve these upstream.
+
+# setuptools' vendored jaraco.context — path traversal via malicious tar archives
+CVE-2026-23949
+
+# setuptools' vendored wheel — code execution via malicious wheel file
+CVE-2026-24049

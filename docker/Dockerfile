@@ -13,6 +13,11 @@ WORKDIR /app
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
+# venv bootstraps with whatever pip/setuptools/wheel shipped in the base
+# image, which can lag behind fixed CVEs in setuptools' vendored deps
+# (e.g. jaraco.context, wheel itself) — upgrade before installing anything.
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
