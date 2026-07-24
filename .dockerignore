@@ -22,3 +22,10 @@ models/*.pkl
 data_lake/
 feature_store/
 warehouse/*.duckdb
+
+# Terraform, not part of the runtime — untracked by git (see .gitignore)
+# but still present in the local build context after `terraform init`, so
+# COPY . . was baking downloaded provider binaries (with their own CVEs)
+# into the app image.
+infra/.terraform/
+infra/terraform.tfvars

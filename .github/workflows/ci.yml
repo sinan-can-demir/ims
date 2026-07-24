@@ -67,6 +67,44 @@ jobs:
 
       - run: docker build -f docker/Dockerfile .
 
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan commits for secrets
+        uses: gitleaks/gitleaks-action@v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Audit Python dependencies
+        uses: pypa/gh-action-pip-audit@v1.1.0
+        with:
+          inputs: requirements.txt
+
+      - name: Build image for scanning
+        run: docker build -f docker/Dockerfile -t ims-api:scan .
+
+      # HIGH/CRITICAL only, matching the severity trivy-action defaults to
+      # failing CI on elsewhere — keeps this from blocking on low-severity
+      # findings that have no fix available yet.
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ims-api:scan
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          ignore-unfixed: true
+
   # Deploys to AWS on every push to main, once lint/test/docker-build are all
   # green. Uses GitHub OIDC to assume an AWS IAM role — no long-lived AWS
   # keys are stored in this repo. The role, ECS cluster/service, and ECR
@@ -75,7 +113,7 @@ jobs:
   # Opt-in: skipped entirely until AWS_DEPLOY_ROLE_ARN is set (i.e. until
   # someone runs the Terraform bootstrap), rather than failing CI.
   deploy:
-    needs: [lint, test, docker-build]
+    needs: [lint, test, docker-build, scan]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.AWS_DEPLOY_ROLE_ARN != ''
     runs-on: ubuntu-latest
     permissions:
