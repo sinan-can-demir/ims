@@ -87,14 +87,17 @@ warehouse:
 # -------------------------
 # dbt
 # -------------------------
+# --profiles-dir . points at the profiles.yml committed alongside this
+# project instead of the ~/.dbt/ default, so this works on a fresh clone
+# and in CI without any per-machine setup.
 dbt-run:
-	cd warehouse/ims_warehouse && $(DBT) run
+	cd warehouse/ims_warehouse && $(DBT) run --profiles-dir .
 
 dbt-test:
-	cd warehouse/ims_warehouse && $(DBT) test
+	cd warehouse/ims_warehouse && $(DBT) test --profiles-dir .
 
 dbt-docs:
-	cd warehouse/ims_warehouse && $(DBT) docs generate && $(DBT) docs serve
+	cd warehouse/ims_warehouse && $(DBT) docs generate --profiles-dir . && $(DBT) docs serve --profiles-dir .
 
 # -------------------------
 # Features

@@ -4,7 +4,10 @@ sources:
   - name: data_lake
     schema: main
     meta:
-      external_location: "read_parquet('{{ env_var(\"DATA_LAKE_ROOT\", \"/home/sinan/Desktop/projects/ims-manual/data_lake\") }}/inventory_events/**/*.parquet')"
+      # Default is relative to the cwd dbt runs from (warehouse/ims_warehouse/,
+      # per the Makefile's `cd warehouse/ims_warehouse && dbt ...`), so this
+      # works out of the box on a fresh clone with no env var needed.
+      external_location: "read_parquet('{{ env_var(\"DATA_LAKE_ROOT\", \"../../data_lake\") }}/inventory_events/**/*.parquet')"
     tables:
       - name: inventory_events
         description: "Append-only inventory event log — source of truth for all stock changes"

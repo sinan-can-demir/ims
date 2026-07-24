@@ -9,4 +9,4 @@ SELECT
     quarter,
     day_of_week,
     is_weekend
-FROM read_parquet('{{ env_var("WAREHOUSE_ROOT", "/home/sinan/Desktop/projects/ims-manual/warehouse") }}/dim_dates.parquet')
+FROM read_parquet('{{ env_var("WAREHOUSE_ROOT", "..") }}/dim_dates.parquet')
