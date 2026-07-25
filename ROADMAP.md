@@ -1,6 +1,6 @@
 # IMS — Inventory Management System
 Author: Sinan Demir
-Last Updated: 2026-07-24
+Last Updated: 2026-07-25
 
 This roadmap organizes the development of IMS into **epochs**.
 Each epoch unlocks the next capability. The system evolves from a simple
@@ -183,7 +183,9 @@ Phase 1 — Quick wins (no architecture changes)
 Phase 2 — Security hardening  
 [x] Add API authentication (API key header) — app/core/auth.py, X-API-Key,
       wired via Depends on every router; no-op (with a loud startup warning)
-      if API_KEY is unset, by design for local dev — see SECURITY.md  
+      if API_KEY is unset, by design for local dev — see SECURITY.md.
+      **Superseded 2026-07-25 by per-user JWT auth — API_KEY was removed
+      entirely, see Hardening Phase C below.**  
 [x] Add non-root USER to Dockerfile — appuser (uid 1000, matches the default
       first-user uid on most Linux distros so the dev bind-mount stays
       writable); curl also added, since HEALTHCHECK depended on it but it
@@ -240,9 +242,11 @@ Self-hosted (default, docs/deployment/self-hosted.md):
 [ ] Move data lake from local filesystem to object storage (S3-compatible —
       evaluate MinIO or a provider's S3-compatible bucket, not AWS-only) (#22)  
 [x] Deploy dashboard alongside the API in the self-hosted stack — `dashboard`
-      compose service; no app-level auth of its own, so its port stays
-      unpublished until the Caddy overlay fronts it with basic_auth on a
-      dedicated port (#32)  
+      compose service; its port stays unpublished until the Caddy overlay
+      fronts it with basic_auth on a dedicated port (#32). Now also has its
+      own per-user sign-in (#85, dashboard/auth.py) that coexists with
+      basic_auth rather than replacing it — network perimeter vs. per-user
+      attribution inside the app, see SECURITY.md  
 
 AWS (enterprise, infra/README.md):  
 [~] Configure AWS infrastructure (ECS Fargate, RDS PostgreSQL, ALB) — Terraform written (infra/), not yet applied  
@@ -321,22 +325,37 @@ Hardening Phase B — Moderate Risk:
       resolved path to actually stay within its expected root, not just
       reject shell metacharacters; also catches symlink escapes  
 [ ] Harden RDS Terraform defaults — backups, deletion_protection, multi-AZ (#20)  
-[ ] Fix `slowapi` silently no-op'ing rate limiting on fastapi>=0.140.0 (#66
-      — filed 2026-07-24; FastAPI restructured `include_router()` internals
-      into a private `_IncludedRouter` wrapper that slowapi's route lookup
-      doesn't recognize, so rate limiting stops applying to every `/api`
-      route with no error. Currently blocking a Dependabot fastapi bump
-      (#62), held rather than merged. See SECURITY.md)  
+[x] Fix `slowapi` silently no-op'ing rate limiting on fastapi>=0.140.0 (#66
+      — FastAPI restructured `include_router()` internals into a private
+      `_IncludedRouter` wrapper that slowapi's route lookup doesn't
+      recognize, so rate limiting stopped applying to every `/api` route
+      with no error. Fixed by enforcing the limit via a `Depends()` instead
+      of `SlowAPIMiddleware` (#79), which also unblocked the fastapi 0.140.0
+      bump. See SECURITY.md)  
 
 Hardening Phase C — Needs Scoping:  
-[ ] Replace shared API key auth with JWT/OIDC-based authentication (#23 —
-      needs-review; scope before starting)  
+[x] Replace shared API key auth with per-user JWT-based authentication
+      (#23, closed 2026-07-25) — scoped bigger than the original
+      "JWT/OIDC swap" framing once real per-event attribution and a
+      lightweight audit trail turned out to be natural, cheap additions on
+      top of real user identity. Shipped as 6 sequential PRs: users table +
+      bcrypt password hashing (#78), JWT login endpoint +
+      `require_current_user` (#86), `API_KEY` removed entirely and every
+      `/api` route cut over to bearer tokens (#87),
+      `InventoryEvent.created_by_id` per-event attribution (#88),
+      `audit_log` table for replay/export/login_failed (#89), and the
+      dashboard sign-in gate (#90). No self-service registration —
+      accounts are CLI-only via `scripts/create_user.py`. See SECURITY.md
+      for the current auth model.  
 [ ] Move data lake to S3, update export/dbt to use S3 (#22 — status:blocked,
       same item as the Phase 5 data-lake checkboxes above; unblock the
       self-hosted-vs-AWS object storage decision first)  
 
-Milestone: Hardening Phase A complete; Phase B / Phase C in progress (GitHub
-milestones) — see the issue tracker for live status  
+Milestone: Hardening Phase A complete. Phase B nearly complete — only #20
+(RDS Terraform hardening) remains open. Phase C nearly complete — the
+JWT/user-accounts arc (#23) shipped in full; only #22 (S3 data lake,
+blocked on the object-storage decision) remains open. See the issue
+tracker for live status.  
 
 ------------------------------------------------------------
 EPOCH 7.1 — Dashboard UX Overhaul
