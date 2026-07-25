@@ -38,6 +38,13 @@ class InvalidEventError(DomainError):
     status_code = 400
 
 
+class InvalidCredentialsError(DomainError):
+    status_code = 401
+
+    def __init__(self):
+        super().__init__("Invalid email or password")
+
+
 class InsufficientInventoryError(DomainError):
     status_code = 400
 

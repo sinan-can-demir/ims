@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
+from app.api.auth import router as auth_router
 from app.api.forecast import router as forecast_router
 from app.api.inventory import router as inventory_router
 from app.api.products import router as products_router
@@ -62,6 +63,10 @@ app.include_router(forecast_router, prefix="/api", dependencies=_auth)
 # Signed with WEBHOOK_SECRET (see require_webhook_signature), not the
 # X-API-Key used by the routers above — different trust boundary.
 app.include_router(webhooks_router, prefix="/api")
+# No require_api_key/require_current_user — this *is* the login endpoint,
+# nothing to authenticate against yet. Still rate-limited: unauthenticated
+# and repeatedly guessable, a natural brute-force target.
+app.include_router(auth_router, prefix="/api", dependencies=[Depends(enforce_rate_limit)])
 
 
 @app.exception_handler(DomainError)

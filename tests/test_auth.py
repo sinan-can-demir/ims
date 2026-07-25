@@ -1,10 +1,19 @@
 # tests/test_auth.py
 
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
+import jwt
+import pytest
+from fastapi import HTTPException
+from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.testclient import TestClient
 
+from app.core import auth as auth_core
+from app.core.auth import create_access_token, require_current_user
+from app.core.security import hash_password
 from app.main import app
+from app.models.user import User
 
 
 def test_health_is_exempt():
@@ -53,3 +62,107 @@ def test_no_api_key_configured_allows_all():
         client = TestClient(app, raise_server_exceptions=False)
         response = client.get("/health")
         assert response.status_code == 200
+
+
+def _make_user(db, email, password, is_active=True):
+    user = User(
+        email=email,
+        password_hash=hash_password(password),
+        display_name="Test User",
+        is_active=is_active,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def test_login_success_returns_bearer_token(client, db):
+    _make_user(db, "login@example.com", "correct horse battery")
+    response = client.post(
+        "/api/auth/login",
+        json={"email": "login@example.com", "password": "correct horse battery"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["token_type"] == "bearer"  # noqa: S105 -- auth scheme label, not a credential
+    assert body["access_token"]
+
+
+def test_login_wrong_password_returns_generic_401(client, db):
+    _make_user(db, "login2@example.com", "right-password")
+    response = client.post(
+        "/api/auth/login",
+        json={"email": "login2@example.com", "password": "wrong-password"},
+    )
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid email or password"
+
+
+def test_login_unknown_email_returns_same_generic_401(client, db):
+    """Same message/status as wrong-password — no user-enumeration leak."""
+    response = client.post(
+        "/api/auth/login",
+        json={"email": "nobody@example.com", "password": "whatever"},
+    )
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid email or password"
+
+
+def test_login_deactivated_user_returns_generic_401(client, db):
+    _make_user(db, "inactive@example.com", "pw", is_active=False)
+    response = client.post(
+        "/api/auth/login",
+        json={"email": "inactive@example.com", "password": "pw"},
+    )
+    assert response.status_code == 401
+
+
+def test_require_current_user_accepts_valid_token(db):
+    user = _make_user(db, "valid@example.com", "pw")
+    token = create_access_token(user)
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+    resolved = require_current_user(credentials=credentials, db=db)
+    assert resolved.id == user.id
+
+
+def test_require_current_user_rejects_missing_token(db):
+    with pytest.raises(HTTPException) as exc_info:
+        require_current_user(credentials=None, db=db)
+    assert exc_info.value.status_code == 401
+
+
+def test_require_current_user_rejects_invalid_token(db):
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="garbage")
+    with pytest.raises(HTTPException) as exc_info:
+        require_current_user(credentials=credentials, db=db)
+    assert exc_info.value.status_code == 401
+
+
+def test_require_current_user_rejects_expired_token(db):
+    user = _make_user(db, "expired@example.com", "pw")
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": str(user.id),
+        "email": user.email,
+        "iat": now - timedelta(hours=13),
+        "exp": now - timedelta(hours=1),
+    }
+    expired_token = jwt.encode(payload, auth_core._JWT_SECRET, algorithm=auth_core._JWT_ALGORITHM)
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=expired_token)
+    with pytest.raises(HTTPException) as exc_info:
+        require_current_user(credentials=credentials, db=db)
+    assert exc_info.value.status_code == 401
+
+
+def test_require_current_user_rejects_deactivated_user_token(db):
+    """A previously-valid, unexpired token stops working once is_active flips false."""
+    user = _make_user(db, "deactivate@example.com", "pw")
+    token = create_access_token(user)
+    user.is_active = False
+    db.commit()
+
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+    with pytest.raises(HTTPException) as exc_info:
+        require_current_user(credentials=credentials, db=db)
+    assert exc_info.value.status_code == 401
