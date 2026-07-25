@@ -111,6 +111,9 @@ def _record(
             quantity=delta,
             event_id=event_id,
             created_at=when,
+            # No human actor for synthetic seed data — same as webhook-sourced
+            # events, NULL is honest here.
+            created_by_id=None,
         )
     )
     return True

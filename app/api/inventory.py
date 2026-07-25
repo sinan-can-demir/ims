@@ -2,8 +2,10 @@ import pandas as pd
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
+from app.core.auth import require_current_user
 from app.database import get_db
 from app.models.inventory_event import InventoryEvent
+from app.models.user import User
 from app.schemas.export import ExportMetadata
 from app.schemas.ingestion import IngestResponse
 from app.schemas.inventory_event import InventoryEventCreate, InventoryEventResponse
@@ -19,12 +21,22 @@ _BULK_IMPORT_COLUMNS = ["sku", "event_type", "quantity", "event_id"]
 
 
 @router.post("/events", response_model=InventoryEventResponse, status_code=201)
-def create_inventory_event(event: InventoryEventCreate, db: Session = Depends(get_db)):
-    return record_event(db, event.product_id, event.event_type, event.quantity, event.event_id)
+def create_inventory_event(
+    event: InventoryEventCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_current_user),
+):
+    return record_event(
+        db, event.product_id, event.event_type, event.quantity, event.event_id, current_user.id
+    )
 
 
 @router.post("/events/bulk", response_model=IngestResponse)
-def bulk_import_events(file: UploadFile = File(...), db: Session = Depends(get_db)):
+def bulk_import_events(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_current_user),
+):
     """
     Generic CSV bulk import for inventory events. Columns:
     sku, event_type, quantity, event_id. Partial success is expected —
@@ -43,7 +55,7 @@ def bulk_import_events(file: UploadFile = File(...), db: Session = Depends(get_d
         )
 
     rows = df[_BULK_IMPORT_COLUMNS].to_dict(orient="records")
-    return ingest_events(db, rows)
+    return ingest_events(db, rows, current_user.id)
 
 
 @router.post("/replay")

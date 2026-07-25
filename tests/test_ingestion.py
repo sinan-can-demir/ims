@@ -3,6 +3,8 @@
 import io
 import uuid
 
+from app.models.inventory_event import InventoryEvent
+from app.models.user import User
 from app.services.ingestion_service import ingest_events
 
 from .utils import create_product
@@ -97,6 +99,27 @@ def test_ingest_events_oversell_is_a_row_failure(client, db):
     assert result["results"][0]["status"] == "failed"
 
 
+def test_ingest_events_records_created_by_id(client, db):
+    current_user = db.query(User).filter(User.email == "test-client@example.com").first()
+    product = create_product(client)
+
+    result = ingest_events(db, [_row(product["sku"], quantity=10)], created_by_id=current_user.id)
+
+    assert result["rows_succeeded"] == 1
+    event = db.query(InventoryEvent).order_by(InventoryEvent.id.desc()).first()
+    assert event.created_by_id == current_user.id
+
+
+def test_ingest_events_defaults_created_by_id_to_none(client, db):
+    """Matches the webhook receiver, which never passes created_by_id."""
+    product = create_product(client)
+
+    ingest_events(db, [_row(product["sku"], quantity=10)])
+
+    event = db.query(InventoryEvent).order_by(InventoryEvent.id.desc()).first()
+    assert event.created_by_id is None
+
+
 # ---------------------------------------------------------------
 # POST /api/inventory/events/bulk — integration tests
 # ---------------------------------------------------------------
@@ -119,6 +142,21 @@ def test_bulk_import_endpoint_csv_upload(client):
 
     inventory = client.get(f"/api/inventory/{product['id']}")
     assert inventory.json()["quantity"] == 25
+
+
+def test_bulk_import_endpoint_records_created_by_id(client, db):
+    current_user = db.query(User).filter(User.email == "test-client@example.com").first()
+    product = create_product(client)
+    event_id = f"evt-{uuid.uuid4()}"
+
+    csv_content = f"sku,event_type,quantity,event_id\n{product['sku']},PURCHASE,25,{event_id}\n"
+    files = {"file": ("events.csv", io.BytesIO(csv_content.encode()), "text/csv")}
+
+    response = client.post("/api/inventory/events/bulk", files=files)
+    assert response.status_code == 200, response.json()
+
+    events = client.get(f"/api/inventory/events/{product['id']}").json()
+    assert events[0]["created_by_id"] == current_user.id
 
 
 def test_bulk_import_endpoint_missing_columns_returns_400(client):

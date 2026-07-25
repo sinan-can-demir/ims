@@ -18,10 +18,14 @@ from app.services.inventory_service import record_event
 from app.services.product_service import get_product_by_sku
 
 
-def ingest_events(db: Session, rows: list[dict]) -> dict:
+def ingest_events(db: Session, rows: list[dict], created_by_id: int | None = None) -> dict:
     """
     rows: raw dicts, each expected to have sku/event_type/quantity/event_id
     (validated per-row via IngestRowInput before touching the DB).
+
+    created_by_id: the authenticated user driving this batch, or None for
+    the webhook receiver (no human actor) — same attribution rule as
+    record_event(), just applied uniformly across the whole batch.
     """
     results = []
     succeeded = 0
@@ -35,7 +39,7 @@ def ingest_events(db: Session, rows: list[dict]) -> dict:
             event_id = row.event_id
 
             product = get_product_by_sku(db, row.sku)
-            record_event(db, product.id, row.event_type, row.quantity, row.event_id)
+            record_event(db, product.id, row.event_type, row.quantity, row.event_id, created_by_id)
 
             results.append(
                 {"row_number": row_number, "event_id": event_id, "status": "success", "error": None}

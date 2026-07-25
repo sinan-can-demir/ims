@@ -43,6 +43,7 @@ def record_event(
     event_type: EventType,
     quantity: int,
     event_id: str,
+    created_by_id: int | None = None,
 ) -> InventoryEvent:
     # Check for existing event with same event_id for idempotency
     existing_event = db.query(InventoryEvent).filter(InventoryEvent.event_id == event_id).first()
@@ -92,6 +93,7 @@ def record_event(
             event_type=event_type,
             quantity=delta,
             event_id=event_id,
+            created_by_id=created_by_id,
         )
 
         # Add event and update inventory state atomically

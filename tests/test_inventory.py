@@ -1,5 +1,7 @@
 import pytest
 
+from app.models.user import User
+
 from .utils import create_product
 
 
@@ -50,6 +52,24 @@ def test_oversell_protection(client):
     )
 
     assert response.status_code == 400
+
+
+def test_direct_create_event_records_created_by_id(client, db):
+    product = create_product(client)
+    current_user = db.query(User).filter(User.email == "test-client@example.com").first()
+
+    response = client.post(
+        "/api/inventory/events",
+        json={
+            "product_id": product["id"],
+            "event_type": "PURCHASE",
+            "quantity": 10,
+            "event_id": "evt-attribution",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["created_by_id"] == current_user.id
 
 
 def test_projection_consistency(client):

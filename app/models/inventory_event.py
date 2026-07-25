@@ -24,4 +24,10 @@ class InventoryEvent(Base):
 
     quantity = Column(Integer, nullable=False)
 
+    # Permanently nullable by design, not a migration-in-progress state —
+    # webhook-sourced events have no human actor, and NULL is honest here;
+    # inventing a synthetic "system" user would muddy a real accountability
+    # feature.
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
