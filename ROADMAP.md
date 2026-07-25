@@ -1,6 +1,6 @@
 # IMS — Inventory Management System
 Author: Sinan Demir
-Last Updated: 2026-07-20
+Last Updated: 2026-07-24
 
 This roadmap organizes the development of IMS into **epochs**.
 Each epoch unlocks the next capability. The system evolves from a simple
@@ -167,7 +167,7 @@ Goal: Build an interactive inventory dashboard with Streamlit.
 Milestone: Complete
 
 ------------------------------------------------------------
-EPOCH 7 — Production Hardening & AWS Deployment (Next)
+EPOCH 7 — Production Hardening & AWS Deployment (In Progress)
 ------------------------------------------------------------
 
 Goal: Make the system production-grade and deploy it to AWS.  
@@ -256,7 +256,7 @@ AWS (enterprise, infra/README.md):
 Milestone: App deployable via either path with real auth, secrets management, and CI/CD  
 
 ------------------------------------------------------------
-EPOCH 7 — Phase 6 — Observability, Auth Upgrade & Ops Maturity (TODO)
+EPOCH 7 — Phase 6 — Observability, Auth Upgrade & Ops Maturity (In Progress)
 ------------------------------------------------------------
 
 Goal: Close out the remaining production-hardening backlog. Originally filed
@@ -282,19 +282,32 @@ point-in-time snapshot.
       unchanged — still reads models/*.pkl directly. Promotion/rollback via
       MLflow's alias API documented in docs/model-registry.md  
 
-Hardening Phase A — Quick Wins:  
+Hardening Phase A — Quick Wins: **complete, 7/7 (2026-07-24)**  
 [x] Bound the `days` query param on GET /api/forecast/{product_id} (#30)  
 [x] Add security response headers middleware (#27) — X-Content-Type-Options,
       X-Frame-Options, and Referrer-Policy set on every response;
       Strict-Transport-Security only when X-Forwarded-Proto is https, since
       uvicorn itself always sees plain HTTP behind Caddy/ALB
       (app/core/security_headers.py)  
-[ ] Add rate limiting to /api routes (#28)  
-[ ] Add security-focused lint rules to CI — ruff `S` ruleset (#29)  
-[ ] Misc hardening cleanup — .dockerignore gaps, pin base image, add a
+[x] Add rate limiting to /api routes (#28) — see SECURITY.md; **note the
+      known incompatibility filed as #66, Phase B below**  
+[x] Add security-focused lint rules to CI — ruff `S` ruleset (#29)  
+[x] Misc hardening cleanup — .dockerignore gaps, pin base image, add a
       replay-endpoint auth test (#31)  
-[ ] CI: run dbt and integration tests against Postgres in CI (#18)  
-[ ] Add dependency & secret scanning to CI — Dependabot, trivy/pip-audit (#17)  
+[x] CI: run dbt and integration tests against Postgres in CI (#18) — new
+      `pipeline` CI job: migrate, seed, export, build warehouse, `dbt run`,
+      `dbt test`. Fixing this surfaced real, previously-uncaught bugs: no
+      `profiles.yml` had ever been committed (dbt only ever ran on the
+      original dev's machine), three dbt files hardcoded that dev's personal
+      absolute path as their `env_var` fallback, and
+      `models/marts/schema.yml` declared `fact_inventory_events` twice —
+      dbt rejects duplicate resource names outright, never caught because
+      dbt had never actually run anywhere but one machine  
+[x] Add dependency & secret scanning to CI — Dependabot, trivy/pip-audit (#17)
+      — new `scan` CI job (gitleaks, pip-audit, trivy image scan) plus
+      `.github/dependabot.yml` (pip/docker/github-actions, weekly). First
+      Dependabot run opened 13 PRs at once (one-time backlog flood); one of
+      them surfaced #66 below via a real CI test failure  
 
 Hardening Phase B — Moderate Risk:  
 [x] Make migrations a one-off job, remove inline alembic from startup (#21 —
@@ -308,6 +321,12 @@ Hardening Phase B — Moderate Risk:
       resolved path to actually stay within its expected root, not just
       reject shell metacharacters; also catches symlink escapes  
 [ ] Harden RDS Terraform defaults — backups, deletion_protection, multi-AZ (#20)  
+[ ] Fix `slowapi` silently no-op'ing rate limiting on fastapi>=0.140.0 (#66
+      — filed 2026-07-24; FastAPI restructured `include_router()` internals
+      into a private `_IncludedRouter` wrapper that slowapi's route lookup
+      doesn't recognize, so rate limiting stops applying to every `/api`
+      route with no error. Currently blocking a Dependabot fastapi bump
+      (#62), held rather than merged. See SECURITY.md)  
 
 Hardening Phase C — Needs Scoping:  
 [ ] Replace shared API key auth with JWT/OIDC-based authentication (#23 —
@@ -316,8 +335,8 @@ Hardening Phase C — Needs Scoping:
       same item as the Phase 5 data-lake checkboxes above; unblock the
       self-hosted-vs-AWS object storage decision first)  
 
-Milestone: Hardening Phase A / Phase B / Phase C (GitHub milestones) — see
-the issue tracker for live status  
+Milestone: Hardening Phase A complete; Phase B / Phase C in progress (GitHub
+milestones) — see the issue tracker for live status  
 
 ------------------------------------------------------------
 EPOCH 7.1 — Dashboard UX Overhaul

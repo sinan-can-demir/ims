@@ -69,14 +69,21 @@ One row per calendar date. Pre-generated, not derived from events.
 
 ## How to Rebuild
 
-Always run export first, then build the warehouse:
+Run export, then build the warehouse's dim/fact parquet files, then run the
+dbt models on top of them, in order:
 ```bash
 make export       # export events from Postgres to data_lake/
-make warehouse    # build dimension and fact tables
+make warehouse    # build dimension and fact parquet files
+make dbt-run      # build dbt models (warehouse/ims_warehouse/)
+make dbt-test     # run dbt's schema tests
 ```
 
-The warehouse files are derived artifacts and are not committed to git.
-They can always be rebuilt from scratch using the commands above.
+The warehouse files (including `ims.duckdb`, the dbt-managed database) are
+derived artifacts and are not committed to git. They can always be rebuilt
+from scratch using the commands above — this full chain also runs in CI
+against a real Postgres (`.github/workflows/ci.yml`'s `pipeline` job).
+See [`ims_warehouse/README.md`](ims_warehouse/README.md) for dbt-specific
+details.
 
 ---
 

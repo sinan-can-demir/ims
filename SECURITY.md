@@ -67,6 +67,18 @@ exactly `RATE_LIMIT`. Divide `RATE_LIMIT` by your worker count if you need
 the exact ceiling; a shared backend (e.g. Redis) would fix this properly
 but isn't in place yet.
 
+**Known limitation, latent as of 2026-07-24:** rate limiting depends on
+`slowapi` (0.1.10, the latest release on PyPI), which finds each request's
+route handler by scanning `app.routes` directly. FastAPI 0.140.0 changed
+`include_router()` to wrap routes in a private `_IncludedRouter` object
+instead of flattening them, which slowapi's lookup doesn't recognize —
+the result isn't an error, rate limiting just silently stops applying to
+every `/api` route. Currently not an issue (`requirements.txt` pins
+`fastapi==0.135.2`), but **do not bump fastapi past 0.140.0 without
+resolving [#66](https://github.com/sinan-can-demir/ims-manual/issues/66)
+first** — a Dependabot PR proposing exactly that bump (#62) is intentionally
+being held for this reason rather than merged.
+
 ## Response security headers
 
 Every response gets `X-Content-Type-Options: nosniff`, `X-Frame-Options:
@@ -77,6 +89,30 @@ uvicorn itself always sees plain HTTP, since TLS is terminated upstream, so
 asserting HSTS unconditionally would break local dev and the no-domain
 plain-HTTP self-hosted path. Neither Caddy nor the ALB add these headers on
 their own; `Caddyfile` is a bare `reverse_proxy`.
+
+## Dependency & vulnerability scanning
+
+CI (`.github/workflows/ci.yml`'s `scan` job) runs on every push and PR, and
+gates deployment alongside the other jobs:
+
+- **Dependabot** (`.github/dependabot.yml`) opens PRs for outdated Python
+  (pip), Docker base image, and GitHub Actions dependencies on a weekly
+  schedule.
+- **gitleaks** scans the PR's commits for accidentally committed secrets.
+- **pip-audit** checks `requirements.txt` against known Python CVE databases.
+- **trivy** scans the built Docker image for CRITICAL/HIGH OS and language
+  package vulnerabilities (`--ignore-unfixed`, so it only blocks on issues
+  with an available fix). A small number of findings that live in the
+  pinned base image's own unused system Python packaging tools (not on the
+  container's `PATH`) are suppressed via `.trivyignore`, each with an
+  inline justification — that file should stay short and reviewed
+  periodically, not become a dumping ground.
+
+A green `scan` job is a real signal, not just a checkbox — Dependabot PRs
+that pass it are safe to merge without manual review for low-risk
+(patch/minor) bumps; major-version bumps and anything CI actually flags
+still deserve a human look (see #62/#66 above for what that caught in
+practice).
 
 ## Dashboard access
 

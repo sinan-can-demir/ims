@@ -29,12 +29,17 @@ An event-driven inventory platform with a full analytics pipeline and ML-powered
 - [x] Prometheus metrics + structured JSON request logging
       (`/metrics`, `X-Request-ID`)
 - [x] CI on every push/PR — lint, full test suite (incl. Postgres-only
-      tests), Docker build
+      tests), Docker build, dependency/secret/image vulnerability scanning
+      (Dependabot + gitleaks + pip-audit + trivy), and a dedicated pipeline
+      job exercising export → warehouse → dbt against a real Postgres
 - [x] Self-hosted deployment path (Docker Compose + optional Caddy HTTPS)
 - [x] Dashboard deployed alongside the API in the self-hosted stack, gated
       behind Caddy basic auth (the dashboard has no auth of its own)
 - [x] Security response headers (X-Frame-Options, X-Content-Type-Options,
       Referrer-Policy, conditional HSTS)
+- [x] Rate limiting on `/api` routes (slowapi, keyed by client IP) — see
+      [SECURITY.md](SECURITY.md) for a known compatibility limitation with
+      newer FastAPI versions
 
 ## In Progress
 
@@ -43,7 +48,6 @@ An event-driven inventory platform with a full analytics pipeline and ML-powered
 - [ ] Deploy the dashboard on AWS (ECS, reading the feature store from S3)
 - [ ] Apply the AWS Terraform — ECS/RDS/ALB infra is written, not yet running
 - [ ] Replace shared API-key auth with JWT/OIDC
-- [ ] Add dependency & secret scanning to CI (Dependabot, pip-audit/trivy)
 
 See [ROADMAP.md](ROADMAP.md) for the full backlog.
 
