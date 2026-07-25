@@ -10,6 +10,7 @@ from app.schemas.export import ExportMetadata
 from app.schemas.ingestion import IngestResponse
 from app.schemas.inventory_event import InventoryEventCreate, InventoryEventResponse
 from app.schemas.inventory_state import InventoryStateResponse
+from app.services.audit_service import log_action
 from app.services.export_service import export_inventory_events
 from app.services.ingestion_service import ingest_events
 from app.services.inventory_service import get_inventory, record_event
@@ -59,8 +60,15 @@ def bulk_import_events(
 
 
 @router.post("/replay")
-def replay_inventory_projection(db: Session = Depends(get_db)):
-    return rebuild_inventory_state(db)
+def replay_inventory_projection(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_current_user),
+):
+    summary = rebuild_inventory_state(db)
+    log_action(
+        db, current_user.id, "replay", detail=f"events_processed={summary['events_processed']}"
+    )
+    return summary
 
 
 @router.get("/events/{product_id}", response_model=list[InventoryEventResponse])
@@ -88,5 +96,10 @@ def inventory_level(product_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/export", response_model=ExportMetadata)
-def export_inventory(db: Session = Depends(get_db)):
-    return export_inventory_events(db, incremental=True)
+def export_inventory(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_current_user),
+):
+    result = export_inventory_events(db, incremental=True)
+    log_action(db, current_user.id, "export", detail=f"rows_exported={result['rows_exported']}")
+    return result
