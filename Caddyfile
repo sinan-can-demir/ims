@@ -2,9 +2,12 @@
 	reverse_proxy api:8000
 }
 
-# Streamlit dashboard has no auth of its own (no bearer-token equivalent) —
-# basic_auth here is the only thing standing between it and the internet.
-# Generate the password hash with:
+# The dashboard has its own per-user sign-in now (dashboard/auth.py,
+# authenticate_user() called in-process — no HTTP call, no bearer token),
+# but basic_auth here still stands: it's a network-perimeter control
+# (keeps random internet traffic off the dashboard's port entirely),
+# different job from per-user attribution inside the app. Neither
+# replaces the other. Generate the password hash with:
 #   docker run --rm caddy:2-alpine caddy hash-password --plaintext 'your-password'
 {$DOMAIN}:8501 {
 	basic_auth {

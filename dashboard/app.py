@@ -10,6 +10,7 @@ import streamlit as st
 # Add project root to path so app imports resolve correctly
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from dashboard.auth import require_login
 from dashboard.data import load_events, load_forecast, load_inventory, load_restock
 
 # ---------------------------------------------------------------
@@ -18,10 +19,22 @@ from dashboard.data import load_events, load_forecast, load_inventory, load_rest
 st.set_page_config(page_title="IMS Dashboard", page_icon="🏭", layout="wide")
 
 # ---------------------------------------------------------------
+# Auth gate — blocks everything below for an unauthenticated visitor.
+# Coexists with Caddy basic_auth in the self-hosted deploy (see
+# Caddyfile); that's a network-perimeter control, this is per-user
+# attribution inside the app.
+# ---------------------------------------------------------------
+current_user = require_login()
+
+# ---------------------------------------------------------------
 # Sidebar — controls
 # ---------------------------------------------------------------
 st.title("🏭 Inventory Management Dashboard")
 st.sidebar.header("Controls")
+st.sidebar.caption(f"Signed in as {current_user['display_name']}")
+if st.sidebar.button("Sign out"):
+    del st.session_state["user"]
+    st.rerun()
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 feature_df = pd.read_parquet(_PROJECT_ROOT / "feature_store" / "daily_sales.parquet")
