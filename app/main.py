@@ -8,7 +8,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
 
 from app.api.forecast import router as forecast_router
 from app.api.inventory import router as inventory_router
@@ -18,7 +17,7 @@ from app.core.auth import require_api_key
 from app.core.exceptions import DomainError
 from app.core.logging import RequestLoggingMiddleware, logger
 from app.core.metrics import MetricsMiddleware, metrics_response
-from app.core.rate_limit import limiter
+from app.core.rate_limit import enforce_rate_limit, limiter
 from app.core.security_headers import SecurityHeadersMiddleware
 
 
@@ -36,9 +35,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-# slowapi reads the limiter off app.state at request time (SlowAPIMiddleware,
-# @limiter.exempt) rather than taking it as a constructor arg, so it has to be
-# attached here before that middleware is added below.
+# slowapi's exception handler reads request.app.state.limiter to build the
+# 429 response, so this has to be set regardless of how limits are enforced.
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -53,9 +51,10 @@ app.add_middleware(
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(MetricsMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
-app.add_middleware(SlowAPIMiddleware)
 
-_auth = [Depends(require_api_key)]
+# Enforced as a per-router Depends() rather than slowapi's SlowAPIMiddleware
+# — see app/core/rate_limit.py's enforce_rate_limit docstring for why (#66).
+_auth = [Depends(require_api_key), Depends(enforce_rate_limit)]
 
 app.include_router(products_router, prefix="/api", dependencies=_auth)
 app.include_router(inventory_router, prefix="/api", dependencies=_auth)
@@ -71,12 +70,10 @@ async def domain_error_handler(request: Request, exc: DomainError):
 
 
 @app.get("/health")
-@limiter.exempt
 def health():
     return {"status": "ok"}
 
 
 @app.get("/metrics")
-@limiter.exempt
 def metrics():
     return metrics_response()
