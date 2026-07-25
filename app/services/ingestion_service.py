@@ -39,9 +39,7 @@ def ingest_events(db: Session, rows: list[dict], created_by_id: int | None = Non
             event_id = row.event_id
 
             product = get_product_by_sku(db, row.sku)
-            record_event(
-                db, product.id, row.event_type, row.quantity, row.event_id, created_by_id
-            )
+            record_event(db, product.id, row.event_type, row.quantity, row.event_id, created_by_id)
 
             results.append(
                 {"row_number": row_number, "event_id": event_id, "status": "success", "error": None}
