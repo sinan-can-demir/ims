@@ -102,12 +102,15 @@ step as local dev).
 
 ## Dashboard (optional, requires a domain)
 
-The Streamlit dashboard runs as part of the stack (`dashboard` service) but,
-unlike the API, has no auth of its own — no bearer-token equivalent. So its
-container port is never published directly; it's only reachable once the
-Caddy overlay fronts it with HTTP basic auth on its own HTTPS listener.
-Running `docker-compose.prod.yml` without the Caddy overlay leaves the
-dashboard **unreachable**, not unauthenticated.
+The Streamlit dashboard runs as part of the stack (`dashboard` service) and
+now has its own per-user sign-in (`dashboard/auth.py`) — same accounts as
+the API, created the same way via `scripts/create_user.py` (see
+[step 4 above](#4-verify)). Its container port is still never published directly, though;
+it's only reachable once the Caddy overlay fronts it with HTTP basic auth
+on its own HTTPS listener — a separate, network-perimeter layer on top of
+the per-user sign-in, not a replacement for it. Running
+`docker-compose.prod.yml` without the Caddy overlay leaves the dashboard
+**unreachable**, not merely unauthenticated.
 
 To enable it, in addition to `DOMAIN`, set in `.env`:
 
