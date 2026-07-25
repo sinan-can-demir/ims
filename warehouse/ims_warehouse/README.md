@@ -1,15 +1,31 @@
-Welcome to your new dbt project!
+# ims_warehouse (dbt project)
 
-### Using the starter project
+See [`warehouse/README.md`](../README.md) for the full data flow (PostgreSQL
+→ Parquet data lake → this dbt project → analytics/ML/dashboard) and how to
+rebuild the warehouse from scratch.
 
-Try running the following commands:
-- dbt run
-- dbt test
+## Running dbt
 
+From the repo root, use the Makefile targets — they run against real data
+and are exercised in CI (`.github/workflows/ci.yml`'s `pipeline` job):
 
-### Resources:
-- Learn more about dbt [in the docs](https://docs.getdbt.com/docs/introduction)
-- Check out [Discourse](https://discourse.getdbt.com/) for commonly asked questions and answers
-- Join the [chat](https://community.getdbt.com/) on Slack for live discussions and support
-- Find [dbt events](https://events.getdbt.com) near you
-- Check out [the blog](https://blog.getdbt.com/) for the latest news on dbt's development and best practices
+```bash
+make dbt-run    # build the dim/fact models
+make dbt-test   # run the schema tests (unique, not_null, relationships)
+```
+
+If you're running `dbt` directly instead, pass `--profiles-dir .` from
+inside this directory — `profiles.yml` is committed here (no secrets, just
+a local DuckDB file path) rather than relying on `~/.dbt/profiles.yml`, so
+this works the same on a fresh clone and in CI with no per-machine setup:
+
+```bash
+cd warehouse/ims_warehouse
+dbt run --profiles-dir .
+dbt test --profiles-dir .
+```
+
+### Resources
+- [dbt docs](https://docs.getdbt.com/docs/introduction)
+- [dbt Discourse](https://discourse.getdbt.com/)
+- [dbt community Slack](https://community.getdbt.com/)

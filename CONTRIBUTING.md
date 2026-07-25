@@ -38,6 +38,27 @@ optional locally but useful if you're touching `inventory_service.py`.
 `make test-e2e` runs the bash-based end-to-end suite and needs the full Docker
 stack (`make up`) running first.
 
+## Data pipeline / dbt changes
+
+If you're touching `app/scripts/export_events.py`, `build_warehouse.py`, or
+anything under `warehouse/ims_warehouse/models/`, exercise the full chain
+locally against a real Postgres before opening a PR — CI does the same
+thing (`.github/workflows/ci.yml`'s `pipeline` job) and will catch it either
+way, but it's faster to find locally:
+
+```bash
+alembic upgrade head
+python scripts/seed_data.py
+make export
+make warehouse
+make dbt-run
+make dbt-test
+```
+
+`profiles.yml` is committed under `warehouse/ims_warehouse/` (no secrets —
+duckdb has none), so this works on a fresh clone with no extra setup. See
+[`warehouse/README.md`](warehouse/README.md) for the full pipeline.
+
 ## Linting and formatting
 
 ```bash
