@@ -177,6 +177,10 @@ make up
 # Run migrations
 make migrate
 
+# Create an account — no self-service registration, every /api route and
+# the dashboard both require this (see API Reference and SECURITY.md)
+python scripts/create_user.py --email you@example.com --display-name "Your Name"
+
 # Seed some data, then run the full pipeline
 make export       # PostgreSQL → Parquet
 make warehouse    # build DuckDB warehouse tables
@@ -196,10 +200,13 @@ streamlit run dashboard/app.py
 pip install -r requirements.txt
 export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/ims"
 alembic upgrade head
+python scripts/create_user.py --email you@example.com --display-name "Your Name"
 uvicorn app.main:app --reload
 ```
 
-API docs available at `http://localhost:8000/docs`.
+API docs available at `http://localhost:8000/docs`. Get a bearer token via
+`POST /api/auth/login`, then pass `Authorization: Bearer <token>` on every
+other `/api` request — see [API Reference](#api-reference).
 
 ---
 
