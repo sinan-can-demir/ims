@@ -10,53 +10,71 @@ profile. You should get an acknowledgement within a few days — this is a
 solo-maintained project, so response times aren't guaranteed to be fast, but
 reports are taken seriously.
 
-## Known limitations of the current auth model
+## Auth model
 
-IMS uses a single shared API key (`X-API-Key` header, checked in
-`app/core/auth.py`) rather than per-user credentials, OAuth, or JWTs. This is a
-deliberate, minimal design for the project's current stage, **not** a
-production-grade auth system. Specifically:
+IMS uses per-user accounts and JWT bearer tokens (`app/core/auth.py`,
+`app/models/user.py`), not a single shared API key. `POST /api/auth/login`
+verifies email/password (bcrypt, `app/core/security.py`) and issues a
+signed JWT (HS256, 12-hour expiry, no refresh tokens); every other `/api`
+route requires `Authorization: Bearer <token>`, validated by
+`require_current_user`. Specifically:
 
-- **One key for every client.** There's no per-user identity, no scoping, and
-  no way to revoke a single caller's access without rotating the key for
-  everyone.
-- **Auth is a no-op if `API_KEY` is unset.** This is intentional for local
-  development (`.env.example` documents it), but it means **you must set
-  `API_KEY` before exposing this app on any network you don't fully trust**.
-  A startup log line (`AUTH DISABLED — API_KEY not set`) warns loudly if the
-  app boots without it, precisely so this isn't easy to miss in a deployed
-  environment's logs.
-- **The comparison is constant-time** (`hmac.compare_digest`), so the auth
-  check itself isn't vulnerable to a timing attack — but that only protects
-  the comparison, not the broader single-shared-secret design above.
+- **Real per-user identity**, but no roles/scopes yet — every authenticated
+  user has the same privileges. Deactivating an account (`is_active=False`)
+  takes effect immediately: `require_current_user` reloads the `User` row
+  and rechecks `is_active` on every request, not just at login, so a
+  still-unexpired token stops working the moment an account is deactivated.
+- **No self-service registration.** Accounts are created CLI-only via
+  `scripts/create_user.py` — deliberate for a solo/learning project, not a
+  permanent constraint; a `POST /api/auth/register` endpoint would be a
+  natural, low-risk future addition if that's ever needed.
+- **Login failures are generic.** Unknown email, wrong password, and a
+  deactivated account all return the same `401 Invalid email or password`
+  — no signal about which case occurred, so an attacker can't use the
+  login endpoint to enumerate valid emails.
+- **`JWT_SECRET` can't be "disabled" the way the old `API_KEY` could.**
+  Signing a JWT always requires a key, so an unset `JWT_SECRET` falls back
+  to a fixed, publicly-known dev-only string instead of turning auth off —
+  a startup log line warns loudly if the app boots without it set,
+  precisely so this isn't easy to miss in a deployed environment's logs.
+  **You must set `JWT_SECRET` before exposing this app on any network you
+  don't fully trust.**
+- **No server-side session storage or revocation list.** A token is valid
+  for its full 12-hour lifetime once issued, unless the underlying user is
+  deactivated. Not justified at this project's size yet; would need
+  revisiting before this app has meaningfully sensitive data or more than
+  a handful of users.
 
-If you need per-user auth, OAuth, or anything beyond "one shared secret keeps
-casual/opportunistic access out," this project isn't there yet — see
-[`ROADMAP.md`](ROADMAP.md) (Epoch 7) for what's planned.
+If you need OAuth/OIDC, RBAC, or anything beyond single-tier per-user auth,
+this project isn't there yet — see [`ROADMAP.md`](ROADMAP.md) for what's
+planned.
 
 ## Webhook signature verification
 
 `POST /api/webhooks/ingest` (see [`ROADMAP.md`](ROADMAP.md) Epoch 7.2) uses a
-separate mechanism from `X-API-Key`: an `X-Webhook-Signature` header holding
-an HMAC-SHA256 digest of the raw request body, keyed by the `WEBHOOK_SECRET`
-env var (`app/core/auth.py`'s `require_webhook_signature`). Same shape and
-same limitations as the API key above — one shared secret, no-op if unset
-(local dev only), constant-time comparison via `hmac.compare_digest`.
+separate mechanism from the bearer-token auth above: an
+`X-Webhook-Signature` header holding an HMAC-SHA256 digest of the raw
+request body, keyed by the `WEBHOOK_SECRET` env var (`app/core/auth.py`'s
+`require_webhook_signature`). Unlike `JWT_SECRET`, this one *can* be
+disabled — it's a no-op if `WEBHOOK_SECRET` is unset (local dev only),
+same one-shared-secret shape as the old `API_KEY`, constant-time
+comparison via `hmac.compare_digest`.
 
 ## Rate limiting
 
 `/api` routes (products, inventory, forecast — anything behind
-`require_api_key`) are rate-limited via `slowapi`
+`require_current_user`) are rate-limited via `slowapi`
 (`app/core/rate_limit.py`), keyed by client IP. Default limit is
 `100/minute`, configurable via the `RATE_LIMIT` env var. Limit exceeded
 returns `429`. `/health`, `/metrics`, and `/api/webhooks/ingest`
 (signature-verified, separate trust boundary — see below) are exempt.
 
-Keying is by IP only, deliberately — not by the presented `X-API-Key`
-value. IMS has exactly one valid shared key, so there's no per-client
-identity to preserve, and keying by presented value would let an attacker
-reset their bucket on every request just by guessing a different key each
-time.
+Keying is by IP only, deliberately — not by the authenticated user. Partly
+because `POST /api/auth/login` itself has no user identity to key on yet
+(that's the whole point of rate-limiting it — see the auth section above),
+and keying the rest by user would let an attacker reset their bucket on
+every request just by using a different account, which doesn't actually
+mitigate anything IP-based abuse (scraping, brute force) cares about.
 
 **Known limitation:** the default `memory://` storage backend is
 per-process, not shared across Gunicorn's worker processes in production
@@ -75,8 +93,8 @@ it has no other way to know which endpoint matched. FastAPI 0.140.0 changed
 instead of flattening them, which that scan doesn't recognize — the result
 wasn't an error, rate limiting just silently stopped applying to every
 `/api` route. Fixed by enforcing the limit via a FastAPI `Depends()`
-(`enforce_rate_limit`, `app/core/rate_limit.py`) attached alongside
-`require_api_key` instead of a middleware — dependencies run *after*
+(`enforce_rate_limit`, `app/core/rate_limit.py`) attached alongside the
+auth dependency instead of a middleware — dependencies run *after*
 routing has already resolved the endpoint, so there's no route-matching to
 get wrong. `/health`, `/metrics`, and `/api/webhooks/ingest` are exempt
 structurally now (the dependency simply isn't attached to those routes)
@@ -121,7 +139,7 @@ practice).
 
 The Streamlit dashboard (`dashboard/app.py`) talks to the database directly
 via the service layer — it doesn't go through `/api` and has none of the
-`X-API-Key` protection above. It has no auth of its own at all. In the
+bearer-token protection above. It has no auth of its own at all. In the
 self-hosted deployment path, its container port is never published by
 default; it's only reachable once the Caddy overlay
 (`docker-compose.caddy.yml`) fronts it with HTTP basic auth on a dedicated

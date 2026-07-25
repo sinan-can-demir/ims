@@ -21,7 +21,7 @@ def webhook_ingest(payload: WebhookIngestPayload, db: Session = Depends(get_db))
     """
     Generic, platform-agnostic webhook receiver for inventory events —
     signed with WEBHOOK_SECRET (X-Webhook-Signature header), not the
-    X-API-Key used by /api routes; a future POS/e-commerce-specific
+    bearer token used by /api routes; a future POS/e-commerce-specific
     adapter would translate its own webhook format into this payload
     shape. event_id is derived as "{source}:{external_id}" so the same
     external_id from two different sources can't collide.

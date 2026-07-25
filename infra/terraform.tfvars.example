@@ -1,8 +1,8 @@
 # Copy this to terraform.tfvars (gitignored — never commit real values)
-# and fill in. Or set as environment variables, e.g. TF_VAR_api_key=...
+# and fill in. Or set as environment variables, e.g. TF_VAR_jwt_secret=...
 
 # Generate with: openssl rand -hex 32
-api_key = "REPLACE_ME"
+jwt_secret = "REPLACE_ME"
 
 # Uncomment to override defaults:
 # aws_region   = "us-east-1"

@@ -9,11 +9,13 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.core.auth import create_access_token
+from app.core.security import hash_password
 from app.database import Base, get_db
 from app.main import app
+from app.models.user import User
 
 TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL")
-_API_KEY = os.getenv("API_KEY")
 
 if TEST_DATABASE_URL:
     engine = create_engine(TEST_DATABASE_URL)
@@ -76,9 +78,21 @@ def client(db):
         yield db
 
     app.dependency_overrides[get_db] = override_get_db
-    # Pass API key header automatically if auth is enabled in the test environment
-    headers = {"X-API-Key": _API_KEY} if _API_KEY else {}
-    return TestClient(app, headers=headers)
+
+    # Every /api route now requires a valid bearer token (require_current_user)
+    # — create a real user in the test db and mint one, so existing tests
+    # that just want "an authenticated client" don't each need to do this.
+    user = User(
+        email="test-client@example.com",
+        password_hash=hash_password("test-client-password"),
+        display_name="Test Client",
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    token = create_access_token(user)
+    return TestClient(app, headers={"Authorization": f"Bearer {token}"})
 
 
 @pytest.fixture

@@ -27,7 +27,7 @@ scrape_configs:
       - targets: ["api:8000"]
 ```
 
-`/metrics` isn't behind `X-API-Key` auth — treat it the same as `/health`:
+`/metrics` isn't behind bearer-token auth — treat it the same as `/health`:
 fine on a private network or behind the reverse proxy, not something to
 expose publicly without a firewall rule or its own auth in front.
 

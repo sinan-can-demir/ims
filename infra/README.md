@@ -64,7 +64,7 @@ letting `apply` try to create a duplicate (it will error).
 
 ```bash
 cp terraform.tfvars.example terraform.tfvars
-# edit terraform.tfvars: set api_key (openssl rand -hex 32)
+# edit terraform.tfvars: set jwt_secret (openssl rand -hex 32)
 ```
 
 `terraform.tfvars` is gitignored — never commit a real API key.
@@ -108,7 +108,13 @@ change the *infrastructure* itself (this `infra/` directory).
 
 ```bash
 curl http://$(terraform output -raw alb_dns_name)/health
-curl -H "X-API-Key: <your api_key>" http://$(terraform output -raw alb_dns_name)/api/products
+
+# No self-service registration — create an account first:
+#   docker exec <api-task-container> python scripts/create_user.py --email you@example.com --display-name "Your Name"
+TOKEN=$(curl -s -X POST http://$(terraform output -raw alb_dns_name)/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"you@example.com","password":"<your password>"}' | jq -r .access_token)
+curl -H "Authorization: Bearer $TOKEN" http://$(terraform output -raw alb_dns_name)/api/products
 ```
 
 ## Notes / known limitations of this slice

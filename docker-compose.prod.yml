@@ -4,9 +4,10 @@
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 #
 # See docs/deployment/self-hosted.md for the full walkthrough. Requires a
-# .env file (copy .env.example) with, at minimum, POSTGRES_PASSWORD and
-# API_KEY set — both fail loudly at startup if unset rather than silently
-# falling back to an insecure default.
+# .env file (copy .env.example) with, at minimum, POSTGRES_PASSWORD set
+# (fails loudly at startup if unset) and JWT_SECRET set (falls back to a
+# fixed, publicly-known dev secret if unset, rather than failing — see
+# SECURITY.md).
 
 services:
   db:
@@ -54,7 +55,7 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-ims}
-    # Unlike `api`, the dashboard has no app-level auth (no X-API-Key
+    # Unlike `api`, the dashboard has no app-level auth (no bearer-token
     # equivalent) — Caddy's basic_auth is its only protection. So, unlike
     # api's port staying published here, the dashboard's port is hidden by
     # default in this file already: it only becomes reachable by adding

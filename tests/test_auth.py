@@ -1,7 +1,6 @@
 # tests/test_auth.py
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
 
 import jwt
 import pytest
@@ -22,46 +21,59 @@ def test_health_is_exempt():
     assert client.get("/health").status_code == 200
 
 
-def test_missing_key_returns_401():
-    with patch("app.core.auth._API_KEY", "test-secret"):
-        client = TestClient(app, raise_server_exceptions=False)
-        response = client.get("/api/inventory/1")
-        assert response.status_code == 401
+def test_missing_bearer_token_returns_401(client):
+    # `client` is requested (unused directly) so its dependency_overrides
+    # side effect — pointing get_db at the test session — is active; this
+    # bare TestClient shares the same `app` object but sends no auth header.
+    bare_client = TestClient(app, raise_server_exceptions=False)
+    response = bare_client.get("/api/inventory/1")
+    assert response.status_code == 401
 
 
-def test_wrong_key_returns_401():
-    with patch("app.core.auth._API_KEY", "test-secret"):
-        client = TestClient(app, raise_server_exceptions=False)
-        response = client.get("/api/inventory/1", headers={"X-API-Key": "wrong-key"})
-        assert response.status_code == 401
+def test_invalid_bearer_token_returns_401(client):
+    response = client.get("/api/inventory/1", headers={"Authorization": "Bearer garbage"})
+    assert response.status_code == 401
 
 
-def test_replay_without_key_returns_401():
+def test_expired_bearer_token_returns_401(client, db):
+    user = db.query(User).filter(User.email == "test-client@example.com").first()
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": str(user.id),
+        "email": user.email,
+        "iat": now - timedelta(hours=13),
+        "exp": now - timedelta(hours=1),
+    }
+    expired_token = jwt.encode(payload, auth_core._JWT_SECRET, algorithm=auth_core._JWT_ALGORITHM)
+    response = client.get("/api/inventory/1", headers={"Authorization": f"Bearer {expired_token}"})
+    assert response.status_code == 401
+
+
+def test_replay_without_token_returns_401(client):
     """
     /api/inventory/replay rebuilds inventory_state from scratch (delete +
     reinsert) — explicit coverage that it's auth-gated like the rest of the
     inventory router, not just implicitly covered by the other cases here.
     """
-    with patch("app.core.auth._API_KEY", "test-secret"):
-        client = TestClient(app, raise_server_exceptions=False)
-        response = client.post("/api/inventory/replay")
-        assert response.status_code == 401
+    bare_client = TestClient(app, raise_server_exceptions=False)
+    response = bare_client.post("/api/inventory/replay")
+    assert response.status_code == 401
 
 
-def test_correct_key_passes_auth():
-    with patch("app.core.auth._API_KEY", "test-secret"):
-        client = TestClient(app, raise_server_exceptions=False)
-        # /health is exempt — use it to confirm routing still works with correct key
-        response = client.get("/health", headers={"X-API-Key": "test-secret"})
-        assert response.status_code == 200
+def test_valid_bearer_token_passes_auth(client):
+    # No product 999999 — a 404 (not 401) proves auth passed and the
+    # request reached the route handler.
+    response = client.get("/api/inventory/999999")
+    assert response.status_code == 404
 
 
-def test_no_api_key_configured_allows_all():
-    """When API_KEY env var is unset, all requests pass (local dev mode)."""
-    with patch("app.core.auth._API_KEY", None):
-        client = TestClient(app, raise_server_exceptions=False)
-        response = client.get("/health")
-        assert response.status_code == 200
+def test_deactivated_user_bearer_token_returns_401(client, db):
+    user = db.query(User).filter(User.email == "test-client@example.com").first()
+    user.is_active = False
+    db.commit()
+
+    response = client.get("/api/inventory/1")
+    assert response.status_code == 401
 
 
 def _make_user(db, email, password, is_active=True):
