@@ -2,7 +2,7 @@
 	reverse_proxy api:8000
 }
 
-# Streamlit dashboard has no auth of its own (no X-API-Key equivalent) —
+# Streamlit dashboard has no auth of its own (no bearer-token equivalent) —
 # basic_auth here is the only thing standing between it and the internet.
 # Generate the password hash with:
 #   docker run --rm caddy:2-alpine caddy hash-password --plaintext 'your-password'

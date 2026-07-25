@@ -223,8 +223,9 @@ locally (see Getting Started above).
 
 ## API Reference
 
-All routes below live under `/api` and require an `X-API-Key` header if
-`API_KEY` is set (see [Environment Variables](#environment-variables) and
+All routes below live under `/api` and require an `Authorization: Bearer
+<token>` header — get a token from `POST /api/auth/login` (see
+[Environment Variables](#environment-variables) and
 [SECURITY.md](SECURITY.md)). `/health` and `/metrics` (Prometheus format —
 see [docs/observability.md](docs/observability.md)) are always
 unauthenticated.
@@ -300,7 +301,7 @@ doesn't fail the whole batch:
 ```
 
 The webhook's `event_id` is derived as `"{source}:{external_id}"`. It's
-signed separately from `/api`'s `X-API-Key` (see
+signed separately from `/api`'s bearer-token auth (see
 [Environment Variables](#environment-variables)) — a different trust
 boundary, since it's meant for an external system to call directly.
 
@@ -371,7 +372,7 @@ make format       # ruff format .
 | `DB_POOL_SIZE` | `5` | SQLAlchemy connection pool size |
 | `DB_MAX_OVERFLOW` | `10` | Extra connections allowed above pool size under load |
 | `CORS_ORIGINS` | `http://localhost:8501` | Comma-separated list of allowed CORS origins |
-| `API_KEY` | unset | Shared API key for all `/api` routes; unset disables auth (local dev only — see [SECURITY.md](SECURITY.md)) |
+| `JWT_SECRET` | unset | Signs/verifies JWTs issued by `POST /api/auth/login`; unset falls back to a fixed, publicly-known dev secret (local dev only — see [SECURITY.md](SECURITY.md)) |
 | `WEBHOOK_SECRET` | unset | Shared secret for verifying `POST /api/webhooks/ingest` signatures (`X-Webhook-Signature`); unset disables verification (local dev only) |
 | `DATA_LAKE_ROOT` | `./data_lake` | Parquet data lake root |
 | `WAREHOUSE_ROOT` | `./warehouse` | DuckDB warehouse root |

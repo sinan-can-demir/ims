@@ -62,7 +62,7 @@ resource "aws_ecs_task_definition" "api" {
 
       secrets = [
         { name = "DATABASE_URL", valueFrom = aws_secretsmanager_secret.database_url.arn },
-        { name = "API_KEY", valueFrom = aws_secretsmanager_secret.api_key.arn },
+        { name = "JWT_SECRET", valueFrom = aws_secretsmanager_secret.jwt_secret.arn },
       ]
 
       logConfiguration = {

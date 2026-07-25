@@ -13,17 +13,17 @@ resource "aws_secretsmanager_secret_version" "database_url" {
   secret_string = "postgresql://${var.db_username}:${random_password.db.result}@${aws_db_instance.main.endpoint}/${var.db_name}"
 }
 
-# API_KEY is supplied by the operator (same value API clients need to know),
-# not generated — matches today's local .env pattern.
-resource "aws_secretsmanager_secret" "api_key" {
-  name = "${local.name_prefix}/api-key"
+# JWT_SECRET is supplied by the operator (same value the app uses to
+# sign/verify tokens), not generated — matches today's local .env pattern.
+resource "aws_secretsmanager_secret" "jwt_secret" {
+  name = "${local.name_prefix}/jwt-secret"
 
   tags = {
-    Name = "${local.name_prefix}-api-key"
+    Name = "${local.name_prefix}-jwt-secret"
   }
 }
 
-resource "aws_secretsmanager_secret_version" "api_key" {
-  secret_id     = aws_secretsmanager_secret.api_key.id
-  secret_string = var.api_key
+resource "aws_secretsmanager_secret_version" "jwt_secret" {
+  secret_id     = aws_secretsmanager_secret.jwt_secret.id
+  secret_string = var.jwt_secret
 }

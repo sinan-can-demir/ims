@@ -14,7 +14,7 @@ from app.api.forecast import router as forecast_router
 from app.api.inventory import router as inventory_router
 from app.api.products import router as products_router
 from app.api.webhooks import router as webhooks_router
-from app.core.auth import require_api_key
+from app.core.auth import require_current_user
 from app.core.exceptions import DomainError
 from app.core.logging import RequestLoggingMiddleware, logger
 from app.core.metrics import MetricsMiddleware, metrics_response
@@ -24,8 +24,12 @@ from app.core.security_headers import SecurityHeadersMiddleware
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if os.getenv("API_KEY") is None:
-        logger.warning("AUTH DISABLED — API_KEY not set; all endpoints are unauthenticated")
+    if os.getenv("JWT_SECRET") is None:
+        logger.warning(
+            "JWT_SECRET not set — signing tokens with a fixed, publicly-known dev "
+            "secret; anyone can forge a valid-looking login. Set JWT_SECRET before "
+            "exposing this app on any network you don't fully trust."
+        )
     if os.getenv("WEBHOOK_SECRET") is None:
         logger.warning(
             "WEBHOOK AUTH DISABLED — WEBHOOK_SECRET not set; /api/webhooks/ingest "
@@ -55,17 +59,17 @@ app.add_middleware(SecurityHeadersMiddleware)
 
 # Enforced as a per-router Depends() rather than slowapi's SlowAPIMiddleware
 # — see app/core/rate_limit.py's enforce_rate_limit docstring for why (#66).
-_auth = [Depends(require_api_key), Depends(enforce_rate_limit)]
+_auth = [Depends(require_current_user), Depends(enforce_rate_limit)]
 
 app.include_router(products_router, prefix="/api", dependencies=_auth)
 app.include_router(inventory_router, prefix="/api", dependencies=_auth)
 app.include_router(forecast_router, prefix="/api", dependencies=_auth)
 # Signed with WEBHOOK_SECRET (see require_webhook_signature), not the
-# X-API-Key used by the routers above — different trust boundary.
+# bearer token used by the routers above — different trust boundary.
 app.include_router(webhooks_router, prefix="/api")
-# No require_api_key/require_current_user — this *is* the login endpoint,
-# nothing to authenticate against yet. Still rate-limited: unauthenticated
-# and repeatedly guessable, a natural brute-force target.
+# No require_current_user — this *is* the login endpoint, nothing to
+# authenticate against yet. Still rate-limited: unauthenticated and
+# repeatedly guessable, a natural brute-force target.
 app.include_router(auth_router, prefix="/api", dependencies=[Depends(enforce_rate_limit)])
 
 

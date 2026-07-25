@@ -8,7 +8,7 @@ from app.main import app
 
 
 def test_metrics_endpoint_is_unauthenticated():
-    """Prometheus scrapers don't send X-API-Key — /metrics must stay exempt, like /health."""
+    """Prometheus scrapers don't send a bearer token — /metrics must stay exempt, like /health."""
     client = TestClient(app, raise_server_exceptions=False)
     response = client.get("/metrics")
     assert response.status_code == 200

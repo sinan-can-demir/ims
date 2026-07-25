@@ -36,9 +36,10 @@ cp .env.example .env
 Edit `.env` and set, at minimum:
 - `POSTGRES_PASSWORD` — a real password (the compose config refuses to
   start without one; there's no insecure default in production mode)
-- `API_KEY` — generate with `openssl rand -hex 32`. Leaving this unset
-  disables auth entirely, which is fine for local dev but **not** for
-  anything reachable on the open internet — see
+- `JWT_SECRET` — generate with `openssl rand -hex 32`. Leaving this unset
+  falls back to a fixed, publicly-known dev secret rather than disabling
+  auth (there's no way to "disable" JWT signing) — fine for local dev but
+  **not** for anything reachable on the open internet — see
   [`SECURITY.md`](../../SECURITY.md).
 - `CORS_ORIGINS` — if you're also running the dashboard, point this at
   wherever it's served from.
@@ -73,9 +74,20 @@ Docker network.
 
 ## 4. Verify
 
+There's no self-service registration — create your first account with
+`scripts/create_user.py` (inside the `api` container, or anywhere with
+`DATABASE_URL` pointed at the same Postgres):
+
+```bash
+docker compose exec api python scripts/create_user.py --email you@example.com --display-name "Your Name"
+```
+
 ```bash
 curl http://<server-ip>:8000/health          # or https://your-domain.com/health
-curl -H "X-API-Key: <your key>" http://<server-ip>:8000/api/products
+TOKEN=$(curl -s -X POST http://<server-ip>:8000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"you@example.com","password":"<your password>"}' | jq -r .access_token)
+curl -H "Authorization: Bearer $TOKEN" http://<server-ip>:8000/api/products
 ```
 
 ## Updating
@@ -91,7 +103,7 @@ step as local dev).
 ## Dashboard (optional, requires a domain)
 
 The Streamlit dashboard runs as part of the stack (`dashboard` service) but,
-unlike the API, has no auth of its own — no `X-API-Key` equivalent. So its
+unlike the API, has no auth of its own — no bearer-token equivalent. So its
 container port is never published directly; it's only reachable once the
 Caddy overlay fronts it with HTTP basic auth on its own HTTPS listener.
 Running `docker-compose.prod.yml` without the Caddy overlay leaves the

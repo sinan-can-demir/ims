@@ -88,8 +88,8 @@ variable "gunicorn_workers" {
   default     = 2
 }
 
-variable "api_key" {
-  description = "Shared API key for the /api routes (same value clients send via the X-API-Key header). Generate with `openssl rand -hex 32`. Supply via terraform.tfvars (gitignored) or TF_VAR_api_key — never commit a real value."
+variable "jwt_secret" {
+  description = "Secret key used to sign/verify the JWTs issued by POST /api/auth/login (HS256). Generate with `openssl rand -hex 32`. Supply via terraform.tfvars (gitignored) or TF_VAR_jwt_secret — never commit a real value."
   type        = string
   sensitive   = true
 }

@@ -59,19 +59,20 @@ def test_health_and_metrics_are_exempt(client):
             assert client.get("/metrics").status_code == 200
 
 
-def test_key_func_ignores_presented_api_key():
+def test_key_func_ignores_presented_bearer_token():
     """
-    A different guessed X-API-Key on every request must not grant a fresh
-    bucket — otherwise brute-forcing the key trivially bypasses the limit.
+    A different bearer token (or account) on every request must not grant
+    a fresh bucket — otherwise brute-forcing login trivially bypasses the
+    limit by rotating credentials.
     """
     scope = {
         "type": "http",
-        "headers": [(b"x-api-key", b"guess-1")],
+        "headers": [(b"authorization", b"Bearer guess-1")],
         "client": ("1.2.3.4", 1234),
     }
     other_scope = {
         "type": "http",
-        "headers": [(b"x-api-key", b"guess-2")],
+        "headers": [(b"authorization", b"Bearer guess-2")],
         "client": ("1.2.3.4", 1234),
     }
     assert rate_limit_key(Request(scope)) == rate_limit_key(Request(other_scope))

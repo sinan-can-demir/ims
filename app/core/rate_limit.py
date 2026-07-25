@@ -10,11 +10,13 @@ _DEFAULT_RATE_LIMIT = os.getenv("RATE_LIMIT", "100/minute")
 
 def rate_limit_key(request: Request) -> str:
     """
-    Always keys by client IP, never by the presented X-API-Key value.
-    IMS has exactly one valid shared key (no per-user keys), so keying by
-    the presented value would let an attacker reset their bucket on every
-    request just by guessing a different key each time — defeating the
-    brute-force mitigation this is meant to provide.
+    Always keys by client IP, never by anything in the request itself
+    (bearer token, headers). Keying by a client-supplied value would let
+    an attacker reset their bucket on every request just by presenting a
+    different value each time — e.g. a different account's token, or a
+    guessed header — defeating the brute-force mitigation this is meant
+    to provide, most concretely on the unauthenticated POST
+    /api/auth/login itself.
     """
     return request.client.host if request.client else "unknown"
 
