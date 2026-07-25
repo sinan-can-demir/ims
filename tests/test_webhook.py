@@ -100,6 +100,9 @@ def test_webhook_event_id_namespaced_by_source(client, db):
         db.query(InventoryEvent).filter(InventoryEvent.event_id == f"generic:{external_id}").first()
     )
     assert event is not None
+    # No human actor for a webhook-sourced event — NULL, not the caller's
+    # own account, since nothing in the webhook payload identifies a user.
+    assert event.created_by_id is None
 
 
 def test_webhook_partial_failure_reported_per_row(client):

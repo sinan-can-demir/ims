@@ -29,4 +29,5 @@ class InventoryEventResponse(BaseModel):
     event_type: EventType
     quantity: int
     event_id: str
+    created_by_id: int | None
     created_at: datetime
