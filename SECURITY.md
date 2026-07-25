@@ -67,17 +67,20 @@ exactly `RATE_LIMIT`. Divide `RATE_LIMIT` by your worker count if you need
 the exact ceiling; a shared backend (e.g. Redis) would fix this properly
 but isn't in place yet.
 
-**Known limitation, latent as of 2026-07-24:** rate limiting depends on
-`slowapi` (0.1.10, the latest release on PyPI), which finds each request's
-route handler by scanning `app.routes` directly. FastAPI 0.140.0 changed
+**Resolved 2026-07-24 (#66):** rate limiting used to be enforced by
+`slowapi`'s `SlowAPIMiddleware`, which finds each request's route handler by
+scanning `app.routes` directly — ASGI middleware runs *before* routing, so
+it has no other way to know which endpoint matched. FastAPI 0.140.0 changed
 `include_router()` to wrap routes in a private `_IncludedRouter` object
-instead of flattening them, which slowapi's lookup doesn't recognize —
-the result isn't an error, rate limiting just silently stops applying to
-every `/api` route. Currently not an issue (`requirements.txt` pins
-`fastapi==0.135.2`), but **do not bump fastapi past 0.140.0 without
-resolving [#66](https://github.com/sinan-can-demir/ims-manual/issues/66)
-first** — a Dependabot PR proposing exactly that bump (#62) is intentionally
-being held for this reason rather than merged.
+instead of flattening them, which that scan doesn't recognize — the result
+wasn't an error, rate limiting just silently stopped applying to every
+`/api` route. Fixed by enforcing the limit via a FastAPI `Depends()`
+(`enforce_rate_limit`, `app/core/rate_limit.py`) attached alongside
+`require_api_key` instead of a middleware — dependencies run *after*
+routing has already resolved the endpoint, so there's no route-matching to
+get wrong. `/health`, `/metrics`, and `/api/webhooks/ingest` are exempt
+structurally now (the dependency simply isn't attached to those routes)
+rather than via slowapi's `@limiter.exempt` name-based lookup.
 
 ## Response security headers
 

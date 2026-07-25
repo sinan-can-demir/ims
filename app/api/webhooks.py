@@ -4,7 +4,6 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_webhook_signature
-from app.core.rate_limit import limiter
 from app.database import get_db
 from app.schemas.ingestion import IngestResponse
 from app.schemas.webhook import WebhookIngestPayload
@@ -18,7 +17,6 @@ router = APIRouter(prefix="/webhooks", tags=["webhooks"])
     response_model=IngestResponse,
     dependencies=[Depends(require_webhook_signature)],
 )
-@limiter.exempt
 def webhook_ingest(payload: WebhookIngestPayload, db: Session = Depends(get_db)):
     """
     Generic, platform-agnostic webhook receiver for inventory events —
