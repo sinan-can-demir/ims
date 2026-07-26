@@ -140,20 +140,26 @@ server's firewall alongside `80`/`443`.
 
 ## Backups
 
-The Postgres data lives in the `postgres_data` named volume. A simple
-periodic dump:
+`scripts/backup.sh <destination_dir>` backs up the Postgres database
+*and* the local pipeline artifacts (data_lake, feature_store, warehouse,
+models) into one timestamped archive — the pipeline half of this used to
+be undocumented (see "What this doesn't cover" below, now resolved):
 
 ```bash
-docker compose exec db pg_dump -U postgres ims > backup-$(date +%F).sql
+scripts/backup.sh /path/to/backup/dir
+# writes /path/to/backup/dir/ims-backup-<UTC timestamp>.tar.gz
 ```
 
-Copy that file off the server (e.g. to object storage, or just `scp` it
-somewhere) on whatever schedule matters to you — a cron job calling the
-above is enough for most self-hosted use.
+This only writes locally — point `<destination_dir>` at a mounted network
+drive or synced folder, or wrap the call in your own `rsync`, for real
+off-server durability. A cron job calling `scripts/backup.sh` on whatever
+schedule matters to you is enough for most self-hosted use.
 
-## What this doesn't cover yet
+To restore (destructive — replaces the current database and pipeline
+artifacts, prompts for confirmation):
 
-The data pipeline (Parquet data lake, DuckDB warehouse, dbt, Prophet
-training) is still a local-filesystem/manual-CLI concern on this path — same
-as in local dev, just run via `make export` / `make warehouse` / etc. inside
-the server, or over SSH. See `ROADMAP.md` for what's planned there.
+```bash
+scripts/restore.sh /path/to/backup/dir/ims-backup-<timestamp>.tar.gz
+```
+
+Both require the `db` service to be up (`docker compose up -d db`).
