@@ -18,14 +18,14 @@ EPOCH 0 — Foundations
 
 Goal: Create a minimal, reproducible backend environment.
 
-[x] Project structure
-[x] FastAPI backend
-[x] PostgreSQL database
-[x] Docker environment (with Fedora :Z volume fix)
-[x] SQLAlchemy models
-[x] Event-driven inventory schema
-[x] Inventory projection (inventory_state)
-[x] Alembic migrations setup
+- [x] Project structure
+- [x] FastAPI backend
+- [x] PostgreSQL database
+- [x] Docker environment (with Fedora :Z volume fix)
+- [x] SQLAlchemy models
+- [x] Event-driven inventory schema
+- [x] Inventory projection (inventory_state)
+- [x] Alembic migrations setup
 
 Milestone: Complete
 - Database schema versioned with Alembic
@@ -38,28 +38,28 @@ EPOCH 1 — Event-Driven Backend
 
 Goal: Build a robust, production-hardened event-driven inventory system.
 
-[x] Add event table indexes (product_id, created_at, composite)
-[x] Enforce product_id NOT NULL in inventory_events
-[x] Add idempotency key (event_id) to inventory events
-[x] Quantity normalization per event type
-[x] Oversell protection (inventory cannot go below 0)
-[x] SELECT FOR UPDATE concurrency safety on inventory_state row
-[x] Inventory read from projection, not SUM(events)
-[x] Event writes and projection updates in single transaction
-[x] Duplicate SKU returns 409 Conflict
-[x] Pydantic v2 migration (ConfigDict, no deprecation warnings)
-[x] Structured JSON logging (app/core/logging.py)
-[x] Event replay service (rebuild_inventory_state from events)
-[x] Integration tests (pytest with SQLite StaticPool in-memory DB)
-[x] Test isolation (tables created/dropped per function fixture)
-[x] Shared test utility (tests/utils.py)
-[x] Makefile targets (up, down, reset, logs, test, test-e2e, migrate, shell)
-[x] E2E bash test script (test_scripts/test_sc.sh)
-[x] Response models and correct status codes (201 for POST)
-[x] Deterministic event ordering (ORDER BY created_at ASC, id ASC)
-[x] Pagination on event listing endpoint (limit, offset)
-[x] Edge case tests (return/damage sequence, large adjustments)
-[x] README accurate and synced with actual endpoints
+- [x] Add event table indexes (product_id, created_at, composite)
+- [x] Enforce product_id NOT NULL in inventory_events
+- [x] Add idempotency key (event_id) to inventory events
+- [x] Quantity normalization per event type
+- [x] Oversell protection (inventory cannot go below 0)
+- [x] SELECT FOR UPDATE concurrency safety on inventory_state row
+- [x] Inventory read from projection, not SUM(events)
+- [x] Event writes and projection updates in single transaction
+- [x] Duplicate SKU returns 409 Conflict
+- [x] Pydantic v2 migration (ConfigDict, no deprecation warnings)
+- [x] Structured JSON logging (app/core/logging.py)
+- [x] Event replay service (rebuild_inventory_state from events)
+- [x] Integration tests (pytest with SQLite StaticPool in-memory DB)
+- [x] Test isolation (tables created/dropped per function fixture)
+- [x] Shared test utility (tests/utils.py)
+- [x] Makefile targets (up, down, reset, logs, test, test-e2e, migrate, shell)
+- [x] E2E bash test script (test_scripts/test_sc.sh)
+- [x] Response models and correct status codes (201 for POST)
+- [x] Deterministic event ordering (ORDER BY created_at ASC, id ASC)
+- [x] Pagination on event listing endpoint (limit, offset)
+- [x] Edge case tests (return/damage sequence, large adjustments)
+- [x] README accurate and synced with actual endpoints
 
 Milestone: Complete
 
@@ -69,20 +69,20 @@ EPOCH 2 — Batch Data Platform
 
 Goal: Export the event log into a partitioned data lake.
 
-[x] data_lake/ directory and inventory_events/ subfolder
-[x] .gitignore excludes parquet files and checkpoints.json
-[x] Export service (export_service.py)
-[x] Query events ordered by (created_at, id)
-[x] Partition by year/month/day
-[x] Write partitioned .parquet files
-[x] Incremental export using checkpoints.json
-[x] Full and incremental export modes
-[x] POST /api/inventory/export endpoint
-[x] Validation script (validate_exports.py)
-[x] CLI script (app/scripts/export_events.py)
-[x] pytest tests for export service
-[x] Handle timezone-naive datetimes from SQLite in tests
-[x] Makefile target: make export
+- [x] data_lake/ directory and inventory_events/ subfolder
+- [x] .gitignore excludes parquet files and checkpoints.json
+- [x] Export service (export_service.py)
+- [x] Query events ordered by (created_at, id)
+- [x] Partition by year/month/day
+- [x] Write partitioned .parquet files
+- [x] Incremental export using checkpoints.json
+- [x] Full and incremental export modes
+- [x] POST /api/inventory/export endpoint
+- [x] Validation script (validate_exports.py)
+- [x] CLI script (app/scripts/export_events.py)
+- [x] pytest tests for export service
+- [x] Handle timezone-naive datetimes from SQLite in tests
+- [x] Makefile target: make export
 
 Milestone: Complete
 
@@ -92,16 +92,16 @@ EPOCH 3 — Data Warehouse
 
 Goal: Build an analytical layer on top of the data lake using DuckDB.
 
-[x] DuckDB installed and reading Parquet files
-[x] Star schema design (fact + dimensions)
-[x] dim_products built from PostgreSQL
-[x] dim_dates pre-generated for full date range
-[x] fact_inventory_events joined from data lake
-[x] Three analytical queries documented (warehouse/queries.sql)
-[x] CLI script (app/scripts/build_warehouse.py)
-[x] Makefile target: make warehouse
-[x] Warehouse tests (test_warehouse.py)
-[x] warehouse/README.md documents schema and rebuild steps
+- [x] DuckDB installed and reading Parquet files
+- [x] Star schema design (fact + dimensions)
+- [x] dim_products built from PostgreSQL
+- [x] dim_dates pre-generated for full date range
+- [x] fact_inventory_events joined from data lake
+- [x] Three analytical queries documented (warehouse/queries.sql)
+- [x] CLI script (app/scripts/build_warehouse.py)
+- [x] Makefile target: make warehouse
+- [x] Warehouse tests (test_warehouse.py)
+- [x] warehouse/README.md documents schema and rebuild steps
 
 Milestone: Complete
 
@@ -111,17 +111,17 @@ EPOCH 4 — dbt Transformations
 
 Goal: Replace hand-written Python warehouse service with dbt models.
 
-[x] dbt-duckdb installed and configured
-[x] dbt project initialized (warehouse/ims_warehouse/)
-[x] profiles.yml configured for DuckDB
-[x] Sources declared (sources.yml)
-[x] Staging model (stg_inventory_events.sql)
-[x] Dimension models (dim_products.sql, dim_dates.sql)
-[x] Fact model (fact_inventory_events.sql)
-[x] Schema tests (unique, not_null, relationships)
-[x] dbt docs generated
-[x] Makefile targets: make dbt-run, make dbt-test, make dbt-docs
-[x] warehouse_service.py deprecated with clear comment
+- [x] dbt-duckdb installed and configured
+- [x] dbt project initialized (warehouse/ims_warehouse/)
+- [x] profiles.yml configured for DuckDB
+- [x] Sources declared (sources.yml)
+- [x] Staging model (stg_inventory_events.sql)
+- [x] Dimension models (dim_products.sql, dim_dates.sql)
+- [x] Fact model (fact_inventory_events.sql)
+- [x] Schema tests (unique, not_null, relationships)
+- [x] dbt docs generated
+- [x] Makefile targets: make dbt-run, make dbt-test, make dbt-docs
+- [x] warehouse_service.py deprecated with clear comment
 
 Milestone: Complete
 
@@ -131,19 +131,19 @@ EPOCH 5 — ML Platform
 
 Goal: Enable demand forecasting and restock recommendations.
 
-[x] Feature engineering service (feature_service.py)
-[x] daily_sales feature table (product_id, date, units_sold, rolling_avg_7d)
-[x] Prophet model training per product (forecast_service.py)
-[x] Model persistence (models/prophet_{product_id}.pkl)
-[x] Forecast API endpoint (GET /api/forecast/{product_id})
-[x] Restock recommendation service (restock_service.py)
-[x] Restock API endpoint (GET /api/restock/{product_id})
-[x] Urgency classification (OK / LOW / URGENT / STOCKOUT)
-[x] Pydantic schemas for forecast and restock responses
-[x] CLI scripts: make features, make train
-[x] Seed data script (scripts/seed_data.py)
-[x] Synthetic feature generator (scripts/generate_synthetic_features.py)
-[x] Forecast and restock tests (test_forecast.py)
+- [x] Feature engineering service (feature_service.py)
+- [x] daily_sales feature table (product_id, date, units_sold, rolling_avg_7d)
+- [x] Prophet model training per product (forecast_service.py)
+- [x] Model persistence (models/prophet_{product_id}.pkl)
+- [x] Forecast API endpoint (GET /api/forecast/{product_id})
+- [x] Restock recommendation service (restock_service.py)
+- [x] Restock API endpoint (GET /api/restock/{product_id})
+- [x] Urgency classification (OK / LOW / URGENT / STOCKOUT)
+- [x] Pydantic schemas for forecast and restock responses
+- [x] CLI scripts: make features, make train
+- [x] Seed data script (scripts/seed_data.py)
+- [x] Synthetic feature generator (scripts/generate_synthetic_features.py)
+- [x] Forecast and restock tests (test_forecast.py)
 
 Milestone: Complete
 
@@ -153,16 +153,16 @@ EPOCH 6 — Application Layer (Dashboard)
 
 Goal: Build an interactive inventory dashboard with Streamlit.
 
-[x] Streamlit installed and configured
-[x] dashboard/app.py with full layout
-[x] Product selector (sidebar dropdown)
-[x] Inventory metrics (current stock, projected demand, recommended order)
-[x] Restock alert with urgency color coding
-[x] 7-day demand forecast chart with confidence band (Plotly)
-[x] Recent inventory events table
-[x] Cached data loaders (@st.cache_data with TTL)
-[x] Loading spinners and empty state handling
-[x] Makefile target: make dashboard
+- [x] Streamlit installed and configured
+- [x] dashboard/app.py with full layout
+- [x] Product selector (sidebar dropdown)
+- [x] Inventory metrics (current stock, projected demand, recommended order)
+- [x] Restock alert with urgency color coding
+- [x] 7-day demand forecast chart with confidence band (Plotly)
+- [x] Recent inventory events table
+- [x] Cached data loaders (@st.cache_data with TTL)
+- [x] Loading spinners and empty state handling
+- [x] Makefile target: make dashboard
 
 Milestone: Complete
 
@@ -173,28 +173,28 @@ EPOCH 7 — Production Hardening & AWS Deployment (In Progress)
 Goal: Make the system production-grade and deploy it to AWS.  
 
 Phase 1 — Quick wins (no architecture changes)  
-[x] Pin all dependency versions in requirements.txt  
-[x] Add /health endpoint to FastAPI app (required by AWS ALB/ECS)  
-[x] Add CORS middleware to FastAPI app (origins via CORS_ORIGINS env var)  
-[x] Add .env.example documenting all required environment variables  
-[x] Fix docker-compose: add Postgres healthcheck, remove fragile sleep 3  
-[x] Tune SQLAlchemy connection pool for cloud (pool_pre_ping, pool_size, max_overflow)  
+- [x] Pin all dependency versions in requirements.txt  
+- [x] Add /health endpoint to FastAPI app (required by AWS ALB/ECS)  
+- [x] Add CORS middleware to FastAPI app (origins via CORS_ORIGINS env var)  
+- [x] Add .env.example documenting all required environment variables  
+- [x] Fix docker-compose: add Postgres healthcheck, remove fragile sleep 3  
+- [x] Tune SQLAlchemy connection pool for cloud (pool_pre_ping, pool_size, max_overflow)  
 
 Phase 2 — Security hardening  
-[x] Add API authentication (API key header) — app/core/auth.py, X-API-Key,
+- [x] Add API authentication (API key header) — app/core/auth.py, X-API-Key,
       wired via Depends on every router; no-op (with a loud startup warning)
       if API_KEY is unset, by design for local dev — see SECURITY.md.
       **Superseded 2026-07-25 by per-user JWT auth — API_KEY was removed
       entirely, see Hardening Phase C below.**  
-[x] Add non-root USER to Dockerfile — appuser (uid 1000, matches the default
+- [x] Add non-root USER to Dockerfile — appuser (uid 1000, matches the default
       first-user uid on most Linux distros so the dev bind-mount stays
       writable); curl also added, since HEALTHCHECK depended on it but it
       wasn't present in the slim base image  
-[x] Stop leaking internal error details (replace str(e) in forecast.py 500
+- [x] Stop leaking internal error details (replace str(e) in forecast.py 500
       responses) — generic exceptions now return a fixed "Internal server
       error" message; only FileNotFoundError still surfaces detail (404, not
       sensitive)  
-[x] Remove hardcoded credentials from docker-compose.yml and database.py
+- [x] Remove hardcoded credentials from docker-compose.yml and database.py
       defaults — resolved via docker-compose.prod.yml, which fails loudly on
       a missing POSTGRES_PASSWORD for real deployments. The base
       docker-compose.yml / database.py fallback (postgres/postgres) is kept
@@ -202,19 +202,19 @@ Phase 2 — Security hardening
       not used by either deployment path (self-hosted prod overlay or AWS)  
 
 Phase 3 — App hardening  
-[x] Raise domain exceptions in service layer instead of HTTPException —
+- [x] Raise domain exceptions in service layer instead of HTTPException —
       app/core/exceptions.py (DomainError base + ProductNotFoundError,
       DuplicateSKUError, InvalidEventError, InsufficientInventoryError), a
       single @app.exception_handler(DomainError) in main.py converts them to
       HTTP responses. app/services/ now has zero FastAPI imports  
-[x] Run Uvicorn with multiple workers in production (Gunicorn +
+- [x] Run Uvicorn with multiple workers in production (Gunicorn +
       UvicornWorker) — docker-compose.prod.yml and infra/ecs.tf both run
       `gunicorn -k uvicorn.workers.UvicornWorker`; worker count is
       WEB_CONCURRENCY (default 4) for self-hosted and the gunicorn_workers
       Terraform variable (default 2, conservative given the cheapest Fargate
       tier's 512MB) for AWS. The base docker-compose.yml dev command stays
       single-worker plain Uvicorn for easier debugging  
-[x] Improve Dockerfile: multi-stage build, proper .dockerignore (non-root
+- [x] Improve Dockerfile: multi-stage build, proper .dockerignore (non-root
       user already done, see Phase 2) — builder stage installs deps into
       /opt/venv, final stage only copies that + app code, no pip cache/apt
       lists/build layer. .dockerignore was missing .venv/ and .git/, which
@@ -222,11 +222,11 @@ Phase 3 — App hardening
       copied them wholesale) — final image dropped from 4.44GB to 3.22GB  
 
 Phase 4 — Testing  
-[x] Run integration tests against a real Postgres instead of SQLite —
+- [x] Run integration tests against a real Postgres instead of SQLite —
       ci.yml's test job runs the full suite (incl. @pytest.mark.postgres
       tests like SELECT FOR UPDATE oversell protection) against a real
       Postgres service container  
-[x] Add CI/CD via GitHub Actions — ci.yml runs lint/test/docker-build on
+- [x] Add CI/CD via GitHub Actions — ci.yml runs lint/test/docker-build on
       every push and PR to main  
 
 Phase 5 — Deployment (self-hosted + AWS)  
@@ -235,15 +235,15 @@ and most portable option, with AWS available for teams that already run
 there. See README.md's "Deployment" section.
 
 Self-hosted (default, docs/deployment/self-hosted.md):  
-[x] docker-compose.prod.yml — prod hardening overlay (no dev bind-mount,
+- [x] docker-compose.prod.yml — prod hardening overlay (no dev bind-mount,
       no exposed DB port, fail-loud on missing secrets)  
-[x] docker-compose.caddy.yml — optional automatic HTTPS via Caddy  
-[x] Self-hosted deployment guide  
-[ ] Move data lake from local filesystem to object storage (#22 — decided,
+- [x] docker-compose.caddy.yml — optional automatic HTTPS via Caddy  
+- [x] Self-hosted deployment guide  
+- [ ] Move data lake from local filesystem to object storage (#22 — decided,
       not blocked: S3-compatible via a configurable endpoint, MinIO as the
       self-hosted default, real S3 + Terraform for the AWS path; see Phase C
       below for the up-to-date scope)  
-[x] Deploy dashboard alongside the API in the self-hosted stack — `dashboard`
+- [x] Deploy dashboard alongside the API in the self-hosted stack — `dashboard`
       compose service; its port stays unpublished until the Caddy overlay
       fronts it with basic_auth on a dedicated port (#32). Now also has its
       own per-user sign-in (#85, dashboard/auth.py) that coexists with
@@ -251,13 +251,13 @@ Self-hosted (default, docs/deployment/self-hosted.md):
       attribution inside the app, see SECURITY.md  
 
 AWS (enterprise, infra/README.md):  
-[~] Configure AWS infrastructure (ECS Fargate, RDS PostgreSQL, ALB) — Terraform written (infra/), not yet applied  
-[~] Store secrets in AWS Secrets Manager, inject as environment variables — wired in Terraform, not yet applied  
-[~] Wire CloudWatch Logs — wired in Terraform, not yet applied  
-[ ] Move data lake from local filesystem to S3 (#22)  
-[ ] Deploy dashboard (Streamlit on ECS, read feature store from S3)  
-[ ] Set up domain + HTTPS via ACM + ALB  
-[x] Harden RDS Terraform defaults — backups, deletion_protection, multi-AZ
+- [~] Configure AWS infrastructure (ECS Fargate, RDS PostgreSQL, ALB) — Terraform written (infra/), not yet applied  
+- [~] Store secrets in AWS Secrets Manager, inject as environment variables — wired in Terraform, not yet applied  
+- [~] Wire CloudWatch Logs — wired in Terraform, not yet applied  
+- [ ] Move data lake from local filesystem to S3 (#22)  
+- [ ] Deploy dashboard (Streamlit on ECS, read feature store from S3)  
+- [ ] Set up domain + HTTPS via ACM + ALB  
+- [x] Harden RDS Terraform defaults — backups, deletion_protection, multi-AZ
       (#20) — see the Hardening Phase B checklist below for detail  
 
 Milestone: App deployable via either path with real auth, secrets management, and CI/CD  
@@ -275,13 +275,13 @@ three milestones by risk/effort — Hardening Phase A (Quick Wins), Phase B
 order — see the issue tracker for current status, this list is a
 point-in-time snapshot.
 
-[x] Add Prometheus metrics and structured JSON logging (#19) — `/metrics`
+- [x] Add Prometheus metrics and structured JSON logging (#19) — `/metrics`
       endpoint (app/core/metrics.py) with request counters + latency
       histogram, multiprocess-safe for Gunicorn's multi-worker production
       mode (gunicorn.conf.py); RequestLoggingMiddleware logs a
       `request_completed` JSON event per request with a correlation ID,
       also returned as `X-Request-ID`. See docs/observability.md  
-[x] Add model registry (MLflow) and log Prophet artifacts (#16 — help-wanted) —
+- [x] Add model registry (MLflow) and log Prophet artifacts (#16 — help-wanted) —
       mlflow-skinny (requirements-train.txt, not part of the API image),
       SQLite-backed registry (mlflow.db + mlruns/, both gitignored). `make
       train` registers each product's model (prophet_{product_id}) and logs
@@ -290,18 +290,18 @@ point-in-time snapshot.
       MLflow's alias API documented in docs/model-registry.md  
 
 Hardening Phase A — Quick Wins: **complete, 7/7 (2026-07-24)**  
-[x] Bound the `days` query param on GET /api/forecast/{product_id} (#30)  
-[x] Add security response headers middleware (#27) — X-Content-Type-Options,
+- [x] Bound the `days` query param on GET /api/forecast/{product_id} (#30)  
+- [x] Add security response headers middleware (#27) — X-Content-Type-Options,
       X-Frame-Options, and Referrer-Policy set on every response;
       Strict-Transport-Security only when X-Forwarded-Proto is https, since
       uvicorn itself always sees plain HTTP behind Caddy/ALB
       (app/core/security_headers.py)  
-[x] Add rate limiting to /api routes (#28) — see SECURITY.md; **note the
+- [x] Add rate limiting to /api routes (#28) — see SECURITY.md; **note the
       known incompatibility filed as #66, Phase B below**  
-[x] Add security-focused lint rules to CI — ruff `S` ruleset (#29)  
-[x] Misc hardening cleanup — .dockerignore gaps, pin base image, add a
+- [x] Add security-focused lint rules to CI — ruff `S` ruleset (#29)  
+- [x] Misc hardening cleanup — .dockerignore gaps, pin base image, add a
       replay-endpoint auth test (#31)  
-[x] CI: run dbt and integration tests against Postgres in CI (#18) — new
+- [x] CI: run dbt and integration tests against Postgres in CI (#18) — new
       `pipeline` CI job: migrate, seed, export, build warehouse, `dbt run`,
       `dbt test`. Fixing this surfaced real, previously-uncaught bugs: no
       `profiles.yml` had ever been committed (dbt only ever ran on the
@@ -310,30 +310,30 @@ Hardening Phase A — Quick Wins: **complete, 7/7 (2026-07-24)**
       `models/marts/schema.yml` declared `fact_inventory_events` twice —
       dbt rejects duplicate resource names outright, never caught because
       dbt had never actually run anywhere but one machine  
-[x] Add dependency & secret scanning to CI — Dependabot, trivy/pip-audit (#17)
+- [x] Add dependency & secret scanning to CI — Dependabot, trivy/pip-audit (#17)
       — new `scan` CI job (gitleaks, pip-audit, trivy image scan) plus
       `.github/dependabot.yml` (pip/docker/github-actions, weekly). First
       Dependabot run opened 13 PRs at once (one-time backlog flood); one of
       them surfaced #66 below via a real CI test failure  
 
 Hardening Phase B — Moderate Risk:  
-[x] Make migrations a one-off job, remove inline alembic from startup (#21 —
+- [x] Make migrations a one-off job, remove inline alembic from startup (#21 —
       inline migrations racing across multiple Gunicorn workers, introduced
       by the Phase 3 multi-worker change, was a real correctness risk) —
       done for both self-hosted (#38) and AWS (#39)  
-[x] Add authentication in front of the Streamlit dashboard (#32) — see the
+- [x] Add authentication in front of the Streamlit dashboard (#32) — see the
       Phase 5 self-hosted checklist above  
-[x] Validate DuckDB glob paths in warehouse_service.py instead of raw
+- [x] Validate DuckDB glob paths in warehouse_service.py instead of raw
       f-string interpolation (#33) — `_safe_path()` now requires the
       resolved path to actually stay within its expected root, not just
       reject shell metacharacters; also catches symlink escapes  
-[x] Harden RDS Terraform defaults — backups, deletion_protection, multi-AZ
+- [x] Harden RDS Terraform defaults — backups, deletion_protection, multi-AZ
       (#20) — `db_multi_az`/`db_backup_retention_period`/
       `db_deletion_protection` variables, all hardened by default
       (`infra/variables.tf`, `infra/rds.tf`); not yet `apply`'d against real
       AWS (no live infra to test against), verified via `terraform validate`
       + `fmt` per this repo's established bar for untested infra changes  
-[x] Fix `slowapi` silently no-op'ing rate limiting on fastapi>=0.140.0 (#66
+- [x] Fix `slowapi` silently no-op'ing rate limiting on fastapi>=0.140.0 (#66
       — FastAPI restructured `include_router()` internals into a private
       `_IncludedRouter` wrapper that slowapi's route lookup doesn't
       recognize, so rate limiting stopped applying to every `/api` route
@@ -342,7 +342,7 @@ Hardening Phase B — Moderate Risk:
       bump. See SECURITY.md)  
 
 Hardening Phase C — Needs Scoping:  
-[x] Replace shared API key auth with per-user JWT-based authentication
+- [x] Replace shared API key auth with per-user JWT-based authentication
       (#23, closed 2026-07-25) — scoped bigger than the original
       "JWT/OIDC swap" framing once real per-event attribution and a
       lightweight audit trail turned out to be natural, cheap additions on
@@ -355,7 +355,7 @@ Hardening Phase C — Needs Scoping:
       dashboard sign-in gate (#90). No self-service registration —
       accounts are CLI-only via `scripts/create_user.py`. See SECURITY.md
       for the current auth model.  
-[ ] Move data lake to S3, update export/dbt to use S3 (#22 — rescoped
+- [ ] Move data lake to S3, update export/dbt to use S3 (#22 — rescoped
       2026-07-26: no longer blocked, the self-hosted-vs-AWS decision is
       made — S3-compatible via a configurable endpoint/`DATA_LAKE_ROOT`,
       MinIO added as a `docker-compose`/`docker-compose.prod.yml` service
@@ -371,7 +371,7 @@ second, later audit pass. See the issue tracker for live status.
 Hardening Phase D — Fresh Pre-Deployment Security Audit (2026-07-26):
 found ahead of real deployment (#74, "Ship It"), not part of the original
 Phase A-C backlog.  
-[x] Trust the real client IP for rate limiting instead of the reverse
+- [x] Trust the real client IP for rate limiting instead of the reverse
       proxy's (#98, merged) — `rate_limit_key()` (`app/core/rate_limit.py`)
       keyed on `request.client.host`, which in every documented deployment
       path is always Caddy's or the ALB's address, not the real client's —
@@ -380,13 +380,13 @@ Phase A-C backlog.
       `POST /api/auth/login`. Now trusts `X-Forwarded-For`'s leftmost entry
       only when the immediate TCP peer is itself a private address (i.e.
       it's our own proxy) — see SECURITY.md's "Rate limiting" section.  
-[x] Cap both generic ingestion paths (#98, merged, same PR) — 10MB/50k-row
+- [x] Cap both generic ingestion paths (#98, merged, same PR) — 10MB/50k-row
       cap on `POST /api/inventory/events/bulk` (previously read an
       unbounded CSV fully into memory before validation), `max_length=1000`
       on `POST /api/webhooks/ingest`'s `events` list (rate-limit-exempt by
       design, so schema validation was the only available bound) — see
       SECURITY.md's "Ingestion size limits" section.  
-[ ] Add DB-level tamper protection to `audit_log` (#99, filed, low
+- [ ] Add DB-level tamper protection to `audit_log` (#99, filed, low
       severity/defense-in-depth, not an active vulnerability — no SQL
       injection exists anywhere in the app to leverage this today). The
       single shared Postgres app role has full UPDATE/DELETE on every
@@ -405,30 +405,30 @@ Goal: Epoch 6 shipped a complete, working single-page dashboard — this
 epoch is the first UX-iteration pass on top of it, not a partial build.
 Tracked under the GitHub milestone "UX Improvements — Dashboard".
 
-[x] Extract cached data-loading layer into dashboard/data.py, add
+- [x] Extract cached data-loading layer into dashboard/data.py, add
       dashboard/__init__.py — behavior-preserving, no UX change yet.
       AppTest-based dashboard tests introduced (tests/test_dashboard.py,
       dashboard_db fixture in tests/conftest.py) to prove the testing
       mechanism before multipage complexity is added.
-[ ] Add list_products() (app/services/product_service.py) and
+- [ ] Add list_products() (app/services/product_service.py) and
       get_fleet_status() (new app/services/fleet_service.py) — backend only,
       no dashboard changes yet
-[ ] Multi-page navigation via st.navigation()/st.Page() (dashboard/views/),
+- [ ] Multi-page navigation via st.navigation()/st.Page() (dashboard/views/),
       product selector sourced from the products table instead of the
       feature-store parquet file (fixes numeric-ID-only display and
       products-with-no-sales-history being invisible)
-[ ] Product Detail page enhancements — forecast horizon slider (1-90,
+- [ ] Product Detail page enhancements — forecast horizon slider (1-90,
       matching the API bound), safety_stock/days_of_stock_remaining KPI
       tiles, event-type filter + pagination
-[ ] Fleet Overview page — portfolio-wide KPIs, urgency filtering, row-click
+- [ ] Fleet Overview page — portfolio-wide KPIs, urgency filtering, row-click
       deep link into Product Detail
-[x] Admin/Ops page (replay + export controls) — was deferred until #32
+- [x] Admin/Ops page (replay + export controls) — was deferred until #32
       (dashboard auth) landed; now unblocked, so it ships already protected
       instead of exposed. Gated on Epoch 7.3's `role` field (dashboard/app.py),
       not just being logged in — confirmation checkbox required before the
       destructive rebuild action is clickable, export mirrors the API's
       always-incremental behavior (#72)
-[ ] Optional: .streamlit/config.toml theming polish
+- [ ] Optional: .streamlit/config.toml theming polish
 
 ------------------------------------------------------------
 EPOCH 7.2 — Real Sales-Data Ingestion
@@ -440,14 +440,14 @@ platform-agnostic ingestion path — not tied to a specific POS vendor — that
 a future Shopify/Square/etc. adapter could eventually sit behind. Tracked
 under the GitHub milestone "Data Ingestion — Sales Integration".
 
-[x] Shared ingestion core (app/services/ingestion_service.py) — resolves
+- [x] Shared ingestion core (app/services/ingestion_service.py) — resolves
       each row's product by SKU (new: product_service.get_product_by_sku,
       ProductSkuNotFoundError), calls the existing record_event() per row
       (already idempotent/race-safe), collects per-row results instead of
       failing the whole batch on one bad row
-[x] Generic CSV bulk-import endpoint — POST /api/inventory/events/bulk,
+- [x] Generic CSV bulk-import endpoint — POST /api/inventory/events/bulk,
       columns: sku, event_type, quantity, event_id
-[x] Generic HMAC-signed webhook receiver — POST /api/webhooks/ingest,
+- [x] Generic HMAC-signed webhook receiver — POST /api/webhooks/ingest,
       reuses the same ingestion core, WEBHOOK_SECRET-based signature
       verification mirroring app/core/auth.py's existing hmac.compare_digest
       pattern
@@ -469,21 +469,21 @@ column, the auth dependency, API-level gating on POST /api/inventory/replay
 and POST /api/inventory/export, and a role field in dashboard session
 state for #72 to consume later.
 
-[x] Add `role` column to `users` (UserRole enum: admin/member,
+- [x] Add `role` column to `users` (UserRole enum: admin/member,
       server_default="member" for safe backfill of existing rows)
-[x] `require_role()` auth dependency (app/core/auth.py) — composes on
+- [x] `require_role()` auth dependency (app/core/auth.py) — composes on
       require_current_user, re-checks the live DB-loaded role on every
       request (no JWT claim, same convention as is_active), raises 403
-[x] Gate POST /api/inventory/replay and POST /api/inventory/export behind
+- [x] Gate POST /api/inventory/replay and POST /api/inventory/export behind
       require_role(UserRole.ADMIN)
-[x] `--role` flag on scripts/create_user.py (default: member); new
+- [x] `--role` flag on scripts/create_user.py (default: member); new
       scripts/set_user_role.py for promoting/demoting existing users
       (writes an audit_log "role_changed" entry — the one CLI action in
       this epoch that IS audited, given it's a privilege-escalation
       event, unlike account creation)
-[x] Add `role` to dashboard/auth.py's session-state dict — hook for #72,
+- [x] Add `role` to dashboard/auth.py's session-state dict — hook for #72,
       no dashboard UI changes in this epoch
-[x] Update SECURITY.md's auth-model section to describe the role model
+- [x] Update SECURITY.md's auth-model section to describe the role model
 
 ------------------------------------------------------------
 EPOCH 8 — Kafka Streaming (Optional)
@@ -491,12 +491,12 @@ EPOCH 8 — Kafka Streaming (Optional)
 
 Goal: Process inventory events in real time via Kafka.
 
-[ ] Kafka + Zookeeper via Docker Compose  
-[ ] Event producer (FastAPI publishes to Kafka after DB write)  
-[ ] Projection updater consumer  
-[ ] Data lake writer consumer  
-[ ] Deduplication on consumer side  
-[ ] Replay via compacted topic  
+- [ ] Kafka + Zookeeper via Docker Compose  
+- [ ] Event producer (FastAPI publishes to Kafka after DB write)  
+- [ ] Projection updater consumer  
+- [ ] Data lake writer consumer  
+- [ ] Deduplication on consumer side  
+- [ ] Replay via compacted topic  
 
 ------------------------------------------------------------
 EPOCH 9 — Advanced ML (Optional)
@@ -504,10 +504,10 @@ EPOCH 9 — Advanced ML (Optional)
 
 Goal: Productionize the ML layer.  
 
-[ ] Automated retraining pipeline  
-[ ] Model versioning  
-[ ] Feature importance analysis  
-[ ] A/B testing framework for models  
+- [ ] Automated retraining pipeline  
+- [ ] Model versioning  
+- [ ] Feature importance analysis  
+- [ ] A/B testing framework for models  
 
 ------------------------------------------------------------
 PATH A — Restaurant Deployment (near-term, in progress)
@@ -520,21 +520,21 @@ below (multi-tenancy, integrations, org isolation) is needed for this —
 it's one business, one deployment. This is deliberately sequenced ahead of
 Epoch 10+ (Path B) — see "Why Path A comes first" below.
 
-[ ] Recipes / BOM for restaurants — dishes consume ingredients in fixed
+- [ ] Recipes / BOM for restaurants — dishes consume ingredients in fixed
       quantities on SALE, a simpler version of Epoch 14's manufacturing/BOM
       idea. The actual feature requested.
-[ ] `WASTE` event type — spoilage/waste tracked distinctly from `DAMAGE`
-[ ] Real `PurchaseOrder` object — supplier, line items, quantities; turns
+- [ ] `WASTE` event type — spoilage/waste tracked distinctly from `DAMAGE`
+- [ ] Real `PurchaseOrder` object — supplier, line items, quantities; turns
       a forecast + current stock into an actual, persisted, actionable
       order instead of just a restock number on the dashboard
-[ ] Day-of-week-aware forecasting — restaurant demand shape is spikier
+- [ ] Day-of-week-aware forecasting — restaurant demand shape is spikier
       (weekday/weekend) than typical e-commerce SKU demand; tune Prophet's
       seasonality rather than assume the existing model generalizes as-is
-[ ] CLI wrapper around the Makefile (`ims start`/`ims setup`/`ims backup`)
+- [ ] CLI wrapper around the Makefile (`ims start`/`ims setup`/`ims backup`)
       — doubles as the first-run setup wizard, no separate wizard needed
-[ ] Backup routine — cron/rsync of Postgres + the local data lake to a
+- [ ] Backup routine — cron/rsync of Postgres + the local data lake to a
       second location; explicitly not S3/MinIO, unnecessary at this scale
-[ ] Explicitly skip for Path A: S3/object storage, multi-tenancy,
+- [ ] Explicitly skip for Path A: S3/object storage, multi-tenancy,
       integrations, AWS deployment — none of it serves one restaurant
 
 Rough estimate: 2-4 weeks of focused evenings/weekends. Exit criteria: the
@@ -573,17 +573,17 @@ it in from the start, and it's a better foundation now that real user
 accounts (`users`, JWT, roles) already exist than retrofitting onto the
 old shared-API-key model.
 
-[ ] `organization_id` on every table — products, events, state, feature
+- [ ] `organization_id` on every table — products, events, state, feature
       store, forecasts, and on `users` itself
-[ ] Row-level isolation enforced at the query layer, not just checked in
+- [ ] Row-level isolation enforced at the query layer, not just checked in
       route handlers — same discipline as `_safe_path()`'s path-traversal
       guard, applied to org scoping
-[ ] JWT claims scoped to an org, `require_role()` extended to also check
+- [ ] JWT claims scoped to an org, `require_role()` extended to also check
       org membership
-[ ] Warehouse/dbt models and Prophet training partitioned per tenant
-[ ] Resolve #22 (S3 data lake) with org partitioning in mind — an
+- [ ] Warehouse/dbt models and Prophet training partitioned per tenant
+- [ ] Resolve #22 (S3 data lake) with org partitioning in mind — an
       `org_id=` layer alongside the existing date partitioning
-[ ] Extend `audit_log` to record org context, not just user
+- [ ] Extend `audit_log` to record org context, not just user
 
 Exit criteria: two unrelated businesses could run on the same instance
 without either seeing the other's data, even under a bug.
