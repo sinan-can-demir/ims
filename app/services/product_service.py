@@ -29,3 +29,7 @@ def get_product_by_sku(db: Session, sku: str) -> Product:
     if not product:
         raise ProductSkuNotFoundError(sku)
     return product
+
+
+def list_products(db: Session) -> list[Product]:
+    return db.query(Product).order_by(Product.name.asc()).all()
