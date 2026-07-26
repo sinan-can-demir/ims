@@ -64,6 +64,24 @@ variable "db_username" {
   default     = "ims_admin"
 }
 
+variable "db_multi_az" {
+  description = "Enable Multi-AZ for the RDS instance. Roughly doubles RDS cost — override to false for a cheaper single-AZ dev/test deployment."
+  type        = bool
+  default     = true
+}
+
+variable "db_backup_retention_period" {
+  description = "Days to retain automated RDS backups. 0 disables automated backups entirely."
+  type        = number
+  default     = 7
+}
+
+variable "db_deletion_protection" {
+  description = "Enable RDS deletion protection. Must be overridden to false (and re-applied) before `terraform destroy` can remove the instance."
+  type        = bool
+  default     = true
+}
+
 variable "ecs_task_cpu" {
   description = "Fargate task vCPU units (256 = 0.25 vCPU, the cheapest tier)."
   type        = number

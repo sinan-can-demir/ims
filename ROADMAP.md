@@ -255,7 +255,8 @@ AWS (enterprise, infra/README.md):
 [ ] Move data lake from local filesystem to S3 (#22)  
 [ ] Deploy dashboard (Streamlit on ECS, read feature store from S3)  
 [ ] Set up domain + HTTPS via ACM + ALB  
-[ ] Harden RDS Terraform defaults — backups, deletion_protection, multi-AZ (#20)  
+[x] Harden RDS Terraform defaults — backups, deletion_protection, multi-AZ
+      (#20) — see the Hardening Phase B checklist below for detail  
 
 Milestone: App deployable via either path with real auth, secrets management, and CI/CD  
 
@@ -324,7 +325,12 @@ Hardening Phase B — Moderate Risk:
       f-string interpolation (#33) — `_safe_path()` now requires the
       resolved path to actually stay within its expected root, not just
       reject shell metacharacters; also catches symlink escapes  
-[ ] Harden RDS Terraform defaults — backups, deletion_protection, multi-AZ (#20)  
+[x] Harden RDS Terraform defaults — backups, deletion_protection, multi-AZ
+      (#20) — `db_multi_az`/`db_backup_retention_period`/
+      `db_deletion_protection` variables, all hardened by default
+      (`infra/variables.tf`, `infra/rds.tf`); not yet `apply`'d against real
+      AWS (no live infra to test against), verified via `terraform validate`
+      + `fmt` per this repo's established bar for untested infra changes  
 [x] Fix `slowapi` silently no-op'ing rate limiting on fastapi>=0.140.0 (#66
       — FastAPI restructured `include_router()` internals into a private
       `_IncludedRouter` wrapper that slowapi's route lookup doesn't

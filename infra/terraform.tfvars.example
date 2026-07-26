@@ -8,3 +8,10 @@ jwt_secret = "REPLACE_ME"
 # aws_region   = "us-east-1"
 # project_name = "ims"
 # environment  = "prod"
+
+# RDS hardened-by-default settings (see infra/rds.tf and infra/README.md's
+# "Notes / known limitations" section) — override for a cheaper/looser
+# dev-test deployment:
+# db_multi_az                = false  # single-AZ, ~half the RDS cost
+# db_backup_retention_period = 7      # days; 0 disables automated backups
+# db_deletion_protection     = true   # must be false before `terraform destroy`
