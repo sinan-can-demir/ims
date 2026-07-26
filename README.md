@@ -40,6 +40,10 @@ An event-driven inventory platform with a full analytics pipeline and ML-powered
       (Dependabot + gitleaks + pip-audit + trivy), and a dedicated pipeline
       job exercising export → warehouse → dbt against a real Postgres
 - [x] Self-hosted deployment path (Docker Compose + optional Caddy HTTPS)
+- [x] `scripts/backup.sh` / `scripts/restore.sh` — one archive covering
+      both Postgres and the local pipeline artifacts (data lake, feature
+      store, warehouse, models); see
+      [docs/deployment/self-hosted.md](docs/deployment/self-hosted.md#backups)
 - [x] Dashboard deployed alongside the API in the self-hosted stack, gated
       behind Caddy basic auth (the dashboard has no auth of its own)
 - [x] Security response headers (X-Frame-Options, X-Content-Type-Options,
