@@ -33,6 +33,8 @@ An event-driven inventory platform with a full analytics pipeline and ML-powered
       (Dependabot + gitleaks + pip-audit + trivy), and a dedicated pipeline
       job exercising export → warehouse → dbt against a real Postgres
 - [x] Self-hosted deployment path (Docker Compose + optional Caddy HTTPS)
+- [x] Operator CLI (`scripts/ims.py setup|start|stop|status|backup|restore`)
+      — `setup` doubles as the first-run wizard, no separate one needed
 - [x] Dashboard deployed alongside the API in the self-hosted stack, gated
       behind Caddy basic auth (the dashboard has no auth of its own)
 - [x] Security response headers (X-Frame-Options, X-Content-Type-Options,
@@ -169,6 +171,11 @@ ims-manual/
 - Docker & Docker Compose
 
 ### Quickstart (Docker)
+
+**Fastest path:** `python scripts/ims.py setup` sequences the steps below
+(start services, wait for the API to be healthy, create your first
+account if none exists) into one command — see
+[Operator CLI](#operator-cli-scriptsimspy) below. Or do it manually:
 
 ```bash
 # Start PostgreSQL + API
@@ -343,6 +350,7 @@ pytest --cov=app tests/  # with coverage
 | `test_dashboard.py` | Streamlit dashboard renders and shows inventory metrics (AppTest) |
 | `test_security_headers.py` | Response headers: nosniff/X-Frame-Options/Referrer-Policy, conditional HSTS |
 | `test_db_isolation.py` | Test DB isolation between test cases |
+| `test_ims_cli.py` | `scripts/ims.py` argparse wiring, health-check polling, backup/restore wrapper behavior (subprocess/urllib mocked — real end-to-end run verified manually) |
 
 ---
 
@@ -367,6 +375,31 @@ make test-e2e     # run e2e tests
 make lint         # ruff check .
 make format       # ruff format .
 ```
+
+---
+
+## Operator CLI (`scripts/ims.py`)
+
+A thin wrapper over the Makefile/docker compose workflow above — plain
+`python scripts/ims.py <command>`, matching every other script in
+`scripts/` (no pip-installable entry point; see the file's own header
+comment for why):
+
+```bash
+python scripts/ims.py setup     # first-run wizard: start services, wait for
+                                 # the API to be healthy, create the first
+                                 # account if none exists yet
+python scripts/ims.py start     # docker compose up -d
+python scripts/ims.py stop      # docker compose down
+python scripts/ims.py status    # container status, API health, migration state
+python scripts/ims.py backup <destination_dir>       # wraps scripts/backup.sh
+python scripts/ims.py restore <backup_archive.tar.gz> # wraps scripts/restore.sh
+```
+
+`setup` is scoped to the local/self-hosted dev-quickstart flow, not a
+substitute for [docs/deployment/self-hosted.md](docs/deployment/self-hosted.md)'s
+production setup (domain, secrets, Caddy) — those are deployment-specific
+decisions no wizard should make silently.
 
 ---
 
