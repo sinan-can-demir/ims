@@ -13,10 +13,15 @@ import streamlit as st
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.database import SessionLocal
+from app.models.enums import PurchaseOrderStatus
 from app.models.inventory_event import InventoryEvent
+from app.models.recipe_item import RecipeItem
 from app.services.forecast_service import forecast
 from app.services.inventory_service import get_inventory
+from app.services.product_service import list_products
+from app.services.purchase_order_service import list_purchase_order_lines, list_purchase_orders
 from app.services.restock_service import get_restock_recommendation
+from app.services.supplier_service import list_suppliers
 
 CACHE_TTL = 300
 
@@ -68,6 +73,76 @@ def _get_events(product_id: int) -> list[dict]:
         db.close()
 
 
+def _list_products() -> list[dict]:
+    db = SessionLocal()
+    try:
+        return [
+            {"id": p.id, "name": p.name, "sku": p.sku, "unit": p.unit}
+            for p in list_products(db)
+        ]
+    finally:
+        db.close()
+
+
+def _list_recipe_items(finished_product_id: int) -> list[dict]:
+    db = SessionLocal()
+    try:
+        items = (
+            db.query(RecipeItem)
+            .filter(RecipeItem.finished_product_id == finished_product_id)
+            .order_by(RecipeItem.id.asc())
+            .all()
+        )
+        return [
+            {
+                "id": item.id,
+                "component_product_id": item.component_product_id,
+                "quantity": item.quantity,
+            }
+            for item in items
+        ]
+    finally:
+        db.close()
+
+
+def _list_suppliers() -> list[dict]:
+    db = SessionLocal()
+    try:
+        return [{"id": s.id, "name": s.name} for s in list_suppliers(db)]
+    finally:
+        db.close()
+
+
+def _list_purchase_orders(status: str | None) -> list[dict]:
+    db = SessionLocal()
+    try:
+        status_enum = PurchaseOrderStatus(status) if status else None
+        orders = list_purchase_orders(db, status_enum)
+        result = []
+        for po in orders:
+            lines = list_purchase_order_lines(db, po.id)
+            result.append(
+                {
+                    "id": po.id,
+                    "supplier_id": po.supplier_id,
+                    "status": po.status.value,
+                    "created_at": po.created_at.strftime("%Y-%m-%d %H:%M"),
+                    "lines": [
+                        {
+                            "id": line.id,
+                            "product_id": line.product_id,
+                            "quantity": line.quantity,
+                            "unit_cost": float(line.unit_cost) if line.unit_cost else None,
+                        }
+                        for line in lines
+                    ],
+                }
+            )
+        return result
+    finally:
+        db.close()
+
+
 @st.cache_data(ttl=CACHE_TTL)
 def load_inventory(product_id: int) -> int:
     return _get_inventory(product_id)
@@ -86,3 +161,23 @@ def load_forecast(product_id: int) -> pd.DataFrame:
 @st.cache_data(ttl=CACHE_TTL)
 def load_events(product_id: int) -> list[dict]:
     return _get_events(product_id)
+
+
+@st.cache_data(ttl=CACHE_TTL)
+def load_products() -> list[dict]:
+    return _list_products()
+
+
+@st.cache_data(ttl=CACHE_TTL)
+def load_recipe_items(finished_product_id: int) -> list[dict]:
+    return _list_recipe_items(finished_product_id)
+
+
+@st.cache_data(ttl=CACHE_TTL)
+def load_suppliers() -> list[dict]:
+    return _list_suppliers()
+
+
+@st.cache_data(ttl=CACHE_TTL)
+def load_purchase_orders(status: str | None = None) -> list[dict]:
+    return _list_purchase_orders(status)
