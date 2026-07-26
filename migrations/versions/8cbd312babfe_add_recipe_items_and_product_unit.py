@@ -1,7 +1,7 @@
 """add recipe items table and product unit column
 
 Revision ID: 8cbd312babfe
-Revises: 10135171f3ed
+Revises: b1c13d031af9
 Create Date: 2026-07-26 13:40:25.005582
 
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '8cbd312babfe'
-down_revision: Union[str, Sequence[str], None] = '10135171f3ed'
+down_revision: Union[str, Sequence[str], None] = 'b1c13d031af9'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

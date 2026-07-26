@@ -8,7 +8,7 @@ An event-driven inventory platform with a full analytics pipeline and ML-powered
 **Stack:** FastAPI · PostgreSQL · dbt · DuckDB · Prophet · Streamlit · Docker
 
 > **Project status:** actively developed learning project, not a hardened production system.
-> Auth is a single shared API key (see [SECURITY.md](SECURITY.md) for what that does and doesn't protect against). Deployment beyond local Docker is in progress ([Epoch 7](ROADMAP.md)) — see [Deployment](#deployment) below.
+> Auth is per-user JWT bearer tokens with two roles (admin/member) — see [SECURITY.md](SECURITY.md) for the current auth model. Current focus is Path A: getting one real restaurant running this daily (see [ROADMAP.md](ROADMAP.md)) — see [Deployment](#deployment) below for how to run it yourself.
 
 ---
 
@@ -39,17 +39,33 @@ An event-driven inventory platform with a full analytics pipeline and ML-powered
       behind Caddy basic auth (the dashboard has no auth of its own)
 - [x] Security response headers (X-Frame-Options, X-Content-Type-Options,
       Referrer-Policy, conditional HSTS)
-- [x] Rate limiting on `/api` routes (slowapi, keyed by client IP) — see
-      [SECURITY.md](SECURITY.md) for a known compatibility limitation with
-      newer FastAPI versions
+- [x] Rate limiting on `/api` routes (slowapi, keyed by client IP — trusting
+      `X-Forwarded-For` only from a private-address proxy peer, so a shared
+      Caddy/ALB in front doesn't collapse every real client into one bucket)
+      — see [SECURITY.md](SECURITY.md) for a known compatibility limitation
+      with newer FastAPI versions
+- [x] Size caps on both generic ingestion paths (10MB/50k-row CSV bulk
+      import, 1000-item webhook payload) — see [SECURITY.md](SECURITY.md#ingestion-size-limits)
 
 ## In Progress
 
+**Current focus — Path A, getting one real restaurant running this daily:**
+recipes/BOM (dishes consume ingredients in fixed quantities), a `WASTE`
+event type, a real `PurchaseOrder` object, day-of-week-aware forecasting, a
+CLI wrapper (`ims start`/`setup`/`backup`), and a backup routine. See
+[ROADMAP.md](ROADMAP.md)'s "Path A" section for the full list.
+
+**Deferred until Path A has real signal that more than one business wants
+this (Path B, general small/mid-business audience — see
+[ROADMAP.md](ROADMAP.md) Epochs 10-15):**
+
 - [ ] Move the data lake off the local filesystem onto S3-compatible object
-      storage
+      storage (`#22` — rescoped, not blocked: MinIO for self-hosted, real
+      S3 for AWS)
 - [ ] Deploy the dashboard on AWS (ECS, reading the feature store from S3)
 - [ ] Apply the AWS Terraform — ECS/RDS/ALB infra is written, not yet running
-- [ ] Replace shared API-key auth with JWT/OIDC
+- [ ] Multi-tenancy, real integrations (Shopify/QuickBooks/etc.), order
+      management, front-office features
 
 See [ROADMAP.md](ROADMAP.md) for the full backlog.
 
@@ -294,6 +310,7 @@ POST /api/inventory/events
 | `DAMAGE` | -quantity | Oversell protected |
 | `RETURN` | +quantity | Customer return |
 | `ADJUSTMENT` | ±quantity | Manual correction |
+| `WASTE` | -quantity | Oversell protected; tracked distinctly from DAMAGE (spoilage/waste, not breakage) |
 
 ```http
 GET /api/inventory/{product_id}       # current stock level
@@ -366,16 +383,15 @@ pytest --cov=app tests/  # with coverage
 | `test_metrics.py` | `/metrics` exposition, request counters/latency, `X-Request-ID` header |
 | `test_ingestion.py` | Shared ingestion core + CSV bulk import: partial success, idempotency, malformed rows |
 | `test_webhook.py` | Webhook signature verification, per-source event_id namespacing, partial failure |
-| `test_edge_cases.py` | RETURN/DAMAGE/ADJUSTMENT event types, quantity validation, stock going negative |
+| `test_edge_cases.py` | RETURN/DAMAGE/WASTE/ADJUSTMENT event types, quantity validation, stock going negative |
 | `test_export.py` | Data lake export: full + incremental, partition structure, schema, empty-export no-crash |
 | `test_warehouse.py` | dbt dimension/fact table builds, `_safe_path()` traversal/symlink guard |
 | `test_replay.py` | Rebuilding `InventoryState` from the event log |
 | `test_pagination.py` | `limit`/`offset` on list endpoints |
-| `test_dashboard.py` | Streamlit dashboard renders and shows inventory metrics (AppTest) |
+| `test_dashboard.py` | Streamlit dashboard renders and shows inventory metrics (AppTest); also covers the Recipes page (`dashboard/pages/1_Recipes.py`) |
 | `test_security_headers.py` | Response headers: nosniff/X-Frame-Options/Referrer-Policy, conditional HSTS |
 | `test_db_isolation.py` | Test DB isolation between test cases |
 | `test_recipes.py` | Recipe/BOM CRUD, sale-triggered ingredient cascade, cascade atomicity, idempotent replay |
-| `test_dashboard.py` | Also covers the Recipes dashboard page (`dashboard/pages/1_Recipes.py`) via AppTest |
 
 ---
 
@@ -441,7 +457,9 @@ Copy `.env.example` to `.env` and adjust as needed.
 | 4 | Feature Engineering | ✅ Complete |
 | 5 | ML Platform (Prophet forecasting) | ✅ Complete |
 | 6 | Streamlit Dashboard | ✅ Complete |
-| 7 | Production Hardening + Deployment (self-hosted + AWS) | In Progress |
+| 7 | Production Hardening + Deployment (self-hosted + AWS) | Nearly complete — `#22` (S3 data lake), `#99` (audit log tamper protection) open |
+| Path A | Restaurant deployment — recipes/BOM, `WASTE` events, real POs, forecasting tuning, CLI wrapper, backups | In Progress |
+| 10-15 | General small/mid-business platform (Path B) | Deferred until Path A has signal |
 
 ---
 
