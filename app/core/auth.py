@@ -9,6 +9,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.models.enums import UserRole
 from app.models.user import User
 
 _WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
@@ -85,3 +86,21 @@ def require_current_user(
         raise HTTPException(status_code=401, detail="Missing or invalid bearer token")
 
     return user
+
+
+def require_role(role: UserRole):
+    """
+    Builds a dependency gating a route to a single role. Composes on top of
+    require_current_user rather than re-querying the DB itself — that
+    dependency already reloads User fresh on every request (see its
+    docstring), so current_user.role read here is already live; a role
+    change (scripts/set_user_role.py) takes effect on the very next
+    request, no token refresh or revocation needed, same as is_active.
+    """
+
+    def _check(current_user: User = Depends(require_current_user)) -> User:
+        if current_user.role != role:
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        return current_user
+
+    return _check

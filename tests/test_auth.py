@@ -9,9 +9,10 @@ from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.testclient import TestClient
 
 from app.core import auth as auth_core
-from app.core.auth import create_access_token, require_current_user
+from app.core.auth import create_access_token, require_current_user, require_role
 from app.core.security import hash_password
 from app.main import app
+from app.models.enums import UserRole
 from app.models.user import User
 
 
@@ -76,12 +77,13 @@ def test_deactivated_user_bearer_token_returns_401(client, db):
     assert response.status_code == 401
 
 
-def _make_user(db, email, password, is_active=True):
+def _make_user(db, email, password, is_active=True, role=UserRole.MEMBER):
     user = User(
         email=email,
         password_hash=hash_password(password),
         display_name="Test User",
         is_active=is_active,
+        role=role,
     )
     db.add(user)
     db.commit()
@@ -178,3 +180,41 @@ def test_require_current_user_rejects_deactivated_user_token(db):
     with pytest.raises(HTTPException) as exc_info:
         require_current_user(credentials=credentials, db=db)
     assert exc_info.value.status_code == 401
+
+
+def test_require_role_accepts_matching_role(db):
+    admin = _make_user(db, "admin@example.com", "pw", role=UserRole.ADMIN)
+    check = require_role(UserRole.ADMIN)
+    resolved = check(current_user=admin)
+    assert resolved.id == admin.id
+
+
+def test_require_role_rejects_non_matching_role(db):
+    member = _make_user(db, "member-role@example.com", "pw", role=UserRole.MEMBER)
+    check = require_role(UserRole.ADMIN)
+    with pytest.raises(HTTPException) as exc_info:
+        check(current_user=member)
+    assert exc_info.value.status_code == 403
+
+
+def test_require_role_promotion_takes_effect_without_new_token(db):
+    """
+    No role claim in the JWT (see create_access_token) — a role change
+    takes effect on the very next request with the same, still-unexpired
+    token, same live-DB-recheck convention as is_active deactivation.
+    """
+    user = _make_user(db, "promote@example.com", "pw", role=UserRole.MEMBER)
+    token = create_access_token(user)
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+    check = require_role(UserRole.ADMIN)
+    resolved = require_current_user(credentials=credentials, db=db)
+    with pytest.raises(HTTPException) as exc_info:
+        check(current_user=resolved)
+    assert exc_info.value.status_code == 403
+
+    user.role = UserRole.ADMIN
+    db.commit()
+
+    resolved = require_current_user(credentials=credentials, db=db)
+    assert check(current_user=resolved).id == user.id
