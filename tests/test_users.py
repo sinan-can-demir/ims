@@ -4,6 +4,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from app.core.security import hash_password, verify_password
+from app.models.enums import UserRole
 from app.models.user import User
 
 
@@ -54,3 +55,15 @@ def test_user_defaults_to_active(db):
     db.commit()
     db.refresh(user)
     assert user.is_active is True
+
+
+def test_user_defaults_to_member(db):
+    user = User(
+        email="member@example.com",
+        password_hash=hash_password("password1"),
+        display_name="Member User",
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    assert user.role == UserRole.MEMBER
