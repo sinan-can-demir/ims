@@ -1,6 +1,8 @@
 # tests/test_audit.py
 
 import pytest
+from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 
 from app.core.exceptions import InvalidCredentialsError
 from app.core.security import hash_password
@@ -132,3 +134,80 @@ def test_login_failed_deactivated_user_logs_actor_id(db):
     )
     assert entry is not None
     assert entry.actor_id == user.id
+
+
+# ---------------------------------------------------------------------------
+# DB-level tamper protection (#99) — the trigger only exists on Postgres
+# (SQLite has no equivalent), so these require a real Postgres backend.
+#
+# The `db` fixture provisions schema via Base.metadata.create_all(), which
+# only creates ORM-declared tables/columns — it never runs Alembic
+# migrations, so the trigger this migration adds isn't present just
+# because the table exists. audit_log_trigger below installs the exact
+# same SQL the migration runs, so these tests verify the trigger's actual
+# logic rather than assuming it's there. The trigger's *migration* itself
+# (upgrade/downgrade round-trip) is verified separately, manually, against
+# a real `alembic upgrade head` — see the PR description.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def audit_log_trigger(db):
+    db.execute(
+        text(
+            """
+            CREATE OR REPLACE FUNCTION prevent_audit_log_mutation()
+            RETURNS TRIGGER AS $$
+            BEGIN
+                RAISE EXCEPTION 'audit_log is append-only: % not permitted', TG_OP;
+            END;
+            $$ LANGUAGE plpgsql;
+            """
+        )
+    )
+    db.execute(
+        text(
+            """
+            CREATE TRIGGER audit_log_append_only
+            BEFORE UPDATE OR DELETE ON audit_log
+            FOR EACH ROW
+            EXECUTE FUNCTION prevent_audit_log_mutation();
+            """
+        )
+    )
+    db.commit()
+    try:
+        yield
+    finally:
+        db.execute(text("DROP TRIGGER IF EXISTS audit_log_append_only ON audit_log"))
+        db.execute(text("DROP FUNCTION IF EXISTS prevent_audit_log_mutation()"))
+        db.commit()
+
+
+@pytest.mark.postgres
+def test_audit_log_update_is_rejected_at_db_level(db, audit_log_trigger):
+    entry = log_action(db, actor_id=None, action="tamper_test_update", detail="original")
+    db.commit()
+
+    with pytest.raises(DBAPIError, match="append-only"):
+        db.execute(
+            text("UPDATE audit_log SET detail = 'tampered' WHERE id = :id"), {"id": entry.id}
+        )
+        db.commit()
+    db.rollback()
+
+
+@pytest.mark.postgres
+def test_audit_log_delete_is_rejected_at_db_level(db, audit_log_trigger):
+    entry = log_action(db, actor_id=None, action="tamper_test_delete", detail="original")
+    db.commit()
+
+    with pytest.raises(DBAPIError, match="append-only"):
+        db.execute(text("DELETE FROM audit_log WHERE id = :id"), {"id": entry.id})
+        db.commit()
+    db.rollback()
+
+    # The row must still exist — the DELETE never actually took effect.
+    db.expire_all()
+    row = db.query(AuditLog).filter(AuditLog.id == entry.id).first()
+    assert row is not None
