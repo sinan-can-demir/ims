@@ -18,7 +18,7 @@ def normalize_quantity(event_type: EventType, quantity: int) -> int:
             raise InvalidEventError(f"{event_type.value} quantity must be positive")
         return quantity
 
-    if event_type in [EventType.SALE, EventType.DAMAGE]:
+    if event_type in [EventType.SALE, EventType.DAMAGE, EventType.WASTE]:
         if quantity < 0:
             raise InvalidEventError(f"{event_type.value} quantity must be positive")
         return -quantity
@@ -75,7 +75,7 @@ def record_event(
 
         # Calculate new inventory level
         new_quantity = state.quantity + delta
-        if new_quantity < 0 and event_type in [EventType.SALE, EventType.DAMAGE]:
+        if new_quantity < 0 and event_type in [EventType.SALE, EventType.DAMAGE, EventType.WASTE]:
             logger.warning(
                 "inventory_oversell_blocked",
                 extra={

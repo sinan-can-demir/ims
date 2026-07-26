@@ -279,6 +279,7 @@ POST /api/inventory/events
 | `DAMAGE` | -quantity | Oversell protected |
 | `RETURN` | +quantity | Customer return |
 | `ADJUSTMENT` | ±quantity | Manual correction |
+| `WASTE` | -quantity | Oversell protected; tracked distinctly from DAMAGE (spoilage/waste, not breakage) |
 
 ```http
 GET /api/inventory/{product_id}       # current stock level
@@ -351,7 +352,7 @@ pytest --cov=app tests/  # with coverage
 | `test_metrics.py` | `/metrics` exposition, request counters/latency, `X-Request-ID` header |
 | `test_ingestion.py` | Shared ingestion core + CSV bulk import: partial success, idempotency, malformed rows |
 | `test_webhook.py` | Webhook signature verification, per-source event_id namespacing, partial failure |
-| `test_edge_cases.py` | RETURN/DAMAGE/ADJUSTMENT event types, quantity validation, stock going negative |
+| `test_edge_cases.py` | RETURN/DAMAGE/WASTE/ADJUSTMENT event types, quantity validation, stock going negative |
 | `test_export.py` | Data lake export: full + incremental, partition structure, schema, empty-export no-crash |
 | `test_warehouse.py` | dbt dimension/fact table builds, `_safe_path()` traversal/symlink guard |
 | `test_replay.py` | Rebuilding `InventoryState` from the event log |
