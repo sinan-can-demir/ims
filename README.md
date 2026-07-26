@@ -89,13 +89,7 @@ See [ROADMAP.md](ROADMAP.md) for the full backlog.
 - Trains a **Prophet forecasting model** per product on historical demand
 - Serves a **Streamlit dashboard** with live inventory levels, event history, and 30-day demand forecasts
 
-<!--
-TODO: add a screenshot/GIF of the dashboard here once available.
-  1. make dashboard
-  2. screenshot the running app
-  3. save under docs/images/dashboard.png
-  4. replace this comment with: ![Dashboard](docs/images/dashboard.png)
--->
+![Dashboard](docs/images/dashboard.png)
 
 ---
 
