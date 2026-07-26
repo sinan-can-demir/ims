@@ -8,6 +8,17 @@ from prophet import Prophet
 from app.config import FEATURE_STORE_PATH, MLFLOW_EXPERIMENT_NAME, MLFLOW_TRACKING_URI, MODELS_DIR
 from app.core.logging import logger
 
+# Backtested against restaurant-shaped synthetic demand (weekday/weekend
+# spikes, including a sharp single-day-spike shape): at exactly 7 days
+# (the old minimum), weekly_seasonality=True can perform *worse* than
+# leaving it off — the model hasn't seen the weekly cycle repeat yet, so
+# it has nothing to distinguish a real day-of-week effect from one week's
+# noise. From ~10 days on, weekly_seasonality=True reliably wins by a wide
+# margin (3-4x lower MAE by 14+ days) and higher Fourier orders /
+# explicit day-of-week regressors add no measurable benefit over Prophet's
+# default — see tests/test_forecast.py::test_weekly_seasonality_*.
+_MIN_TRAINING_DAYS = 14
+
 
 def _ensure_directories() -> None:
     MODELS_DIR.mkdir(exist_ok=True)
@@ -75,10 +86,11 @@ def train_model(product_id: int) -> dict:
     df = pd.read_parquet(FEATURE_STORE_PATH / "daily_sales.parquet")
     product_df = df[df["product_id"] == product_id].copy()
 
-    if len(product_df) < 7:
+    if len(product_df) < _MIN_TRAINING_DAYS:
         raise ValueError(
             f"Product {product_id} has only {len(product_df)} days of data. "
-            "Need at least 7 days to train a meaningful forecast."
+            f"Need at least {_MIN_TRAINING_DAYS} days (two full weeks) to train — "
+            "see the _MIN_TRAINING_DAYS comment above for why 7 wasn't enough."
         )
 
     # 2. Format for Prophet — requires 'ds' and 'y' columns. Reset the index
@@ -92,7 +104,12 @@ def train_model(product_id: int) -> dict:
     # 3. Train the model
     model = Prophet(
         yearly_seasonality=False,  # not enough data for yearly patterns yet
-        weekly_seasonality=True,  # weekly patterns are realistic for inventory
+        # Empirically validated (not just assumed) for day-of-week-heavy
+        # demand like a restaurant's — see _MIN_TRAINING_DAYS above.
+        # Prophet's default Fourier order already captures a day-of-week
+        # pattern about as well as a higher order or explicit per-weekday
+        # regressors would, so we don't add that complexity.
+        weekly_seasonality=True,
         daily_seasonality=False,
         interval_width=0.95,  # 95% confidence intervals on predictions
     )
