@@ -24,7 +24,9 @@ An event-driven inventory platform with a full analytics pipeline and ML-powered
 - [x] Full analytics pipeline: Parquet data lake → DuckDB warehouse → dbt
       models + data quality tests
 - [x] Prophet demand forecasting per product, tracked in an MLflow model
-      registry
+      registry — backtested for day-of-week-heavy demand (e.g. restaurant
+      weekday/weekend spikes); requires 14+ days of history so
+      `weekly_seasonality` has seen the weekly cycle repeat at least once
 - [x] Streamlit dashboard — live inventory, event history, 30-day forecasts
 - [x] Prometheus metrics + structured JSON request logging
       (`/metrics`, `X-Request-ID`)
@@ -331,7 +333,7 @@ pytest --cov=app tests/  # with coverage
 | `test_inventory_validation.py` | Input validation per event type |
 | `test_idempotency.py` | Duplicate event handling |
 | `test_auth.py` | API-key auth: exempt `/health`, missing/wrong/correct key, auth-disabled mode |
-| `test_forecast.py` | Forecast/restock endpoints, including 404s on nonexistent products |
+| `test_forecast.py` | Forecast/restock endpoints (404s on nonexistent products), and a real (non-mocked) backtest proving `weekly_seasonality=True` beats it off on day-of-week-shaped demand, plus the 14-day minimum-training-data guard |
 | `test_metrics.py` | `/metrics` exposition, request counters/latency, `X-Request-ID` header |
 | `test_ingestion.py` | Shared ingestion core + CSV bulk import: partial success, idempotency, malformed rows |
 | `test_webhook.py` | Webhook signature verification, per-source event_id namespacing, partial failure |
