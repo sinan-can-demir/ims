@@ -1,6 +1,6 @@
 # IMS — Inventory Management System
 Author: Sinan Demir
-Last Updated: 2026-07-25
+Last Updated: 2026-07-26
 
 This roadmap organizes the development of IMS into **epochs**.
 Each epoch unlocks the next capability. The system evolves from a simple
@@ -239,8 +239,10 @@ Self-hosted (default, docs/deployment/self-hosted.md):
       no exposed DB port, fail-loud on missing secrets)  
 [x] docker-compose.caddy.yml — optional automatic HTTPS via Caddy  
 [x] Self-hosted deployment guide  
-[ ] Move data lake from local filesystem to object storage (S3-compatible —
-      evaluate MinIO or a provider's S3-compatible bucket, not AWS-only) (#22)  
+[ ] Move data lake from local filesystem to object storage (#22 — decided,
+      not blocked: S3-compatible via a configurable endpoint, MinIO as the
+      self-hosted default, real S3 + Terraform for the AWS path; see Phase C
+      below for the up-to-date scope)  
 [x] Deploy dashboard alongside the API in the self-hosted stack — `dashboard`
       compose service; its port stays unpublished until the Caddy overlay
       fronts it with basic_auth on a dedicated port (#32). Now also has its
@@ -353,15 +355,47 @@ Hardening Phase C — Needs Scoping:
       dashboard sign-in gate (#90). No self-service registration —
       accounts are CLI-only via `scripts/create_user.py`. See SECURITY.md
       for the current auth model.  
-[ ] Move data lake to S3, update export/dbt to use S3 (#22 — status:blocked,
-      same item as the Phase 5 data-lake checkboxes above; unblock the
-      self-hosted-vs-AWS object storage decision first)  
+[ ] Move data lake to S3, update export/dbt to use S3 (#22 — rescoped
+      2026-07-26: no longer blocked, the self-hosted-vs-AWS decision is
+      made — S3-compatible via a configurable endpoint/`DATA_LAKE_ROOT`,
+      MinIO added as a `docker-compose`/`docker-compose.prod.yml` service
+      for the self-hosted default, real S3 + Terraform (versioning,
+      lifecycle rules, IAM) for the AWS path. Estimate: 1-3 days.)  
 
-Milestone: Hardening Phase A complete. Phase B nearly complete — only #20
-(RDS Terraform hardening) remains open. Phase C nearly complete — the
-JWT/user-accounts arc (#23) shipped in full; only #22 (S3 data lake,
-blocked on the object-storage decision) remains open. See the issue
-tracker for live status.  
+Milestone: Hardening Phase A complete. Phase B complete — #20 (RDS
+Terraform hardening) shipped as #97. Phase C nearly complete — the
+JWT/user-accounts arc (#23) shipped in full; only #22 (S3 data lake, now
+rescoped and ready, not blocked) remains open. See Phase D below for a
+second, later audit pass. See the issue tracker for live status.  
+
+Hardening Phase D — Fresh Pre-Deployment Security Audit (2026-07-26):
+found ahead of real deployment (#74, "Ship It"), not part of the original
+Phase A-C backlog.  
+[x] Trust the real client IP for rate limiting instead of the reverse
+      proxy's (#98, merged) — `rate_limit_key()` (`app/core/rate_limit.py`)
+      keyed on `request.client.host`, which in every documented deployment
+      path is always Caddy's or the ALB's address, not the real client's —
+      every user behind one proxy shared a single rate-limit bucket,
+      silently defeating brute-force protection on
+      `POST /api/auth/login`. Now trusts `X-Forwarded-For`'s leftmost entry
+      only when the immediate TCP peer is itself a private address (i.e.
+      it's our own proxy) — see SECURITY.md's "Rate limiting" section.  
+[x] Cap both generic ingestion paths (#98, merged, same PR) — 10MB/50k-row
+      cap on `POST /api/inventory/events/bulk` (previously read an
+      unbounded CSV fully into memory before validation), `max_length=1000`
+      on `POST /api/webhooks/ingest`'s `events` list (rate-limit-exempt by
+      design, so schema validation was the only available bound) — see
+      SECURITY.md's "Ingestion size limits" section.  
+[ ] Add DB-level tamper protection to `audit_log` (#99, filed, low
+      severity/defense-in-depth, not an active vulnerability — no SQL
+      injection exists anywhere in the app to leverage this today). The
+      single shared Postgres app role has full UPDATE/DELETE on every
+      table including `audit_log`, so immutability today holds only by
+      code convention (`audit_service.log_action` never updates/deletes),
+      not by a DB-level guarantee. Options: revoke UPDATE/DELETE on the
+      table from the app role via migration, or an append-only trigger
+      that rejects UPDATE/DELETE regardless of role. Estimate: a few
+      hours.  
 
 ------------------------------------------------------------
 EPOCH 7.1 — Dashboard UX Overhaul
@@ -474,6 +508,153 @@ Goal: Productionize the ML layer.
 [ ] Model versioning  
 [ ] Feature importance analysis  
 [ ] A/B testing framework for models  
+
+------------------------------------------------------------
+PATH A — Restaurant Deployment (near-term, in progress)
+------------------------------------------------------------
+
+Goal (added 2026-07-26, see full discussion in the roadmap session this
+epoch split came from): get one real restaurant — a friend's — running
+this daily, in weeks not months. None of the general-audience machinery
+below (multi-tenancy, integrations, org isolation) is needed for this —
+it's one business, one deployment. This is deliberately sequenced ahead of
+Epoch 10+ (Path B) — see "Why Path A comes first" below.
+
+[ ] Recipes / BOM for restaurants — dishes consume ingredients in fixed
+      quantities on SALE, a simpler version of Epoch 14's manufacturing/BOM
+      idea. The actual feature requested.
+[ ] `WASTE` event type — spoilage/waste tracked distinctly from `DAMAGE`
+[ ] Real `PurchaseOrder` object — supplier, line items, quantities; turns
+      a forecast + current stock into an actual, persisted, actionable
+      order instead of just a restock number on the dashboard
+[ ] Day-of-week-aware forecasting — restaurant demand shape is spikier
+      (weekday/weekend) than typical e-commerce SKU demand; tune Prophet's
+      seasonality rather than assume the existing model generalizes as-is
+[ ] CLI wrapper around the Makefile (`ims start`/`ims setup`/`ims backup`)
+      — doubles as the first-run setup wizard, no separate wizard needed
+[ ] Backup routine — cron/rsync of Postgres + the local data lake to a
+      second location; explicitly not S3/MinIO, unnecessary at this scale
+[ ] Explicitly skip for Path A: S3/object storage, multi-tenancy,
+      integrations, AWS deployment — none of it serves one restaurant
+
+Rough estimate: 2-4 weeks of focused evenings/weekends. Exit criteria: the
+friend runs this daily for real service and it saves him real time, or
+tells us clearly what's wrong with it.
+
+------------------------------------------------------------
+Why Path A comes first (not a decision to force on Path B)
+------------------------------------------------------------
+
+"General audience eventually" and "restaurant first" aren't competing
+choices — the architecture underneath (event sourcing, forecasting,
+ingestion core, purchase orders as a concept) is already general-purpose;
+none of it is restaurant-specific. Recipes/BOM for restaurants is just the
+first domain-specific layer on top of it, in the same shape a retail BOM
+or a services-business module would be later.
+
+The honest reason not to design "for a general audience" directly right
+now: nobody can answer what a general audience needs in the abstract — it
+takes a real user with real daily friction to find out what actually
+matters versus what only sounds important. Path A *is* the responsible way
+to get to Path B — not a detour from it.
+
+Epoch 10+ below (Path B) is only worth starting once Path A has real
+signal that more than one business wants this — revisit after Path A has
+been in the friend's hands for a few weeks, not before.
+
+------------------------------------------------------------
+EPOCH 10 — Multi-Tenancy (Path B, deferred until Path A has signal)
+------------------------------------------------------------
+
+Goal: one deployment can safely serve more than one business. Has to
+happen before integrations or a hosted offering — retrofitting tenant
+isolation onto an existing schema/event log is much harder than building
+it in from the start, and it's a better foundation now that real user
+accounts (`users`, JWT, roles) already exist than retrofitting onto the
+old shared-API-key model.
+
+[ ] `organization_id` on every table — products, events, state, feature
+      store, forecasts, and on `users` itself
+[ ] Row-level isolation enforced at the query layer, not just checked in
+      route handlers — same discipline as `_safe_path()`'s path-traversal
+      guard, applied to org scoping
+[ ] JWT claims scoped to an org, `require_role()` extended to also check
+      org membership
+[ ] Warehouse/dbt models and Prophet training partitioned per tenant
+[ ] Resolve #22 (S3 data lake) with org partitioning in mind — an
+      `org_id=` layer alongside the existing date partitioning
+[ ] Extend `audit_log` to record org context, not just user
+
+Exit criteria: two unrelated businesses could run on the same instance
+without either seeing the other's data, even under a bug.
+
+------------------------------------------------------------
+EPOCH 11 — Real Integrations (Path B, highest leverage once started)
+------------------------------------------------------------
+
+Goal: move from "generic webhook ingestion" (Epoch 7.2, shipped) to
+"plugs into what a small seller already uses" — Shopify, then
+QuickBooks Online or Xero, then WooCommerce, then a shipping/fulfillment
+connector. Each normalizes into the existing `InventoryEvent` shape via
+the shared ingestion core, so analytics/forecasting/dashboard need zero
+changes to support a new source.
+
+Exit criteria: a Shopify seller can connect their store and see inventory
+update automatically, with zero manual CSV work.
+
+------------------------------------------------------------
+EPOCH 12 — Order Management Layer (Path B)
+------------------------------------------------------------
+
+Goal: `Order`/`OrderLine` entities referencing one or more
+`InventoryEvent`s, with a status/state machine (placed → fulfilled →
+shipped → returned) separate from the immutable event log. Ties Epoch 11's
+connectors' incoming sales into orders, not just raw SALE events.
+
+Exit criteria: look up "order #1234" and see its full lifecycle, not just
+infer it from a pile of events.
+
+------------------------------------------------------------
+EPOCH 13 — Light Front-Office Features (Path B, pick one)
+------------------------------------------------------------
+
+B2B ordering portal (recommended — smaller surface area, showcases the
+event-sourced core) or a basic POS (bigger lift, only if targeting
+brick-and-mortar sellers). Pick based on target user, not both at once.
+
+------------------------------------------------------------
+EPOCH 14 — Manufacturing / BOM (Path B, optional, segment-dependent)
+------------------------------------------------------------
+
+Skip unless there's a specific maker segment that needs it — a full
+`BillOfMaterials` + `PRODUCTION` event type + cost roll-up, the general
+version of Path A's restaurant-specific recipes/BOM above.
+
+------------------------------------------------------------
+EPOCH 15 — Onboarding & Trust Infrastructure (Path B)
+------------------------------------------------------------
+
+Not code-heavy, but necessary before anyone non-technical can use this: a
+setup wizard or one-command hosted signup, a real docs site, a
+managed/hosted tier option, status page + backup/restore runbook + basic
+SLA language if offering hosting.
+
+------------------------------------------------------------
+What NOT to prioritize (Path B)
+------------------------------------------------------------
+
+- EDI / big-box retail compliance — high effort, only matters once there's
+  a customer segment selling into big retailers. Don't build speculatively.
+- Full accounting suite — integrate with QuickBooks/Xero (Epoch 11), don't
+  try to replace them.
+- A marketplace of 700 integrations — impossible for a solo dev to match
+  Cin7 here. Winning 3-4 integrations well beats a long tail of shallow ones.
+
+Rough estimate for Path B (Epochs 10-15): roughly 2-4 months of solo
+part-time work — multi-tenancy alone is 2-4 weeks, each integration
+1-2 weeks, order management 1-2 weeks, front-office 2-3 weeks. See
+`~/Downloads/ims-manual-roadmap.md` for the full session this split came
+from.
 
 ------------------------------------------------------------
 Full Pipeline (Current)

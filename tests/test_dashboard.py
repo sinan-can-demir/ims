@@ -4,6 +4,7 @@ import os
 
 import pandas as pd
 import pytest
+import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 from app.core.security import hash_password
@@ -12,6 +13,8 @@ from app.models.enums import UserRole
 from app.models.user import User
 
 from .utils import create_product, purchase
+
+RECIPES_PAGE = "dashboard/pages/1_Recipes.py"
 
 _FEATURE_FILE = os.path.join(
     os.path.dirname(__file__), "..", "feature_store", "daily_sales.parquet"
@@ -268,3 +271,79 @@ def test_dashboard_admin_can_trigger_export(client, admin_actions_db, export_pat
         assert entry.actor_id == admin.id
     finally:
         session.close()
+
+
+# ---------------------------------------------------------------------------
+# Recipes / BOM page (dashboard/pages/1_Recipes.py) — no feature-store
+# dependency, unlike app.py above, so no _FEATURE_FILE skipif needed.
+# ---------------------------------------------------------------------------
+
+
+def test_recipes_page_renders_without_exception(client, dashboard_db):
+    create_product(client, "Burger")
+    user = _make_dashboard_user(dashboard_db)
+
+    # load_products()/load_recipe_items() are @st.cache_data'd with no
+    # per-test isolation — across separate AppTest runs in the same pytest
+    # process, product ids collide (each test's DB restarts autoincrement
+    # at 1), so a stale cross-test cache entry can mask this test's real
+    # data. Same reason app.py has a manual "Refresh" button.
+    st.cache_data.clear()
+
+    at = AppTest.from_file(RECIPES_PAGE)
+    _signed_in(at, user)
+    at.run()
+
+    assert not at.exception
+
+
+def test_recipes_page_shows_no_recipe_message_for_new_dish(client, dashboard_db):
+    create_product(client, "Burger")
+    user = _make_dashboard_user(dashboard_db)
+
+    # load_products()/load_recipe_items() are @st.cache_data'd with no
+    # per-test isolation — across separate AppTest runs in the same pytest
+    # process, product ids collide (each test's DB restarts autoincrement
+    # at 1), so a stale cross-test cache entry can mask this test's real
+    # data. Same reason app.py has a manual "Refresh" button.
+    st.cache_data.clear()
+
+    at = AppTest.from_file(RECIPES_PAGE)
+    _signed_in(at, user)
+    at.run()
+
+    assert not at.exception
+    assert any("no recipe yet" in i.value for i in at.info)
+
+
+def test_recipes_page_add_ingredient_then_shows_it(client, dashboard_db):
+    dish = create_product(client, "Burger")
+    ingredient = create_product(client, "Bun")
+    user = _make_dashboard_user(dashboard_db)
+
+    # load_products()/load_recipe_items() are @st.cache_data'd with no
+    # per-test isolation — across separate AppTest runs in the same pytest
+    # process, product ids collide (each test's DB restarts autoincrement
+    # at 1), so a stale cross-test cache entry can mask this test's real
+    # data. Same reason app.py has a manual "Refresh" button.
+    st.cache_data.clear()
+
+    at = AppTest.from_file(RECIPES_PAGE)
+    _signed_in(at, user)
+    at.run()
+
+    dish_select = next(s for s in at.selectbox if s.label == "Dish")
+    dish_select.select(dish["id"]).run()
+
+    ingredient_select = next(s for s in at.selectbox if s.label == "Ingredient")
+    ingredient_select.select(ingredient["id"]).run()
+
+    quantity_input = next(n for n in at.number_input if n.label == "Quantity per dish sold")
+    quantity_input.set_value(3).run()
+
+    submit = next(b for b in at.button if b.label == "Add ingredient")
+    submit.click().run()
+
+    assert not at.exception
+    assert not any("no recipe yet" in i.value for i in at.info)
+    assert any("Bun" in md.value for md in at.markdown)

@@ -108,6 +108,38 @@ get wrong. `/health`, `/metrics`, and `/api/webhooks/ingest` are exempt
 structurally now (the dependency simply isn't attached to those routes)
 rather than via slowapi's `@limiter.exempt` name-based lookup.
 
+**`rate_limit_key` now trusts a real client IP behind a proxy, instead of
+always keying on the raw TCP peer.** Every documented deployment path puts
+at most one reverse proxy in front of this app (Caddy over the Compose
+network, or the ALB over its VPC), and in both cases the raw TCP peer
+`request.client.host` sees is the proxy itself, not the real client — so
+every real client behind the same proxy was sharing one rate-limit bucket.
+`rate_limit_key` (`app/core/rate_limit.py`) now trusts `X-Forwarded-For`'s
+leftmost entry, but **only** when the immediate TCP peer's address is
+itself private (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`,
+`127.0.0.0/8`) — i.e. only when the peer can only be our own proxy, never
+an arbitrary internet client, who could otherwise forge the header to reset
+their own bucket on every request. The one deployment path with no proxy at
+all (`docker-compose.prod.yml` alone, plain HTTP on `:8000`) doesn't need
+this: Docker's published-port NAT already preserves the real public client
+IP as the TCP peer.
+
+## Ingestion size limits
+
+Both generic ingestion paths (see Epoch 7.2 in [`ROADMAP.md`](ROADMAP.md))
+now cap the size of a single request, independent of the rate limits above:
+
+- `POST /api/inventory/events/bulk` — any authenticated user can call this
+  (it isn't admin-gated), and an unbounded CSV upload was read fully into
+  memory before parsing. Capped at 10MB (rejected with `413` before pandas
+  ever touches the body) and 50,000 rows (checked after parsing, catches a
+  compact-but-huge-row-count file that's small in bytes).
+- `POST /api/webhooks/ingest` — this route is rate-limit-exempt (it has its
+  own HMAC trust boundary, see above), so there's no secondary throttle on
+  it. `WebhookIngestPayload.events` is capped at 1000 items per request —
+  generous for a near-real-time delta, not a bulk history dump (that's what
+  the CSV path above is for).
+
 ## Response security headers
 
 Every response gets `X-Content-Type-Options: nosniff`, `X-Frame-Options:
