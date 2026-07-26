@@ -11,6 +11,7 @@ class EventType(str, Enum):
     DAMAGE = "DAMAGE"
     ADJUSTMENT = "ADJUSTMENT"
     RETURN = "RETURN"
+    WASTE = "WASTE"
 
 
 class UserRole(str, Enum):
