@@ -18,6 +18,8 @@ An event-driven inventory platform with a full analytics pipeline and ML-powered
       `InventoryState` projection, idempotent writes (`event_id`), oversell
       protection
 - [x] Product + inventory REST API (FastAPI/Postgres), API-key auth
+- [x] Recipes/BOM — a dish consumes its ingredients in fixed quantities when
+      sold, atomically with the sale (`POST /api/recipes`)
 - [x] Bulk CSV import (`POST /api/inventory/events/bulk`) — per-row partial
       success
 - [x] Generic HMAC-signed webhook ingestion (`POST /api/webhooks/ingest`)
@@ -241,8 +243,37 @@ unauthenticated.
 
 ```http
 POST /api/products
-{ "name": "Widget A", "sku": "WGT-001" }
+{ "name": "Widget A", "sku": "WGT-001", "unit": "each" }
+
+GET /api/products   # list every product
 ```
+
+`unit` is an optional free-text display label (e.g. `"g"`, `"ml"`, `"each"`)
+— not a unit-conversion system. Recipe quantities (below) are always
+expressed in the component product's own unit.
+
+### Recipes / BOM
+
+Defines what a dish (a "finished product") consumes when it's sold — a
+restaurant-shaped Bill of Materials, one level deep (components are raw
+ingredients, not themselves dishes with their own recipe):
+
+```http
+POST /api/recipes
+{ "finished_product_id": 1, "component_product_id": 2, "quantity": 1 }
+
+GET /api/recipes/{finished_product_id}   # list a dish's ingredients
+PATCH /api/recipes/{recipe_item_id}      # { "quantity": 3 }
+DELETE /api/recipes/{recipe_item_id}
+```
+
+Selling a dish (`POST /api/inventory/events` with `event_type: "SALE"`)
+automatically decrements every ingredient's stock by `quantity × units
+sold`, atomically with the dish's own sale — if any ingredient can't cover
+it, the whole sale (dish + ingredients) is rejected and nothing is
+partially applied. Cascaded ingredient consumption is recorded as its own
+`SALE` event per ingredient, so per-ingredient demand forecasting/restock
+picks up recipe-driven demand automatically.
 
 ### Inventory Events
 
@@ -343,6 +374,8 @@ pytest --cov=app tests/  # with coverage
 | `test_dashboard.py` | Streamlit dashboard renders and shows inventory metrics (AppTest) |
 | `test_security_headers.py` | Response headers: nosniff/X-Frame-Options/Referrer-Policy, conditional HSTS |
 | `test_db_isolation.py` | Test DB isolation between test cases |
+| `test_recipes.py` | Recipe/BOM CRUD, sale-triggered ingredient cascade, cascade atomicity, idempotent replay |
+| `test_dashboard.py` | Also covers the Recipes dashboard page (`dashboard/pages/1_Recipes.py`) via AppTest |
 
 ---
 

@@ -7,6 +7,7 @@ from app.models.enums import EventType
 from app.models.inventory_event import InventoryEvent
 from app.models.inventory_state import InventoryState
 from app.models.product import Product
+from app.models.recipe_item import RecipeItem
 
 
 def normalize_quantity(event_type: EventType, quantity: int) -> int:
@@ -37,6 +38,119 @@ def get_inventory(db: Session, product_id: int) -> int:
     return state.quantity if state else 0
 
 
+def _apply_event(
+    db: Session,
+    product_id: int,
+    event_type: EventType,
+    quantity: int,
+    event_id: str,
+    created_by_id: int | None,
+) -> tuple[InventoryEvent, bool]:
+    """
+    Core event application — idempotency check, oversell guard, insert
+    event, update the projection. Flushes but never commits: the caller
+    controls the transaction boundary, so record_event's recipe/BOM
+    cascade (selling a dish also consuming its ingredients) can be applied
+    as one atomic transaction with the triggering event, instead of
+    partially applying if an ingredient runs out partway through.
+
+    Returns (event, created) — created is False for an idempotent replay
+    of an existing event_id, in which case no cascade should run either.
+    """
+    existing_event = db.query(InventoryEvent).filter(InventoryEvent.event_id == event_id).first()
+    if existing_event:
+        logger.info("inventory_event_duplicate", extra={"event_id": event_id})
+        return existing_event, False
+
+    delta = normalize_quantity(event_type, quantity)
+
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if not product:
+        raise ProductNotFoundError(product_id)
+
+    # Lock inventory state row for update or create if not exists
+    state = (
+        db.query(InventoryState)
+        .filter(InventoryState.product_id == product_id)
+        .with_for_update()  # Lock the row
+        .first()
+    )
+
+    if state is None:
+        state = InventoryState(product_id=product_id, quantity=0)
+        db.add(state)
+        db.flush()
+
+    # Calculate new inventory level
+    new_quantity = state.quantity + delta
+    if new_quantity < 0 and event_type in [EventType.SALE, EventType.DAMAGE]:
+        logger.warning(
+            "inventory_oversell_blocked",
+            extra={
+                "product_id": product_id,
+                "attempted_quantity": delta,
+                "current_quantity": state.quantity,
+            },
+        )
+
+        raise InsufficientInventoryError(product_id, state.quantity, delta)
+
+    event = InventoryEvent(
+        product_id=product_id,
+        event_type=event_type,
+        quantity=delta,
+        event_id=event_id,
+        created_by_id=created_by_id,
+    )
+
+    db.add(event)
+    state.quantity = new_quantity
+    db.flush()
+
+    logger.info(
+        "inventory_event_created",
+        extra={
+            "product_id": product_id,
+            "event_type": event_type.value,
+            "quantity": delta,
+            "event_id": event_id,
+        },
+    )
+
+    return event, True
+
+
+def _cascade_recipe_consumption(
+    db: Session,
+    finished_product_id: int,
+    dishes_sold: int,
+    source_event_id: str,
+    created_by_id: int | None,
+) -> None:
+    """
+    Selling a dish also consumes its recipe/BOM ingredients. Cascaded
+    ingredient events are recorded as SALE (not a dedicated event type) so
+    that ingredient-level demand forecasting/restock — which sums SALE
+    outflow per product — picks up recipe-driven demand automatically,
+    with zero extra plumbing in forecast_service.py/restock_service.py.
+    One level deep only: component products are assumed to be raw
+    ingredients, not dishes with their own recipe.
+    """
+    recipe_items = (
+        db.query(RecipeItem).filter(RecipeItem.finished_product_id == finished_product_id).all()
+    )
+    for item in recipe_items:
+        component_event_id = f"{source_event_id}:component:{item.component_product_id}"
+        _apply_event(
+            db,
+            item.component_product_id,
+            EventType.SALE,
+            item.quantity * dishes_sold,
+            component_event_id,
+            created_by_id,
+        )
+
+
 def record_event(
     db: Session,
     product_id: int,
@@ -45,76 +159,14 @@ def record_event(
     event_id: str,
     created_by_id: int | None = None,
 ) -> InventoryEvent:
-    # Check for existing event with same event_id for idempotency
-    existing_event = db.query(InventoryEvent).filter(InventoryEvent.event_id == event_id).first()
-    if existing_event:
-        logger.info("inventory_event_duplicate", extra={"event_id": event_id})
-        return existing_event
-
-    # Normalize quantity based on event type
-    delta = normalize_quantity(event_type, quantity)
-
-    # Validate product existence
-    product = db.query(Product).filter(Product.id == product_id).first()
-    if not product:
-        raise ProductNotFoundError(product_id)
-
     try:
-        # Lock inventory state row for update or create if not exists
-        state = (
-            db.query(InventoryState)
-            .filter(InventoryState.product_id == product_id)
-            .with_for_update()  # Lock the row
-            .first()
-        )
+        event, created = _apply_event(db, product_id, event_type, quantity, event_id, created_by_id)
 
-        if state is None:
-            state = InventoryState(product_id=product_id, quantity=0)
-            db.add(state)
-            db.flush()
+        if created and event_type == EventType.SALE:
+            _cascade_recipe_consumption(db, product_id, quantity, event_id, created_by_id)
 
-        # Calculate new inventory level
-        new_quantity = state.quantity + delta
-        if new_quantity < 0 and event_type in [EventType.SALE, EventType.DAMAGE]:
-            logger.warning(
-                "inventory_oversell_blocked",
-                extra={
-                    "product_id": product_id,
-                    "attempted_quantity": delta,
-                    "current_quantity": state.quantity,
-                },
-            )
-
-            raise InsufficientInventoryError(product_id, state.quantity, delta)
-
-        # Record the event
-        event = InventoryEvent(
-            product_id=product_id,
-            event_type=event_type,
-            quantity=delta,
-            event_id=event_id,
-            created_by_id=created_by_id,
-        )
-
-        # Add event and update inventory state atomically
-        db.add(event)
-
-        # Update inventory state
-        state.quantity = new_quantity
-
-        # Commit transaction
         db.commit()
         db.refresh(event)
-
-        logger.info(
-            "inventory_event_created",
-            extra={
-                "product_id": product_id,
-                "event_type": event_type.value,
-                "quantity": delta,
-                "event_id": event_id,
-            },
-        )
 
         return event
 
@@ -133,4 +185,18 @@ def record_event(
             return existing_event
 
         # If the event doesn't exist, the failure was due to another reason (e.g. DB error)
+        raise
+
+    except Exception:
+        # Any other failure (e.g. InsufficientInventoryError from the
+        # triggering event itself or a recipe/BOM cascade ingredient) means
+        # this call's _apply_event flushes must not survive — a session
+        # left with a flushed-but-uncommitted dish sale, with no explicit
+        # rollback, can still be visible to whatever reuses that same
+        # session next (proven by a real test failure, not a theoretical
+        # gap: the atomicity test below caught partial cascade application
+        # surviving until the next call on the same session). Relying on
+        # the caller's session.close() to implicitly roll back isn't
+        # enough to guarantee this.
+        db.rollback()
         raise

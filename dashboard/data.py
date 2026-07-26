@@ -14,8 +14,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.database import SessionLocal
 from app.models.inventory_event import InventoryEvent
+from app.models.recipe_item import RecipeItem
 from app.services.forecast_service import forecast
 from app.services.inventory_service import get_inventory
+from app.services.product_service import list_products
 from app.services.restock_service import get_restock_recommendation
 
 CACHE_TTL = 300
@@ -68,9 +70,51 @@ def _get_events(product_id: int) -> list[dict]:
         db.close()
 
 
+def _list_products() -> list[dict]:
+    db = SessionLocal()
+    try:
+        return [
+            {"id": p.id, "name": p.name, "sku": p.sku, "unit": p.unit}
+            for p in list_products(db)
+        ]
+    finally:
+        db.close()
+
+
+def _list_recipe_items(finished_product_id: int) -> list[dict]:
+    db = SessionLocal()
+    try:
+        items = (
+            db.query(RecipeItem)
+            .filter(RecipeItem.finished_product_id == finished_product_id)
+            .order_by(RecipeItem.id.asc())
+            .all()
+        )
+        return [
+            {
+                "id": item.id,
+                "component_product_id": item.component_product_id,
+                "quantity": item.quantity,
+            }
+            for item in items
+        ]
+    finally:
+        db.close()
+
+
 @st.cache_data(ttl=CACHE_TTL)
 def load_inventory(product_id: int) -> int:
     return _get_inventory(product_id)
+
+
+@st.cache_data(ttl=CACHE_TTL)
+def load_products() -> list[dict]:
+    return _list_products()
+
+
+@st.cache_data(ttl=CACHE_TTL)
+def load_recipe_items(finished_product_id: int) -> list[dict]:
+    return _list_recipe_items(finished_product_id)
 
 
 @st.cache_data(ttl=CACHE_TTL)
