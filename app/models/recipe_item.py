@@ -16,9 +16,7 @@ class RecipeItem(Base):
     __tablename__ = "recipe_items"
 
     __table_args__ = (
-        UniqueConstraint(
-            "finished_product_id", "component_product_id", name="uq_recipe_item_pair"
-        ),
+        UniqueConstraint("finished_product_id", "component_product_id", name="uq_recipe_item_pair"),
         CheckConstraint("quantity > 0", name="ck_recipe_item_quantity_positive"),
         CheckConstraint(
             "finished_product_id != component_product_id", name="ck_recipe_item_no_self_reference"

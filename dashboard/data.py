@@ -77,8 +77,7 @@ def _list_products() -> list[dict]:
     db = SessionLocal()
     try:
         return [
-            {"id": p.id, "name": p.name, "sku": p.sku, "unit": p.unit}
-            for p in list_products(db)
+            {"id": p.id, "name": p.name, "sku": p.sku, "unit": p.unit} for p in list_products(db)
         ]
     finally:
         db.close()
