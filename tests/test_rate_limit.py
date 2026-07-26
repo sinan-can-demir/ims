@@ -82,3 +82,46 @@ def test_key_func_uses_client_ip():
     scope = {"type": "http", "headers": [], "client": ("1.2.3.4", 1234)}
     request = Request(scope)
     assert rate_limit_key(request) == "1.2.3.4"
+
+
+def test_key_func_trusts_forwarded_for_from_private_peer():
+    """
+    A private-address peer is our own reverse proxy (Caddy over the
+    Compose network, ALB over its VPC) — trust the real client IP it
+    forwarded.
+    """
+    scope = {
+        "type": "http",
+        "headers": [(b"x-forwarded-for", b"9.9.9.9")],
+        "client": ("172.18.0.5", 1234),
+    }
+    assert rate_limit_key(Request(scope)) == "9.9.9.9"
+
+
+def test_key_func_ignores_forwarded_for_from_public_peer():
+    """
+    The no-Caddy plain-HTTP deployment path has no proxy in front at all
+    — a direct internet client could forge X-Forwarded-For themselves to
+    reset their own bucket every request. A public peer is never trusted
+    to supply this header; use the real TCP peer instead.
+    """
+    scope = {
+        "type": "http",
+        "headers": [(b"x-forwarded-for", b"9.9.9.9")],
+        "client": ("1.2.3.4", 1234),
+    }
+    assert rate_limit_key(Request(scope)) == "1.2.3.4"
+
+
+def test_key_func_uses_leftmost_forwarded_for_entry():
+    scope = {
+        "type": "http",
+        "headers": [(b"x-forwarded-for", b"9.9.9.9, 172.18.0.5")],
+        "client": ("172.18.0.5", 1234),
+    }
+    assert rate_limit_key(Request(scope)) == "9.9.9.9"
+
+
+def test_key_func_falls_back_to_peer_when_no_forwarded_for_header():
+    scope = {"type": "http", "headers": [], "client": ("172.18.0.5", 1234)}
+    assert rate_limit_key(Request(scope)) == "172.18.0.5"

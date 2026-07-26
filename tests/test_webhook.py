@@ -105,6 +105,31 @@ def test_webhook_event_id_namespaced_by_source(client, db):
     assert event.created_by_id is None
 
 
+def test_webhook_too_many_events_returns_422(client):
+    """
+    events has a max_length=1000 (app/schemas/webhook.py) — this route is
+    explicitly rate-limit-exempt, so schema validation is the only thing
+    bounding how much a single call can force ingest_events() to process.
+    """
+    payload = {
+        "source": "generic",
+        "events": [
+            {
+                "sku": "does-not-matter",
+                "event_type": "PURCHASE",
+                "quantity": 1,
+                "external_id": f"txn-{i}",
+            }
+            for i in range(1001)
+        ],
+    }
+
+    with patch("app.core.auth._WEBHOOK_SECRET", _SECRET):
+        response = _signed_request(client, payload)
+
+    assert response.status_code == 422
+
+
 def test_webhook_partial_failure_reported_per_row(client):
     product = create_product(client)
     payload = {

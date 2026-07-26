@@ -168,6 +168,31 @@ def test_bulk_import_endpoint_missing_columns_returns_400(client):
     assert response.status_code == 400
 
 
+def test_bulk_import_endpoint_oversized_file_returns_413(client):
+    from app.api.inventory import _BULK_IMPORT_MAX_BYTES
+
+    oversized = b"x" * (_BULK_IMPORT_MAX_BYTES + 1)
+    files = {"file": ("events.csv", io.BytesIO(oversized), "text/csv")}
+
+    response = client.post("/api/inventory/events/bulk", files=files)
+
+    assert response.status_code == 413
+
+
+def test_bulk_import_endpoint_too_many_rows_returns_413(client):
+    from app.api.inventory import _BULK_IMPORT_MAX_ROWS
+
+    header = "sku,event_type,quantity,event_id\n"
+    row_count = _BULK_IMPORT_MAX_ROWS + 1
+    rows = "".join(f"sku-{i},PURCHASE,1,evt-{i}\n" for i in range(row_count))
+    csv_content = header + rows
+    files = {"file": ("events.csv", io.BytesIO(csv_content.encode()), "text/csv")}
+
+    response = client.post("/api/inventory/events/bulk", files=files)
+
+    assert response.status_code == 413
+
+
 def test_bulk_import_endpoint_partial_failure(client):
     product = create_product(client)
     event_id = f"evt-{uuid.uuid4()}"
