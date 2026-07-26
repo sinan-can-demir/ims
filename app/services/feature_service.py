@@ -21,7 +21,7 @@ def build_features() -> int:
         SELECT
             product_id,
             date_id AS date,
-            SUM(CASE WHEN event_type IN ('SALE', 'DAMAGE') 
+            SUM(CASE WHEN event_type IN ('SALE', 'DAMAGE', 'WASTE')
                 THEN ABS(quantity) ELSE 0 END) AS units_sold,
             SUM(CASE WHEN event_type IN ('PURCHASE', 'RETURN') 
                 THEN quantity ELSE 0 END)        AS units_purchased,

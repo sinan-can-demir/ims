@@ -178,3 +178,73 @@ def test_restock_recommendation_nonexistent_product(db):
     with pytest.raises(Exception) as exc_info:
         get_restock_recommendation(db, 99999)
     assert getattr(exc_info.value, "status_code", None) == 404
+
+
+# ---------------------------------------------------------------------------
+# Day-of-week-aware forecasting — restaurant demand is weekday/weekend
+# spiky, not flat like typical e-commerce SKU demand. These are empirical
+# checks (real Prophet fits on synthetic data), not mocked, so they take a
+# few seconds each — that's the point, they'd catch a real regression.
+# ---------------------------------------------------------------------------
+
+
+def _weekday_shaped_series(n_days, seed, shape=(0.8, 0.85, 0.95, 1.0, 1.3, 1.9, 1.4)):
+    import numpy as np
+
+    rng = np.random.default_rng(seed)
+    dates = pd.date_range("2026-01-05", periods=n_days, freq="D")  # a Monday
+    y = [max(1, 40 * shape[d.weekday()] + rng.normal(0, 5)) for d in dates]
+    return pd.DataFrame({"ds": dates, "y": y})
+
+
+def test_weekly_seasonality_beats_no_seasonality_on_restaurant_demand():
+    """
+    Backtested finding behind the _MIN_TRAINING_DAYS/weekly_seasonality
+    comment in forecast_service.py: weekly_seasonality=True should
+    meaningfully outperform leaving it off on day-of-week-shaped demand,
+    given enough history. Guards against a future "simplification"
+    quietly turning this off.
+    """
+    from prophet import Prophet
+
+    df = _weekday_shaped_series(n_days=28, seed=7)
+    train, test = df.iloc[:21], df.iloc[21:]
+
+    def mae(model):
+        pred = model.predict(test[["ds"]])
+        # .to_numpy() — test["y"] and pred["yhat"] have different indexes
+        # (test kept its original 21..27 index; predict() returns a fresh
+        # 0-based one), so a plain Series subtraction would align by index
+        # and silently produce all-NaN instead of a real per-row diff.
+        return float(abs(test["y"].to_numpy() - pred["yhat"].to_numpy()).mean())
+
+    with_weekly = Prophet(
+        yearly_seasonality=False, weekly_seasonality=True, daily_seasonality=False
+    )
+    with_weekly.fit(train)
+
+    without_weekly = Prophet(
+        yearly_seasonality=False, weekly_seasonality=False, daily_seasonality=False
+    )
+    without_weekly.fit(train)
+
+    assert mae(with_weekly) < mae(without_weekly) * 0.7
+
+
+def test_train_model_rejects_data_below_min_training_days(tmp_path, monkeypatch):
+    """
+    At exactly the old 7-day minimum, weekly_seasonality=True can perform
+    *worse* than off (backtested) — the model hasn't seen the weekly cycle
+    repeat yet. train_model() now requires _MIN_TRAINING_DAYS (14).
+    """
+    import app.services.forecast_service as forecast_service
+
+    df = _weekday_shaped_series(n_days=7, seed=1).rename(columns={"y": "units_sold"})
+    df["date"] = df["ds"]
+    df["product_id"] = 1
+    df[["product_id", "date", "units_sold"]].to_parquet(tmp_path / "daily_sales.parquet")
+
+    monkeypatch.setattr(forecast_service, "FEATURE_STORE_PATH", tmp_path)
+
+    with pytest.raises(ValueError, match="Need at least 14 days"):
+        forecast_service.train_model(1)

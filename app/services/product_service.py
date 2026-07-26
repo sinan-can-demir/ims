@@ -8,7 +8,7 @@ from app.schemas.product import ProductCreate
 
 
 def create_product(db: Session, product: ProductCreate) -> Product:
-    new_product = Product(name=product.name, sku=product.sku)
+    new_product = Product(name=product.name, sku=product.sku, unit=product.unit)
 
     try:
         db.add(new_product)
@@ -29,3 +29,7 @@ def get_product_by_sku(db: Session, sku: str) -> Product:
     if not product:
         raise ProductSkuNotFoundError(sku)
     return product
+
+
+def list_products(db: Session) -> list[Product]:
+    return db.query(Product).order_by(Product.name.asc()).all()

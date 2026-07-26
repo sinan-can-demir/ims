@@ -8,7 +8,7 @@ An event-driven inventory platform with a full analytics pipeline and ML-powered
 **Stack:** FastAPI · PostgreSQL · dbt · DuckDB · Prophet · Streamlit · Docker
 
 > **Project status:** actively developed learning project, not a hardened production system.
-> Auth is a single shared API key (see [SECURITY.md](SECURITY.md) for what that does and doesn't protect against). Deployment beyond local Docker is in progress ([Epoch 7](ROADMAP.md)) — see [Deployment](#deployment) below.
+> Auth is per-user JWT bearer tokens with two roles (admin/member) — see [SECURITY.md](SECURITY.md) for the current auth model. Current focus is Path A: getting one real restaurant running this daily (see [ROADMAP.md](ROADMAP.md)) — see [Deployment](#deployment) below for how to run it yourself.
 
 ---
 
@@ -18,13 +18,20 @@ An event-driven inventory platform with a full analytics pipeline and ML-powered
       `InventoryState` projection, idempotent writes (`event_id`), oversell
       protection
 - [x] Product + inventory REST API (FastAPI/Postgres), API-key auth
+- [x] Recipes/BOM — a dish consumes its ingredients in fixed quantities when
+      sold, atomically with the sale (`POST /api/recipes`)
+- [x] Real Purchase Order object (draft/submit/receive) — turns a
+      forecast + current stock into an actual order, not just a restock
+      number on the dashboard; receiving creates real `PURCHASE` events
 - [x] Bulk CSV import (`POST /api/inventory/events/bulk`) — per-row partial
       success
 - [x] Generic HMAC-signed webhook ingestion (`POST /api/webhooks/ingest`)
 - [x] Full analytics pipeline: Parquet data lake → DuckDB warehouse → dbt
       models + data quality tests
 - [x] Prophet demand forecasting per product, tracked in an MLflow model
-      registry
+      registry — backtested for day-of-week-heavy demand (e.g. restaurant
+      weekday/weekend spikes); requires 14+ days of history so
+      `weekly_seasonality` has seen the weekly cycle repeat at least once
 - [x] Streamlit dashboard — live inventory, event history, 30-day forecasts
 - [x] Prometheus metrics + structured JSON request logging
       (`/metrics`, `X-Request-ID`)
@@ -39,17 +46,33 @@ An event-driven inventory platform with a full analytics pipeline and ML-powered
       behind Caddy basic auth (the dashboard has no auth of its own)
 - [x] Security response headers (X-Frame-Options, X-Content-Type-Options,
       Referrer-Policy, conditional HSTS)
-- [x] Rate limiting on `/api` routes (slowapi, keyed by client IP) — see
-      [SECURITY.md](SECURITY.md) for a known compatibility limitation with
-      newer FastAPI versions
+- [x] Rate limiting on `/api` routes (slowapi, keyed by client IP — trusting
+      `X-Forwarded-For` only from a private-address proxy peer, so a shared
+      Caddy/ALB in front doesn't collapse every real client into one bucket)
+      — see [SECURITY.md](SECURITY.md) for a known compatibility limitation
+      with newer FastAPI versions
+- [x] Size caps on both generic ingestion paths (10MB/50k-row CSV bulk
+      import, 1000-item webhook payload) — see [SECURITY.md](SECURITY.md#ingestion-size-limits)
 
 ## In Progress
 
+**Current focus — Path A, getting one real restaurant running this daily:**
+recipes/BOM (dishes consume ingredients in fixed quantities), a `WASTE`
+event type, a real `PurchaseOrder` object, day-of-week-aware forecasting, a
+CLI wrapper (`ims start`/`setup`/`backup`), and a backup routine. See
+[ROADMAP.md](ROADMAP.md)'s "Path A" section for the full list.
+
+**Deferred until Path A has real signal that more than one business wants
+this (Path B, general small/mid-business audience — see
+[ROADMAP.md](ROADMAP.md) Epochs 10-15):**
+
 - [ ] Move the data lake off the local filesystem onto S3-compatible object
-      storage
+      storage (`#22` — rescoped, not blocked: MinIO for self-hosted, real
+      S3 for AWS)
 - [ ] Deploy the dashboard on AWS (ECS, reading the feature store from S3)
 - [ ] Apply the AWS Terraform — ECS/RDS/ALB infra is written, not yet running
-- [ ] Replace shared API-key auth with JWT/OIDC
+- [ ] Multi-tenancy, real integrations (Shopify/QuickBooks/etc.), order
+      management, front-office features
 
 See [ROADMAP.md](ROADMAP.md) for the full backlog.
 
@@ -248,8 +271,37 @@ unauthenticated.
 
 ```http
 POST /api/products
-{ "name": "Widget A", "sku": "WGT-001" }
+{ "name": "Widget A", "sku": "WGT-001", "unit": "each" }
+
+GET /api/products   # list every product
 ```
+
+`unit` is an optional free-text display label (e.g. `"g"`, `"ml"`, `"each"`)
+— not a unit-conversion system. Recipe quantities (below) are always
+expressed in the component product's own unit.
+
+### Recipes / BOM
+
+Defines what a dish (a "finished product") consumes when it's sold — a
+restaurant-shaped Bill of Materials, one level deep (components are raw
+ingredients, not themselves dishes with their own recipe):
+
+```http
+POST /api/recipes
+{ "finished_product_id": 1, "component_product_id": 2, "quantity": 1 }
+
+GET /api/recipes/{finished_product_id}   # list a dish's ingredients
+PATCH /api/recipes/{recipe_item_id}      # { "quantity": 3 }
+DELETE /api/recipes/{recipe_item_id}
+```
+
+Selling a dish (`POST /api/inventory/events` with `event_type: "SALE"`)
+automatically decrements every ingredient's stock by `quantity × units
+sold`, atomically with the dish's own sale — if any ingredient can't cover
+it, the whole sale (dish + ingredients) is rejected and nothing is
+partially applied. Cascaded ingredient consumption is recorded as its own
+`SALE` event per ingredient, so per-ingredient demand forecasting/restock
+picks up recipe-driven demand automatically.
 
 ### Inventory Events
 
@@ -270,11 +322,42 @@ POST /api/inventory/events
 | `DAMAGE` | -quantity | Oversell protected |
 | `RETURN` | +quantity | Customer return |
 | `ADJUSTMENT` | ±quantity | Manual correction |
+| `WASTE` | -quantity | Oversell protected; tracked distinctly from DAMAGE (spoilage/waste, not breakage) |
 
 ```http
 GET /api/inventory/{product_id}       # current stock level
 GET /api/inventory/events/{product_id} # full event history
 ```
+
+### Suppliers & Purchase Orders
+
+Turns a forecast + current stock into an actual, persisted order, not just
+a restock number on the dashboard — draft → submitted → received, where
+receiving a PO creates real `PURCHASE` inventory events per line:
+
+```http
+POST /api/suppliers
+{ "name": "Acme Foods", "contact_email": "orders@acme.example" }
+
+POST /api/purchase-orders
+{ "supplier_id": 1, "lines": [{ "product_id": 2, "quantity": 50, "unit_cost": 1.25 }] }
+
+POST /api/purchase-orders/{id}/lines         # add a line (draft only)
+PATCH /api/purchase-orders/lines/{line_id}   # edit a line (draft only)
+DELETE /api/purchase-orders/lines/{line_id}  # remove a line (draft only)
+
+POST /api/purchase-orders/{id}/submit    # draft -> submitted (needs >=1 line)
+POST /api/purchase-orders/{id}/receive   # submitted -> received, creates PURCHASE events
+
+POST /api/purchase-orders/generate/{product_id}?supplier_id=1
+# pre-fills a draft PO's single line from that product's current
+# restock recommendation (see GET /api/forecast/restock/{product_id})
+```
+
+Receiving is retry-safe: each line's inventory event uses a deterministic
+`event_id` (`po-{id}-line-{id}`), so retrying a receive that failed
+partway through re-applies only the lines that didn't already succeed,
+never double-counting one that did.
 
 ### Bulk / Generic Ingestion
 
@@ -338,18 +421,20 @@ pytest --cov=app tests/  # with coverage
 | `test_inventory_validation.py` | Input validation per event type |
 | `test_idempotency.py` | Duplicate event handling |
 | `test_auth.py` | API-key auth: exempt `/health`, missing/wrong/correct key, auth-disabled mode |
-| `test_forecast.py` | Forecast/restock endpoints, including 404s on nonexistent products |
+| `test_forecast.py` | Forecast/restock endpoints (404s on nonexistent products), and a real (non-mocked) backtest proving `weekly_seasonality=True` beats it off on day-of-week-shaped demand, plus the 14-day minimum-training-data guard |
 | `test_metrics.py` | `/metrics` exposition, request counters/latency, `X-Request-ID` header |
 | `test_ingestion.py` | Shared ingestion core + CSV bulk import: partial success, idempotency, malformed rows |
 | `test_webhook.py` | Webhook signature verification, per-source event_id namespacing, partial failure |
-| `test_edge_cases.py` | RETURN/DAMAGE/ADJUSTMENT event types, quantity validation, stock going negative |
+| `test_edge_cases.py` | RETURN/DAMAGE/WASTE/ADJUSTMENT event types, quantity validation, stock going negative |
 | `test_export.py` | Data lake export: full + incremental, partition structure, schema, empty-export no-crash |
 | `test_warehouse.py` | dbt dimension/fact table builds, `_safe_path()` traversal/symlink guard |
 | `test_replay.py` | Rebuilding `InventoryState` from the event log |
 | `test_pagination.py` | `limit`/`offset` on list endpoints |
-| `test_dashboard.py` | Streamlit dashboard renders and shows inventory metrics (AppTest) |
+| `test_dashboard.py` | Streamlit dashboard renders and shows inventory metrics (AppTest); also covers the Recipes page (`dashboard/pages/1_Recipes.py`) and the Purchase Orders page (`dashboard/pages/2_Purchase_Orders.py`) |
+| `test_purchase_orders.py` | Supplier/PO CRUD, full draft→submit→receive lifecycle, state-transition guards, generate-from-forecast, retry-safety after a partial receive failure |
 | `test_security_headers.py` | Response headers: nosniff/X-Frame-Options/Referrer-Policy, conditional HSTS |
 | `test_db_isolation.py` | Test DB isolation between test cases |
+| `test_recipes.py` | Recipe/BOM CRUD, sale-triggered ingredient cascade, cascade atomicity, idempotent replay |
 | `test_ims_cli.py` | `scripts/ims.py` argparse wiring, health-check polling, backup/restore wrapper behavior (subprocess/urllib mocked — real end-to-end run verified manually) |
 
 ---
@@ -441,7 +526,9 @@ Copy `.env.example` to `.env` and adjust as needed.
 | 4 | Feature Engineering | ✅ Complete |
 | 5 | ML Platform (Prophet forecasting) | ✅ Complete |
 | 6 | Streamlit Dashboard | ✅ Complete |
-| 7 | Production Hardening + Deployment (self-hosted + AWS) | In Progress |
+| 7 | Production Hardening + Deployment (self-hosted + AWS) | Nearly complete — `#22` (S3 data lake), `#99` (audit log tamper protection) open |
+| Path A | Restaurant deployment — recipes/BOM, `WASTE` events, real POs, forecasting tuning, CLI wrapper, backups | In Progress |
+| 10-15 | General small/mid-business platform (Path B) | Deferred until Path A has signal |
 
 ---
 

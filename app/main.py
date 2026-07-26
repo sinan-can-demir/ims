@@ -13,6 +13,9 @@ from app.api.auth import router as auth_router
 from app.api.forecast import router as forecast_router
 from app.api.inventory import router as inventory_router
 from app.api.products import router as products_router
+from app.api.purchase_orders import router as purchase_orders_router
+from app.api.recipes import router as recipes_router
+from app.api.suppliers import router as suppliers_router
 from app.api.webhooks import router as webhooks_router
 from app.core.auth import require_current_user
 from app.core.exceptions import DomainError
@@ -64,6 +67,9 @@ _auth = [Depends(require_current_user), Depends(enforce_rate_limit)]
 app.include_router(products_router, prefix="/api", dependencies=_auth)
 app.include_router(inventory_router, prefix="/api", dependencies=_auth)
 app.include_router(forecast_router, prefix="/api", dependencies=_auth)
+app.include_router(suppliers_router, prefix="/api", dependencies=_auth)
+app.include_router(purchase_orders_router, prefix="/api", dependencies=_auth)
+app.include_router(recipes_router, prefix="/api", dependencies=_auth)
 # Signed with WEBHOOK_SECRET (see require_webhook_signature), not the
 # bearer token used by the routers above — different trust boundary.
 app.include_router(webhooks_router, prefix="/api")
