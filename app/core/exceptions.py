@@ -53,3 +53,30 @@ class InsufficientInventoryError(DomainError):
         self.current_quantity = current_quantity
         self.requested_delta = requested_delta
         super().__init__("Insufficient inventory")
+
+
+class SelfReferentialRecipeError(DomainError):
+    status_code = 400
+
+    def __init__(self):
+        super().__init__("A product cannot be an ingredient of itself")
+
+
+class DuplicateRecipeItemError(DomainError):
+    status_code = 409
+
+    def __init__(self, finished_product_id: int, component_product_id: int):
+        self.finished_product_id = finished_product_id
+        self.component_product_id = component_product_id
+        super().__init__(
+            f"Recipe item already exists for finished product {finished_product_id} "
+            f"and component product {component_product_id}"
+        )
+
+
+class RecipeItemNotFoundError(DomainError):
+    status_code = 404
+
+    def __init__(self, recipe_item_id: int):
+        self.recipe_item_id = recipe_item_id
+        super().__init__(f"Recipe item {recipe_item_id} not found")
