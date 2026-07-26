@@ -20,6 +20,7 @@ _FEATURE_FILE = os.path.join(
     os.path.dirname(__file__), "..", "feature_store", "daily_sales.parquet"
 )
 _FEATURE_SKIP_REASON = "feature store not built — run make features"
+PURCHASE_ORDERS_PAGE = "dashboard/pages/2_Purchase_Orders.py"
 
 
 def _make_dashboard_user(
@@ -274,6 +275,24 @@ def test_dashboard_admin_can_trigger_export(client, admin_actions_db, export_pat
 
 
 # ---------------------------------------------------------------------------
+# Purchase Orders page (dashboard/pages/2_Purchase_Orders.py) — no
+# feature-store dependency, unlike app.py above.
+# ---------------------------------------------------------------------------
+
+
+def test_purchase_orders_page_renders_without_exception(client, dashboard_db):
+    create_product(client, "Flour")
+    user = _make_dashboard_user(dashboard_db)
+
+    st.cache_data.clear()
+    at = AppTest.from_file(PURCHASE_ORDERS_PAGE)
+    _signed_in(at, user)
+    at.run()
+
+    assert not at.exception
+
+
+# ---------------------------------------------------------------------------
 # Recipes / BOM page (dashboard/pages/1_Recipes.py) — no feature-store
 # dependency, unlike app.py above, so no _FEATURE_FILE skipif needed.
 # ---------------------------------------------------------------------------
@@ -295,6 +314,38 @@ def test_recipes_page_renders_without_exception(client, dashboard_db):
     at.run()
 
     assert not at.exception
+
+
+def test_purchase_orders_page_create_manual_draft_and_submit(client, dashboard_db):
+    flour = create_product(client, "Flour")
+    user = _make_dashboard_user(dashboard_db)
+
+    supplier_resp = client.post("/api/suppliers", json={"name": "Acme Foods"})
+    assert supplier_resp.status_code == 201
+
+    st.cache_data.clear()
+    at = AppTest.from_file(PURCHASE_ORDERS_PAGE)
+    _signed_in(at, user)
+    at.run()
+    assert not at.exception
+
+    product_select = next(s for s in at.selectbox if s.label == "Product (manual)")
+    product_select.select(flour["id"]).run()
+
+    quantity_input = next(n for n in at.number_input if n.label == "Quantity")
+    quantity_input.set_value(15).run()
+
+    create_button = next(b for b in at.button if b.label == "Create draft")
+    create_button.click().run()
+
+    assert not at.exception
+    assert any("Draft purchase order created" in s.value for s in at.success)
+
+    submit_button = next(b for b in at.button if b.label == "Submit purchase order")
+    submit_button.click().run()
+
+    assert not at.exception
+    assert any("SUBMITTED" in e.label for e in at.expander)
 
 
 def test_recipes_page_shows_no_recipe_message_for_new_dish(client, dashboard_db):

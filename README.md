@@ -20,6 +20,9 @@ An event-driven inventory platform with a full analytics pipeline and ML-powered
 - [x] Product + inventory REST API (FastAPI/Postgres), API-key auth
 - [x] Recipes/BOM — a dish consumes its ingredients in fixed quantities when
       sold, atomically with the sale (`POST /api/recipes`)
+- [x] Real Purchase Order object (draft/submit/receive) — turns a
+      forecast + current stock into an actual order, not just a restock
+      number on the dashboard; receiving creates real `PURCHASE` events
 - [x] Bulk CSV import (`POST /api/inventory/events/bulk`) — per-row partial
       success
 - [x] Generic HMAC-signed webhook ingestion (`POST /api/webhooks/ingest`)
@@ -319,6 +322,36 @@ GET /api/inventory/{product_id}       # current stock level
 GET /api/inventory/events/{product_id} # full event history
 ```
 
+### Suppliers & Purchase Orders
+
+Turns a forecast + current stock into an actual, persisted order, not just
+a restock number on the dashboard — draft → submitted → received, where
+receiving a PO creates real `PURCHASE` inventory events per line:
+
+```http
+POST /api/suppliers
+{ "name": "Acme Foods", "contact_email": "orders@acme.example" }
+
+POST /api/purchase-orders
+{ "supplier_id": 1, "lines": [{ "product_id": 2, "quantity": 50, "unit_cost": 1.25 }] }
+
+POST /api/purchase-orders/{id}/lines         # add a line (draft only)
+PATCH /api/purchase-orders/lines/{line_id}   # edit a line (draft only)
+DELETE /api/purchase-orders/lines/{line_id}  # remove a line (draft only)
+
+POST /api/purchase-orders/{id}/submit    # draft -> submitted (needs >=1 line)
+POST /api/purchase-orders/{id}/receive   # submitted -> received, creates PURCHASE events
+
+POST /api/purchase-orders/generate/{product_id}?supplier_id=1
+# pre-fills a draft PO's single line from that product's current
+# restock recommendation (see GET /api/forecast/restock/{product_id})
+```
+
+Receiving is retry-safe: each line's inventory event uses a deterministic
+`event_id` (`po-{id}-line-{id}`), so retrying a receive that failed
+partway through re-applies only the lines that didn't already succeed,
+never double-counting one that did.
+
 ### Bulk / Generic Ingestion
 
 Two generic, platform-agnostic paths for real sales data — not tied to a
@@ -390,7 +423,8 @@ pytest --cov=app tests/  # with coverage
 | `test_warehouse.py` | dbt dimension/fact table builds, `_safe_path()` traversal/symlink guard |
 | `test_replay.py` | Rebuilding `InventoryState` from the event log |
 | `test_pagination.py` | `limit`/`offset` on list endpoints |
-| `test_dashboard.py` | Streamlit dashboard renders and shows inventory metrics (AppTest); also covers the Recipes page (`dashboard/pages/1_Recipes.py`) |
+| `test_dashboard.py` | Streamlit dashboard renders and shows inventory metrics (AppTest); also covers the Recipes page (`dashboard/pages/1_Recipes.py`) and the Purchase Orders page (`dashboard/pages/2_Purchase_Orders.py`) |
+| `test_purchase_orders.py` | Supplier/PO CRUD, full draft→submit→receive lifecycle, state-transition guards, generate-from-forecast, retry-safety after a partial receive failure |
 | `test_security_headers.py` | Response headers: nosniff/X-Frame-Options/Referrer-Policy, conditional HSTS |
 | `test_db_isolation.py` | Test DB isolation between test cases |
 | `test_recipes.py` | Recipe/BOM CRUD, sale-triggered ingredient cascade, cascade atomicity, idempotent replay |

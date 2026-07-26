@@ -14,6 +14,15 @@ class EventType(str, Enum):
     WASTE = "WASTE"
 
 
+class PurchaseOrderStatus(str, Enum):
+    """Draft -> Submitted -> Received. No cancelled/rejected state yet —
+    add one if a real need shows up, same philosophy as UserRole below."""
+
+    DRAFT = "DRAFT"
+    SUBMITTED = "SUBMITTED"
+    RECEIVED = "RECEIVED"
+
+
 class UserRole(str, Enum):
     """
     Two roles only, by design — the only concrete admin-gated operations
