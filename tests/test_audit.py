@@ -22,10 +22,11 @@ def test_log_action_persists_row(db):
     assert row.actor_id is None
 
 
-def test_replay_endpoint_logs_audit_row(client, db):
-    current_user = db.query(User).filter(User.email == "test-client@example.com").first()
-    product = create_product(client)
-    client.post(
+def test_replay_endpoint_logs_audit_row(admin_client, db):
+    # POST /api/inventory/replay is admin-gated — use admin_client.
+    current_user = db.query(User).filter(User.email == "test-admin@example.com").first()
+    product = create_product(admin_client)
+    admin_client.post(
         "/api/inventory/events",
         json={
             "product_id": product["id"],
@@ -35,7 +36,7 @@ def test_replay_endpoint_logs_audit_row(client, db):
         },
     )
 
-    response = client.post("/api/inventory/replay")
+    response = admin_client.post("/api/inventory/replay")
     assert response.status_code == 200
 
     entry = (
@@ -46,10 +47,11 @@ def test_replay_endpoint_logs_audit_row(client, db):
     assert "events_processed=1" in entry.detail
 
 
-def test_export_endpoint_logs_audit_row(client, db, export_paths):
-    current_user = db.query(User).filter(User.email == "test-client@example.com").first()
-    product = create_product(client)
-    client.post(
+def test_export_endpoint_logs_audit_row(admin_client, db, export_paths):
+    # POST /api/inventory/export is admin-gated — use admin_client.
+    current_user = db.query(User).filter(User.email == "test-admin@example.com").first()
+    product = create_product(admin_client)
+    admin_client.post(
         "/api/inventory/events",
         json={
             "product_id": product["id"],
@@ -60,7 +62,7 @@ def test_export_endpoint_logs_audit_row(client, db, export_paths):
     )
     db.expire_all()
 
-    response = client.post("/api/inventory/export")
+    response = admin_client.post("/api/inventory/export")
     assert response.status_code == 200
 
     entry = (

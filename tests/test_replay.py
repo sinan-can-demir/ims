@@ -1,7 +1,12 @@
 from .utils import create_product
 
 
-def test_rebuild_inventory_state(client):
+def test_rebuild_inventory_state(admin_client):
+    # POST /api/inventory/replay is admin-gated; use admin_client throughout
+    # since this test is about replay behavior, not the role check itself
+    # (that's covered in tests/test_rbac.py).
+    client = admin_client
+
     # Setup: Create product and generate some events
     product = create_product(client)
     product_id = product["id"]

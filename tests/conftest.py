@@ -13,6 +13,7 @@ from app.core.auth import create_access_token
 from app.core.security import hash_password
 from app.database import Base, get_db
 from app.main import app
+from app.models.enums import UserRole
 from app.models.user import User
 
 TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL")
@@ -86,6 +87,34 @@ def client(db):
         email="test-client@example.com",
         password_hash=hash_password("test-client-password"),
         display_name="Test Client",
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    token = create_access_token(user)
+    return TestClient(app, headers={"Authorization": f"Bearer {token}"})
+
+
+@pytest.fixture(scope="function")
+def admin_client(db):
+    """
+    Separate fixture rather than parametrizing `client` on role — `client`
+    is used throughout the suite as "an authenticated user," and most of
+    those call sites don't care about role; keeping it MEMBER by default
+    avoids touching every existing test that consumes it.
+    """
+
+    def override_get_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    user = User(
+        email="test-admin@example.com",
+        password_hash=hash_password("test-admin-password"),
+        display_name="Test Admin",
+        role=UserRole.ADMIN,
     )
     db.add(user)
     db.commit()

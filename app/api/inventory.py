@@ -2,8 +2,9 @@ import pandas as pd
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
-from app.core.auth import require_current_user
+from app.core.auth import require_current_user, require_role
 from app.database import get_db
+from app.models.enums import UserRole
 from app.models.inventory_event import InventoryEvent
 from app.models.user import User
 from app.schemas.export import ExportMetadata
@@ -62,7 +63,7 @@ def bulk_import_events(
 @router.post("/replay")
 def replay_inventory_projection(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_current_user),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     summary = rebuild_inventory_state(db)
     log_action(
@@ -98,7 +99,7 @@ def inventory_level(product_id: int, db: Session = Depends(get_db)):
 @router.post("/export", response_model=ExportMetadata)
 def export_inventory(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_current_user),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     result = export_inventory_events(db, incremental=True)
     log_action(db, current_user.id, "export", detail=f"rows_exported={result['rows_exported']}")
