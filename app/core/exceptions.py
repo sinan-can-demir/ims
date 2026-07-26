@@ -102,6 +102,8 @@ class RestockNotNeededError(DomainError):
             f"Product {product_id}'s recommended order quantity is "
             f"{recommended_order_qty} — no PO needed right now"
         )
+
+
 class SelfReferentialRecipeError(DomainError):
     status_code = 400
 
