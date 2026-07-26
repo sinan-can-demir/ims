@@ -410,6 +410,39 @@ under the GitHub milestone "Data Ingestion — Sales Integration".
       pattern
 
 ------------------------------------------------------------
+EPOCH 7.3 — Role-Based Access Control (RBAC)
+------------------------------------------------------------
+
+Goal: SECURITY.md has stated since the JWT-auth arc (#23) that RBAC is a
+known, intentional gap — every authenticated user has identical
+privileges. This epoch closes it with the minimum viable role model: two
+roles (admin/member), gating the two operations that actually need it
+today. Directly unblocks #72 (Dashboard: Admin/Ops page — replay + export
+controls), which currently frames "protected" as Caddy basic_auth alone
+(network-perimeter, all-or-nothing); without this epoch, any signed-in
+dashboard user would be able to trigger replay/export once #72 ships its
+UI. This epoch does NOT build #72's dashboard page — only the role
+column, the auth dependency, API-level gating on POST /api/inventory/replay
+and POST /api/inventory/export, and a role field in dashboard session
+state for #72 to consume later.
+
+[x] Add `role` column to `users` (UserRole enum: admin/member,
+      server_default="member" for safe backfill of existing rows)
+[x] `require_role()` auth dependency (app/core/auth.py) — composes on
+      require_current_user, re-checks the live DB-loaded role on every
+      request (no JWT claim, same convention as is_active), raises 403
+[x] Gate POST /api/inventory/replay and POST /api/inventory/export behind
+      require_role(UserRole.ADMIN)
+[x] `--role` flag on scripts/create_user.py (default: member); new
+      scripts/set_user_role.py for promoting/demoting existing users
+      (writes an audit_log "role_changed" entry — the one CLI action in
+      this epoch that IS audited, given it's a privilege-escalation
+      event, unlike account creation)
+[x] Add `role` to dashboard/auth.py's session-state dict — hook for #72,
+      no dashboard UI changes in this epoch
+[x] Update SECURITY.md's auth-model section to describe the role model
+
+------------------------------------------------------------
 EPOCH 8 — Kafka Streaming (Optional)
 ------------------------------------------------------------
 

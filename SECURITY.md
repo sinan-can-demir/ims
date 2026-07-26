@@ -19,13 +19,21 @@ signed JWT (HS256, 12-hour expiry, no refresh tokens); every other `/api`
 route requires `Authorization: Bearer <token>`, validated by
 `require_current_user`. Specifically:
 
-- **Real per-user identity**, but no roles/scopes yet — every authenticated
-  user has the same privileges. Deactivating an account (`is_active=False`)
-  takes effect immediately: `require_current_user` reloads the `User` row
-  and rechecks `is_active` on every request, not just at login, so a
-  still-unexpired token stops working the moment an account is deactivated.
+- **Real per-user identity, with two roles: `admin` and `member`.** Every
+  account defaults to `member`; `POST /api/inventory/replay` and
+  `POST /api/inventory/export` require `admin` (`require_role`,
+  `app/core/auth.py`), everything else just requires being logged in. Role
+  isn't in the JWT — `require_role` re-reads the live `User.role` on every
+  request via `require_current_user`, same convention as `is_active`, so a
+  promotion or demotion takes effect immediately with the same
+  still-unexpired token, no re-login required. Deactivating an account
+  (`is_active=False`) takes effect immediately for the same reason.
 - **No self-service registration.** Accounts are created CLI-only via
-  `scripts/create_user.py` — deliberate for a solo/learning project, not a
+  `scripts/create_user.py --role {admin,member}` (default `member`);
+  `scripts/set_user_role.py` promotes/demotes an existing account and
+  writes an `audit_log` entry (`action="role_changed"`) — the one CLI
+  action that's audited, since it's a privilege-escalation event, unlike
+  account creation. Deliberate for a solo/small-team deployment, not a
   permanent constraint; a `POST /api/auth/register` endpoint would be a
   natural, low-risk future addition if that's ever needed.
 - **Login failures are generic.** Unknown email, wrong password, and a
@@ -45,9 +53,9 @@ route requires `Authorization: Bearer <token>`, validated by
   revisiting before this app has meaningfully sensitive data or more than
   a handful of users.
 
-If you need OAuth/OIDC, RBAC, or anything beyond single-tier per-user auth,
-this project isn't there yet — see [`ROADMAP.md`](ROADMAP.md) for what's
-planned.
+If you need OAuth/OIDC or anything beyond a two-role (`admin`/`member`)
+model, this project isn't there yet — see [`ROADMAP.md`](ROADMAP.md) for
+what's planned.
 
 ## Webhook signature verification
 

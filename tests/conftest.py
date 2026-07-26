@@ -125,6 +125,19 @@ def admin_client(db):
 
 
 @pytest.fixture
+def set_user_role_db(dashboard_db, monkeypatch):
+    """
+    scripts/set_user_role.py does `from app.database import SessionLocal`
+    at its own import time, which binds an independent name in that
+    module's namespace — patching app.database.SessionLocal (what
+    dashboard_db does) never reaches it. Patch the name where it's
+    actually looked up: scripts.set_user_role's own module namespace.
+    """
+    monkeypatch.setattr("scripts.set_user_role.SessionLocal", dashboard_db)
+    return dashboard_db
+
+
+@pytest.fixture
 def export_paths(tmp_path):
     events_root = tmp_path / "inventory_events"
     checkpoint = tmp_path / "checkpoints.json"

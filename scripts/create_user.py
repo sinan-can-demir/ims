@@ -7,9 +7,15 @@
 #
 # Usage:
 #   python scripts/create_user.py --email you@example.com --display-name "Your Name"
+#   python scripts/create_user.py --email admin@example.com --display-name Admin --role admin
 #
 # Password is prompted interactively (not passed as an argument) so it
 # never ends up in shell history or process listings.
+#
+# --role defaults to "member" — there's no "first user is admin" magic
+# (a footgun: race conditions on concurrent first-run, silent behavior
+# nobody reviewed). To promote/demote an existing account, use
+# scripts/set_user_role.py instead of re-running this.
 #
 # Requirements:
 #   - Postgres must be reachable at DATABASE_URL (make up)
@@ -25,16 +31,20 @@ from sqlalchemy.exc import IntegrityError  # noqa: E402
 
 from app.core.security import hash_password  # noqa: E402
 from app.database import SessionLocal  # noqa: E402
+from app.models.enums import UserRole  # noqa: E402
 from app.models.user import User  # noqa: E402
 
 
-def create_user(email: str, password: str, display_name: str) -> User:
+def create_user(
+    email: str, password: str, display_name: str, role: str = UserRole.MEMBER.value
+) -> User:
     db = SessionLocal()
     try:
         user = User(
             email=email,
             password_hash=hash_password(password),
             display_name=display_name,
+            role=role,
         )
         db.add(user)
         db.commit()
@@ -51,6 +61,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Create a new IMS user account.")
     parser.add_argument("--email", required=True)
     parser.add_argument("--display-name", required=True)
+    parser.add_argument(
+        "--role",
+        choices=[role.value for role in UserRole],
+        default=UserRole.MEMBER.value,
+    )
     args = parser.parse_args()
 
     password = getpass.getpass("Password: ")
@@ -60,12 +75,12 @@ def main() -> None:
         raise SystemExit(1)
 
     try:
-        user = create_user(args.email, password, args.display_name)
+        user = create_user(args.email, password, args.display_name, args.role)
     except ValueError as exc:
         print(f"✗ {exc}")
         raise SystemExit(1) from exc
 
-    print(f"✓ Created user '{user.email}' (id={user.id})")
+    print(f"✓ Created user '{user.email}' (id={user.id}, role={user.role.value})")
 
 
 if __name__ == "__main__":

@@ -40,13 +40,17 @@ def login_form() -> None:
     finally:
         db.close()
 
-    # id/email/display_name only — never a password or token. There's no
-    # token to hold: this session lives entirely server-side in Streamlit's
-    # own session state, not in anything sent back to the browser.
+    # id/email/display_name/role only — never a password or token. There's
+    # no token to hold: this session lives entirely server-side in
+    # Streamlit's own session state, not in anything sent back to the
+    # browser. role is included so a future admin-only page (issue #72)
+    # can gate on st.session_state["user"]["role"] without touching this
+    # file again.
     st.session_state["user"] = {
         "id": user.id,
         "email": user.email,
         "display_name": user.display_name,
+        "role": user.role.value,
     }
     st.rerun()
 
