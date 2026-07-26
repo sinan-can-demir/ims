@@ -1,3 +1,5 @@
+import io
+
 import pandas as pd
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
@@ -20,6 +22,15 @@ from app.services.replay_service import rebuild_inventory_state
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
 _BULK_IMPORT_COLUMNS = ["sku", "event_type", "quantity", "event_id"]
+
+# Any authenticated user can hit this route (not admin-gated), and it was
+# reading an unbounded upload straight into memory before parsing — a
+# large or many-row CSV ties up memory plus a DB round-trip per row
+# (ingest_events) for the whole request. Byte cap rejects an oversized
+# upload before pandas ever touches it; row cap catches a compact-but
+# huge-row-count CSV that's small in bytes but still expensive to process.
+_BULK_IMPORT_MAX_BYTES = 10 * 1024 * 1024  # 10 MB
+_BULK_IMPORT_MAX_ROWS = 50_000
 
 
 @router.post("/events", response_model=InventoryEventResponse, status_code=201)
@@ -44,10 +55,26 @@ def bulk_import_events(
     sku, event_type, quantity, event_id. Partial success is expected —
     each row is resolved and recorded independently, see IngestResponse.
     """
+    # Read at most max_bytes+1 regardless of what Content-Length claims (it
+    # can be absent or wrong for chunked transfer) — a true cap, not just
+    # an early-exit check.
+    raw = file.file.read(_BULK_IMPORT_MAX_BYTES + 1)
+    if len(raw) > _BULK_IMPORT_MAX_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"CSV exceeds the {_BULK_IMPORT_MAX_BYTES // (1024 * 1024)}MB limit",
+        )
+
     try:
-        df = pd.read_csv(file.file)
+        df = pd.read_csv(io.BytesIO(raw))
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Could not parse CSV: {e}")
+
+    if len(df) > _BULK_IMPORT_MAX_ROWS:
+        raise HTTPException(
+            status_code=413,
+            detail=f"CSV exceeds the {_BULK_IMPORT_MAX_ROWS}-row limit ({len(df)} rows)",
+        )
 
     missing = [col for col in _BULK_IMPORT_COLUMNS if col not in df.columns]
     if missing:

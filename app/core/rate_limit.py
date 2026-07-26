@@ -1,5 +1,6 @@
 # app/core/rate_limit.py
 
+import ipaddress
 import os
 
 from slowapi import Limiter
@@ -7,18 +8,54 @@ from starlette.requests import Request
 
 _DEFAULT_RATE_LIMIT = os.getenv("RATE_LIMIT", "100/minute")
 
+# Every documented deployment path puts at most one reverse proxy between
+# the real client and this app, and that proxy always connects over a
+# private network: Caddy over the Docker Compose network (self-hosted +
+# Caddyfile overlay), the ALB over its VPC (10.0.0.0/16, infra/variables.tf).
+# The one path with no proxy at all — docker-compose.prod.yml alone,
+# plain HTTP on :8000 (see docker-compose.caddy.yml's comment) — has
+# Docker's published-port NAT preserve the real public client IP as the
+# TCP peer already, no header needed. So: trust X-Forwarded-For's
+# leftmost entry only when the immediate TCP peer is itself a private
+# address — that's exactly the case where "the peer" is our own proxy,
+# not an internet client who could forge the header themselves.
+_PRIVATE_NETWORKS = tuple(
+    ipaddress.ip_network(cidr)
+    for cidr in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8")
+)
+
+
+def _is_trusted_proxy_peer(peer_ip: str) -> bool:
+    try:
+        addr = ipaddress.ip_address(peer_ip)
+    except ValueError:
+        return False
+    return any(addr in network for network in _PRIVATE_NETWORKS)
+
 
 def rate_limit_key(request: Request) -> str:
     """
-    Always keys by client IP, never by anything in the request itself
-    (bearer token, headers). Keying by a client-supplied value would let
-    an attacker reset their bucket on every request just by presenting a
-    different value each time — e.g. a different account's token, or a
-    guessed header — defeating the brute-force mitigation this is meant
-    to provide, most concretely on the unauthenticated POST
-    /api/auth/login itself.
+    Keys by the real client IP — see _is_trusted_proxy_peer's docstring
+    for why X-Forwarded-For is only trusted when the connecting peer is
+    itself private (our own reverse proxy), never unconditionally.
+    Keying by anything client-supplied without that check would let an
+    attacker reset their bucket on every request just by presenting a
+    different value each time — e.g. a different account's token, or (if
+    trusted blindly) a forged X-Forwarded-For header — defeating the
+    brute-force mitigation this is meant to provide, most concretely on
+    the unauthenticated POST /api/auth/login itself.
     """
-    return request.client.host if request.client else "unknown"
+    peer_ip = request.client.host if request.client else None
+
+    if peer_ip and _is_trusted_proxy_peer(peer_ip):
+        forwarded_for = request.headers.get("X-Forwarded-For")
+        if forwarded_for:
+            # Leftmost entry is the original client, appended by the
+            # first (and here, only) proxy hop — revisit this index if a
+            # second hop (e.g. a CDN) is ever added in front of Caddy/ALB.
+            return forwarded_for.split(",")[0].strip()
+
+    return peer_ip or "unknown"
 
 
 # Storage defaults to slowapi's in-process memory:// backend, which is not
