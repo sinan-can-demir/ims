@@ -14,8 +14,14 @@ open-source tooling end to end.
 
 **Estimated cost: ~$75-85/month**, mostly the NAT Gateway (~$35) and ALB
 (~$18) — the cost of using private subnets rather than the cheapest possible
-design. Review `terraform plan` before every `apply`; this creates real,
-billed AWS resources.
+design. RDS defaults to Multi-AZ (`db_multi_az = true`), which roughly
+doubles the RDS instance cost for automatic failover — set
+`db_multi_az = false` in `terraform.tfvars` for a cheaper single-AZ
+dev/test deployment. Review `terraform plan` before every `apply`,
+**paying particular attention to any change on `aws_db_instance.main`** —
+this creates real, billed AWS resources, and a change that flips
+`deletion_protection` or `multi_az` has real cost and durability
+consequences.
 
 ## Prerequisites
 
@@ -124,5 +130,14 @@ curl -H "Authorization: Bearer $TOKEN" http://$(terraform output -raw alb_dns_na
 - Migrations run as a dedicated one-off task (`aws_ecs_task_definition.migrate`,
   run via `aws ecs run-task` in `ci.yml`'s deploy job) before each deploy
   updates the `api` service — safe to raise `desired_count` above 1.
-- RDS is single-AZ, no deletion protection, no final snapshot on destroy —
-  fine for this project's current stage, not production-grade durability.
+- RDS defaults to Multi-AZ, deletion protection, a 7-day backup retention,
+  and a final snapshot on destroy (`db_multi_az`/`db_backup_retention_period`/
+  `db_deletion_protection` in `variables.tf`, `terraform.tfvars.example` has
+  the override snippet). Two operational tradeoffs that come with that:
+  - `deletion_protection = true` means `terraform destroy` fails outright
+    until you override the variable to `false` and re-apply first.
+  - Every destroy leaves a manually-named RDS snapshot
+    (`<name-prefix>-db-final-snapshot`) behind — it isn't cleaned up
+    automatically, and a second destroy under the same identifier will fail
+    on a name collision unless you delete the old snapshot yourself first
+    (AWS console or `aws rds delete-db-snapshot`).
