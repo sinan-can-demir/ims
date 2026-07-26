@@ -138,6 +138,17 @@ def set_user_role_db(dashboard_db, monkeypatch):
 
 
 @pytest.fixture
+def admin_actions_db(dashboard_db, monkeypatch):
+    """
+    dashboard/admin_actions.py does `from app.database import
+    SessionLocal` at its own import time — same independent-name issue
+    as set_user_role_db above, patched the same way.
+    """
+    monkeypatch.setattr("dashboard.admin_actions.SessionLocal", dashboard_db)
+    return dashboard_db
+
+
+@pytest.fixture
 def export_paths(tmp_path):
     events_root = tmp_path / "inventory_events"
     checkpoint = tmp_path / "checkpoints.json"

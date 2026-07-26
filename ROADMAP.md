@@ -382,9 +382,12 @@ Tracked under the GitHub milestone "UX Improvements — Dashboard".
       tiles, event-type filter + pagination
 [ ] Fleet Overview page — portfolio-wide KPIs, urgency filtering, row-click
       deep link into Product Detail
-[ ] Admin/Ops page (replay + export controls) — was deferred until #32
+[x] Admin/Ops page (replay + export controls) — was deferred until #32
       (dashboard auth) landed; now unblocked, so it ships already protected
-      instead of exposed
+      instead of exposed. Gated on Epoch 7.3's `role` field (dashboard/app.py),
+      not just being logged in — confirmation checkbox required before the
+      destructive rebuild action is clickable, export mirrors the API's
+      always-incremental behavior (#72)
 [ ] Optional: .streamlit/config.toml theming polish
 
 ------------------------------------------------------------

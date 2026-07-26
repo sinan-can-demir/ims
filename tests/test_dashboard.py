@@ -7,6 +7,7 @@ import pytest
 from streamlit.testing.v1 import AppTest
 
 from app.core.security import hash_password
+from app.models.audit_log import AuditLog
 from app.models.enums import UserRole
 from app.models.user import User
 
@@ -162,3 +163,108 @@ def test_dashboard_login_failure_shows_error(client, dashboard_db, monkeypatch):
     assert not at.exception
     assert "user" not in at.session_state
     assert any("Invalid email or password" in e.value for e in at.error)
+
+
+@pytest.mark.skipif(not os.path.exists(_FEATURE_FILE), reason=_FEATURE_SKIP_REASON)
+def test_dashboard_admin_sees_admin_ops_section(client, dashboard_db, monkeypatch):
+    product = create_product(client)
+    purchase(client, product["id"], 50)
+    admin = _make_dashboard_user(dashboard_db, email="ops-admin@example.com", role=UserRole.ADMIN)
+
+    monkeypatch.setattr("dashboard.data.forecast", lambda *a, **k: _fake_forecast_df())
+
+    at = AppTest.from_file("dashboard/app.py")
+    _signed_in(at, admin)
+    at.run()
+
+    assert not at.exception
+    assert any("Admin / Ops" in s.value for s in at.subheader)
+
+
+@pytest.mark.skipif(not os.path.exists(_FEATURE_FILE), reason=_FEATURE_SKIP_REASON)
+def test_dashboard_member_does_not_see_admin_ops_section(client, dashboard_db, monkeypatch):
+    product = create_product(client)
+    purchase(client, product["id"], 50)
+    member = _make_dashboard_user(dashboard_db, email="ops-member@example.com")
+
+    monkeypatch.setattr("dashboard.data.forecast", lambda *a, **k: _fake_forecast_df())
+
+    at = AppTest.from_file("dashboard/app.py")
+    _signed_in(at, member)
+    at.run()
+
+    assert not at.exception
+    assert not any("Admin / Ops" in s.value for s in at.subheader)
+
+
+@pytest.mark.skipif(not os.path.exists(_FEATURE_FILE), reason=_FEATURE_SKIP_REASON)
+def test_dashboard_admin_can_trigger_replay(client, admin_actions_db, monkeypatch):
+    product = create_product(client)
+    purchase(client, product["id"], 50)
+    admin = _make_dashboard_user(
+        admin_actions_db, email="ops-replay-admin@example.com", role=UserRole.ADMIN
+    )
+
+    monkeypatch.setattr("dashboard.data.forecast", lambda *a, **k: _fake_forecast_df())
+
+    at = AppTest.from_file("dashboard/app.py")
+    _signed_in(at, admin)
+    at.run()
+
+    checkbox = next(
+        c for c in at.checkbox if "rebuilds inventory state for all products" in c.label
+    )
+    checkbox.check().run()
+
+    button = next(b for b in at.button if b.label == "Rebuild inventory projection")
+    button.click().run()
+
+    assert not at.exception
+    assert any("Rebuilt state for" in s.value for s in at.success)
+
+    session = admin_actions_db()
+    try:
+        entry = (
+            session.query(AuditLog)
+            .filter(AuditLog.action == "replay")
+            .order_by(AuditLog.id.desc())
+            .first()
+        )
+        assert entry is not None
+        assert entry.actor_id == admin.id
+    finally:
+        session.close()
+
+
+@pytest.mark.skipif(not os.path.exists(_FEATURE_FILE), reason=_FEATURE_SKIP_REASON)
+def test_dashboard_admin_can_trigger_export(client, admin_actions_db, export_paths, monkeypatch):
+    product = create_product(client)
+    purchase(client, product["id"], 50)
+    admin = _make_dashboard_user(
+        admin_actions_db, email="ops-export-admin@example.com", role=UserRole.ADMIN
+    )
+
+    monkeypatch.setattr("dashboard.data.forecast", lambda *a, **k: _fake_forecast_df())
+
+    at = AppTest.from_file("dashboard/app.py")
+    _signed_in(at, admin)
+    at.run()
+
+    button = next(b for b in at.button if b.label == "Export inventory events")
+    button.click().run()
+
+    assert not at.exception
+    assert any("Exported" in s.value for s in at.success)
+
+    session = admin_actions_db()
+    try:
+        entry = (
+            session.query(AuditLog)
+            .filter(AuditLog.action == "export")
+            .order_by(AuditLog.id.desc())
+            .first()
+        )
+        assert entry is not None
+        assert entry.actor_id == admin.id
+    finally:
+        session.close()
