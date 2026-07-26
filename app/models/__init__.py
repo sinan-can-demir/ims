@@ -6,5 +6,6 @@ from .inventory_state import InventoryState as InventoryState
 from .product import Product as Product
 from .purchase_order import PurchaseOrder as PurchaseOrder
 from .purchase_order_line import PurchaseOrderLine as PurchaseOrderLine
+from .recipe_item import RecipeItem as RecipeItem
 from .supplier import Supplier as Supplier
 from .user import User as User

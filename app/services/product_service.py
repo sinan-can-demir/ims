@@ -8,7 +8,7 @@ from app.schemas.product import ProductCreate
 
 
 def create_product(db: Session, product: ProductCreate) -> Product:
-    new_product = Product(name=product.name, sku=product.sku)
+    new_product = Product(name=product.name, sku=product.sku, unit=product.unit)
 
     try:
         db.add(new_product)

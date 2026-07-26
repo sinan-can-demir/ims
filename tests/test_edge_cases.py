@@ -73,6 +73,50 @@ def test_damage_requires_positive_quantity(client):
 
 
 # ---------------------------------------------------------------------------
+# WASTE — spoilage/waste, tracked distinctly from DAMAGE
+# ---------------------------------------------------------------------------
+
+
+def test_waste_decreases_inventory(client):
+    """
+    WASTE behaves like DAMAGE for stock purposes (decreases quantity,
+    oversell-protected) but is tracked as its own event type.
+    """
+    product = create_product(client)
+    pid = product["id"]
+
+    _event(client, pid, "PURCHASE", 20)
+    response = _event(client, pid, "WASTE", 5)
+    assert response.status_code == 201
+    assert response.json()["event_type"] == "WASTE"
+    assert _quantity(client, pid) == 15
+
+
+def test_waste_requires_positive_quantity(client):
+    """
+    WASTE with negative quantity must be rejected — same rule as SALE/DAMAGE.
+    """
+    product = create_product(client)
+    pid = product["id"]
+
+    _event(client, pid, "PURCHASE", 50)
+    response = _event(client, pid, "WASTE", -5)
+    assert response.status_code == 400
+
+
+def test_waste_blocked_by_oversell_protection(client):
+    """
+    WASTE cannot drive stock negative — same oversell guard as SALE/DAMAGE.
+    """
+    product = create_product(client)
+    pid = product["id"]
+
+    _event(client, pid, "PURCHASE", 5)
+    response = _event(client, pid, "WASTE", 10)
+    assert response.status_code == 400
+
+
+# ---------------------------------------------------------------------------
 # Large adjustment edge cases
 # ---------------------------------------------------------------------------
 

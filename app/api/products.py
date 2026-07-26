@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.schemas.product import ProductCreate, ProductResponse
-from app.services.product_service import create_product
+from app.services.product_service import create_product, list_products
 
 router = APIRouter()
 
@@ -17,3 +17,9 @@ def create_product_route(product: ProductCreate, db: Session = Depends(get_db)):
     If a product with the same SKU already exists, returns 409 Conflict.
     """
     return create_product(db, product)
+
+
+@router.get("/products", response_model=list[ProductResponse])
+def list_products_route(db: Session = Depends(get_db)):
+    """Lists every product, alphabetically by name."""
+    return list_products(db)
