@@ -140,6 +140,25 @@ now cap the size of a single request, independent of the rate limits above:
   generous for a near-real-time delta, not a bulk history dump (that's what
   the CSV path above is for).
 
+## Audit trail
+
+`audit_log` (`app/models/audit_log.py`) records privilege-sensitive
+actions — replay, export, role changes, login failures — via
+`app/services/audit_service.py::log_action`, the only code path that
+ever writes to the table, and it only ever inserts.
+
+That was previously true only by *code convention*: the single shared
+Postgres role the app connects as has full `UPDATE`/`DELETE` on every
+table, `audit_log` included, so nothing at the database layer actually
+enforced immutability. **Resolved (#99):** a Postgres trigger
+(`audit_log_append_only`, added by the
+`add audit log tamper protection trigger` migration) now rejects any
+`UPDATE` or `DELETE` on `audit_log` outright, regardless of which role
+issues it — a trigger rather than a `REVOKE` on today's app role
+specifically, so the guarantee doesn't quietly stop applying if the app
+ever moves off the current single-shared-role model. Inserts are
+unaffected.
+
 ## Response security headers
 
 Every response gets `X-Content-Type-Options: nosniff`, `X-Frame-Options:
