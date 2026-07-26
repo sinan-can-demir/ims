@@ -7,6 +7,7 @@ import pytest
 from streamlit.testing.v1 import AppTest
 
 from app.core.security import hash_password
+from app.models.enums import UserRole
 from app.models.user import User
 
 from .utils import create_product, purchase
@@ -21,10 +22,16 @@ def _make_dashboard_user(
     dashboard_db,
     email="dash-user@example.com",
     password="dash-password",  # noqa: S107 -- test fixture value, not a real credential
+    role=UserRole.MEMBER,
 ):
     session = dashboard_db()
     try:
-        user = User(email=email, password_hash=hash_password(password), display_name="Dash User")
+        user = User(
+            email=email,
+            password_hash=hash_password(password),
+            display_name="Dash User",
+            role=role,
+        )
         session.add(user)
         session.commit()
         session.refresh(user)
@@ -44,6 +51,7 @@ def _signed_in(at: AppTest, user: User) -> None:
         "id": user.id,
         "email": user.email,
         "display_name": user.display_name,
+        "role": user.role.value,
     }
 
 
@@ -127,6 +135,7 @@ def test_dashboard_login_success_unlocks_content(client, dashboard_db, monkeypat
 
     assert not at.exception
     assert at.session_state["user"]["email"] == "login-flow@example.com"
+    assert at.session_state["user"]["role"] == "member"
     metric_labels = [m.label for m in at.metric]
     assert "Current Inventory" in metric_labels
 
