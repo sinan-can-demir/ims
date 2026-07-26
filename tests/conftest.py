@@ -56,21 +56,32 @@ def db():
 
 
 @pytest.fixture
-def dashboard_db(monkeypatch):
+def dashboard_db(db, monkeypatch):
     """
     Points the dashboard's directly-imported app.database.SessionLocal at
-    this same StaticPool test engine. The dashboard doesn't use FastAPI's
+    this same test engine. The dashboard doesn't use FastAPI's
     Depends(get_db) — it calls SessionLocal() itself — so
     dependency_overrides (as the `client` fixture uses) doesn't apply here;
     patching the attribute that `from app.database import SessionLocal`
     resolves at script-execution time is what actually takes effect.
+
+    Depends on `db` (rather than managing its own create_all/drop_all)
+    specifically so pytest's fixture-teardown order — reverse of setup —
+    guarantees `db`'s session.close() runs before `db`'s own drop_all().
+    Under SQLite's single shared StaticPool connection this never
+    mattered, but under a real Postgres backend (set TEST_DATABASE_URL),
+    every write ends with `db.commit(); db.refresh(x)` — refresh reopens
+    an implicit transaction that holds a lock until the session closes.
+    A test using both `client` (which holds `db` open for the whole test)
+    and this fixture would previously call drop_all() here *before*
+    `db`'s session ever closed — DROP TABLE blocking forever on a lock
+    that only `db`'s own finalizer would release, deadlocking every CI
+    run that actually exercised this combination (previously masked
+    because every prior dashboard test happened to skip under CI's
+    missing feature-store file).
     """
-    Base.metadata.create_all(bind=engine)
     monkeypatch.setattr("app.database.SessionLocal", TestingSessionLocal)
-    try:
-        yield TestingSessionLocal
-    finally:
-        Base.metadata.drop_all(bind=engine)
+    yield TestingSessionLocal
 
 
 @pytest.fixture(scope="function")
