@@ -420,8 +420,10 @@ Tracked under the GitHub milestone "UX Improvements — Dashboard".
 - [x] Product Detail page enhancements — forecast horizon slider (1-90,
       matching the API bound), safety_stock/days_of_stock_remaining KPI
       tiles, event-type filter + pagination (#70)
-- [ ] Fleet Overview page — portfolio-wide KPIs, urgency filtering, row-click
-      deep link into Product Detail
+- [x] Fleet Overview page — portfolio-wide KPIs, urgency filtering, deep
+      link into Product Detail via a per-row "View" button rather than
+      st.dataframe row-click selection, which reproducibly crashed the
+      Streamlit server in this environment (#71)
 - [x] Admin/Ops page (replay + export controls) — was deferred until #32
       (dashboard auth) landed; now unblocked, so it ships already protected
       instead of exposed. Gated on Epoch 7.3's `role` field

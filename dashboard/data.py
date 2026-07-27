@@ -16,6 +16,7 @@ from app.database import SessionLocal
 from app.models.enums import EventType, PurchaseOrderStatus
 from app.models.inventory_event import InventoryEvent
 from app.models.recipe_item import RecipeItem
+from app.services.fleet_service import get_fleet_status
 from app.services.forecast_service import forecast
 from app.services.inventory_service import get_inventory
 from app.services.product_service import list_products
@@ -43,6 +44,14 @@ def _get_restock(product_id: int) -> dict:
     db = SessionLocal()
     try:
         return get_restock_recommendation(db, product_id)
+    finally:
+        db.close()
+
+
+def _get_fleet_status() -> list[dict]:
+    db = SessionLocal()
+    try:
+        return get_fleet_status(db)
     finally:
         db.close()
 
@@ -157,6 +166,11 @@ def load_inventory(product_id: int) -> int:
 @st.cache_data(ttl=CACHE_TTL)
 def load_restock(product_id: int) -> dict:
     return _get_restock(product_id)
+
+
+@st.cache_data(ttl=CACHE_TTL)
+def load_fleet_status() -> list[dict]:
+    return _get_fleet_status()
 
 
 @st.cache_data(ttl=CACHE_TTL)
