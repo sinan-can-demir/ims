@@ -1,10 +1,11 @@
-# dashboard/pages/1_Recipes.py
+# dashboard/views/recipes.py
 #
 # Manage a dish's recipe/BOM — which ingredients it consumes, and how
 # much, when it's sold (see app/services/inventory_service.py's
-# _cascade_recipe_consumption). Uses Streamlit's classic pages/
-# auto-discovery, same as app.py — no multi-page nav overhaul needed
-# for a second page (that's a separate, larger epoch — ROADMAP.md 7.1).
+# _cascade_recipe_consumption). Routed via st.navigation()/st.Page() in
+# dashboard/app.py — page_config and the auth gate happen once there,
+# not per-page; require_login() here is a cheap no-op safety net for
+# running this file standalone (dev, tests), not the real gate.
 
 import sys
 from pathlib import Path
@@ -17,8 +18,6 @@ from app.core.exceptions import DomainError
 from dashboard.auth import require_login
 from dashboard.data import load_products, load_recipe_items
 from dashboard.recipe_actions import add_recipe_item, remove_recipe_item, update_recipe_item
-
-st.set_page_config(page_title="IMS Dashboard — Recipes", page_icon="🍳", layout="wide")
 
 require_login()
 

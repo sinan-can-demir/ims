@@ -410,13 +410,13 @@ Tracked under the GitHub milestone "UX Improvements — Dashboard".
       AppTest-based dashboard tests introduced (tests/test_dashboard.py,
       dashboard_db fixture in tests/conftest.py) to prove the testing
       mechanism before multipage complexity is added.
-- [ ] Add list_products() (app/services/product_service.py) and
+- [x] Add list_products() (app/services/product_service.py) and
       get_fleet_status() (new app/services/fleet_service.py) — backend only,
-      no dashboard changes yet
-- [ ] Multi-page navigation via st.navigation()/st.Page() (dashboard/views/),
+      no dashboard changes yet (#68)
+- [x] Multi-page navigation via st.navigation()/st.Page() (dashboard/views/),
       product selector sourced from the products table instead of the
       feature-store parquet file (fixes numeric-ID-only display and
-      products-with-no-sales-history being invisible)
+      products-with-no-sales-history being invisible) (#69)
 - [ ] Product Detail page enhancements — forecast horizon slider (1-90,
       matching the API bound), safety_stock/days_of_stock_remaining KPI
       tiles, event-type filter + pagination
@@ -424,7 +424,8 @@ Tracked under the GitHub milestone "UX Improvements — Dashboard".
       deep link into Product Detail
 - [x] Admin/Ops page (replay + export controls) — was deferred until #32
       (dashboard auth) landed; now unblocked, so it ships already protected
-      instead of exposed. Gated on Epoch 7.3's `role` field (dashboard/app.py),
+      instead of exposed. Gated on Epoch 7.3's `role` field
+      (dashboard/views/product_detail.py, moved here from dashboard/app.py in #69),
       not just being logged in — confirmation checkbox required before the
       destructive rebuild action is clickable, export mirrors the API's
       always-incremental behavior (#72)
