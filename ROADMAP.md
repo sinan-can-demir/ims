@@ -386,16 +386,10 @@ Phase A-C backlog.
       on `POST /api/webhooks/ingest`'s `events` list (rate-limit-exempt by
       design, so schema validation was the only available bound) — see
       SECURITY.md's "Ingestion size limits" section.  
-- [ ] Add DB-level tamper protection to `audit_log` (#99, filed, low
-      severity/defense-in-depth, not an active vulnerability — no SQL
-      injection exists anywhere in the app to leverage this today). The
-      single shared Postgres app role has full UPDATE/DELETE on every
-      table including `audit_log`, so immutability today holds only by
-      code convention (`audit_service.log_action` never updates/deletes),
-      not by a DB-level guarantee. Options: revoke UPDATE/DELETE on the
-      table from the app role via migration, or an append-only trigger
-      that rejects UPDATE/DELETE regardless of role. Estimate: a few
-      hours.  
+- [x] Add DB-level tamper protection to `audit_log` (#99, PR #107) — a
+      Postgres trigger rejects `UPDATE`/`DELETE` on the table regardless
+      of role, so immutability no longer holds only by code convention
+      (`audit_service.log_action` never updating/deleting).  
 
 ------------------------------------------------------------
 EPOCH 7.1 — Dashboard UX Overhaul

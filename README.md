@@ -32,7 +32,12 @@ An event-driven inventory platform with a full analytics pipeline and ML-powered
       registry — backtested for day-of-week-heavy demand (e.g. restaurant
       weekday/weekend spikes); requires 14+ days of history so
       `weekly_seasonality` has seen the weekly cycle repeat at least once
-- [x] Streamlit dashboard — live inventory, event history, 30-day forecasts
+- [x] Multi-page Streamlit dashboard — Product Detail (live inventory,
+      configurable-horizon demand forecast, safety-stock/days-of-stock
+      KPIs, filterable/paginated event history), Fleet Overview
+      (portfolio-wide KPIs, urgency filtering, click-through to Product
+      Detail), Recipes/BOM, Purchase Orders, and an admin/ops panel
+      (replay + export), themed via `.streamlit/config.toml`
 - [x] Prometheus metrics + structured JSON request logging
       (`/metrics`, `X-Request-ID`)
 - [x] CI on every push/PR — lint, full test suite (incl. Postgres-only
@@ -58,21 +63,34 @@ An event-driven inventory platform with a full analytics pipeline and ML-powered
 - [x] Size caps on both generic ingestion paths (10MB/50k-row CSV bulk
       import, 1000-item webhook payload) — see [SECURITY.md](SECURITY.md#ingestion-size-limits)
 
-## In Progress
+## Recently Shipped
 
-**Current focus — Path A, getting one real restaurant running this daily:**
-recipes/BOM (dishes consume ingredients in fixed quantities), a `WASTE`
-event type, a real `PurchaseOrder` object, day-of-week-aware forecasting, a
-CLI wrapper (`ims start`/`setup`/`backup`), and a backup routine. See
+**Path A — getting one real restaurant running this daily:** recipes/BOM
+(dishes consume ingredients in fixed quantities), a `WASTE` event type, a
+real `PurchaseOrder` object, day-of-week-aware forecasting, a CLI wrapper
+(`ims start`/`setup`/`backup`), and a backup routine. See
 [ROADMAP.md](ROADMAP.md)'s "Path A" section for the full list.
 
-**Deferred until Path A has real signal that more than one business wants
-this (Path B, general small/mid-business audience — see
-[ROADMAP.md](ROADMAP.md) Epochs 10-15):**
+**Dashboard UX overhaul (Epoch 7.1):** multi-page navigation
+(`st.navigation()`/`st.Page()`, replacing the old single-page layout), a
+portfolio-wide **Fleet Overview** page (KPIs across every product, urgency
+filtering, click-through to Product Detail), Product Detail enhancements
+(forecast horizon slider up to 90 days, safety-stock/days-of-stock-remaining
+KPI tiles, event-type filter + pagination on the event history table), and
+a `.streamlit/config.toml` theming pass.
+
+## Deferred (Path B)
+
+Deferred until Path A has real signal that more than one business wants
+this (general small/mid-business audience — see
+[ROADMAP.md](ROADMAP.md) Epochs 10-15):
 
 - [ ] Move the data lake off the local filesystem onto S3-compatible object
       storage (`#22` — rescoped, not blocked: MinIO for self-hosted, real
       S3 for AWS)
+- [ ] Deploy the self-hosted stack to a real VPS (`#74` — deferred on a
+      separate no-cost budget constraint, not signal-gating like the rest
+      of this list)
 - [ ] Deploy the dashboard on AWS (ECS, reading the feature store from S3)
 - [ ] Apply the AWS Terraform — ECS/RDS/ALB infra is written, not yet running
 - [ ] Multi-tenancy, real integrations (Shopify/QuickBooks/etc.), order
@@ -524,8 +542,9 @@ Copy `.env.example` to `.env` and adjust as needed.
 | 4 | Feature Engineering | ✅ Complete |
 | 5 | ML Platform (Prophet forecasting) | ✅ Complete |
 | 6 | Streamlit Dashboard | ✅ Complete |
-| 7 | Production Hardening + Deployment (self-hosted + AWS) | Nearly complete — `#22` (S3 data lake), `#99` (audit log tamper protection) open |
-| Path A | Restaurant deployment — recipes/BOM, `WASTE` events, real POs, forecasting tuning, CLI wrapper, backups | In Progress |
+| 7 | Production Hardening + Deployment (self-hosted + AWS) | Nearly complete — `#22` (S3 data lake) open, deferred to Path B |
+| 7.1 | Dashboard UX Overhaul — multi-page nav, Fleet Overview, Product Detail enhancements, theming | ✅ Complete |
+| Path A | Restaurant deployment — recipes/BOM, `WASTE` events, real POs, forecasting tuning, CLI wrapper, backups | ✅ Complete |
 | 10-15 | General small/mid-business platform (Path B) | Deferred until Path A has signal |
 
 ---
