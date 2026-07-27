@@ -13,6 +13,7 @@ from .utils import create_product, purchase
 
 RECIPES_PAGE = "dashboard/views/recipes.py"
 PURCHASE_ORDERS_PAGE = "dashboard/views/purchase_orders.py"
+FLEET_OVERVIEW_PAGE = "dashboard/views/fleet_overview.py"
 
 
 def _make_dashboard_user(
@@ -513,3 +514,114 @@ def test_dashboard_events_pagination(client, dashboard_db, monkeypatch):
 
     assert not at.exception
     assert any("Page 1 of 2 (25 events)" in c.value for c in at.caption)
+
+
+# ---------------------------------------------------------------------------
+# Fleet Overview page (issue #71): portfolio-wide KPIs, urgency filtering,
+# row-click deep link into Product Detail. AppTest has no way to simulate
+# clicking a st.dataframe row (Dataframe testing element only exposes
+# .value, no selection API), so the row-click -> st.switch_page() half of
+# the deep link is verified live in the browser instead; these tests cover
+# what AppTest can exercise: rendering, KPIs, filtering, and the *receiving*
+# side of the deep link (product_detail.py pre-selecting from session_state).
+# ---------------------------------------------------------------------------
+
+
+def test_fleet_overview_renders_without_exception(client, dashboard_db, monkeypatch):
+    product = create_product(client)
+    purchase(client, product["id"], 50)
+    user = _make_dashboard_user(dashboard_db)
+
+    _mock_forecast(monkeypatch)
+
+    st.cache_data.clear()
+    at = AppTest.from_file(FLEET_OVERVIEW_PAGE)
+    _signed_in(at, user)
+    at.run()
+
+    assert not at.exception
+
+
+def test_fleet_overview_shows_portfolio_kpis(client, dashboard_db, monkeypatch):
+    create_product(client, "Alpha")
+    create_product(client, "Beta")
+    user = _make_dashboard_user(dashboard_db)
+
+    _mock_forecast(monkeypatch)
+
+    st.cache_data.clear()
+    at = AppTest.from_file(FLEET_OVERVIEW_PAGE)
+    _signed_in(at, user)
+    at.run()
+
+    assert not at.exception
+    metric_labels = [m.label for m in at.metric]
+    assert metric_labels == ["Total Products", "Total Inventory", "Stockouts", "Needs Attention"]
+
+    total_products = next(m for m in at.metric if m.label == "Total Products")
+    assert total_products.value == "2"
+
+    stockouts = next(m for m in at.metric if m.label == "Stockouts")
+    assert stockouts.value == "2"  # neither product has any inventory yet
+
+
+def test_fleet_overview_view_button_stages_deep_link(client, dashboard_db, monkeypatch):
+    product = create_product(client, "Widget")
+    purchase(client, product["id"], 50)
+    user = _make_dashboard_user(dashboard_db)
+
+    _mock_forecast(monkeypatch)
+
+    st.cache_data.clear()
+    at = AppTest.from_file(FLEET_OVERVIEW_PAGE)
+    _signed_in(at, user)
+    at.run()
+
+    view_button = next(b for b in at.button if b.label == "View →")
+    view_button.click().run()
+
+    assert at.session_state["deep_link_product_id"] == product["id"]
+
+
+def test_fleet_overview_urgency_filter_narrows_table(client, dashboard_db, monkeypatch):
+    stocked_out = create_product(client, "Stocked Out Item")
+    healthy = create_product(client, "Healthy Item")
+    purchase(client, healthy["id"], 1000)
+    user = _make_dashboard_user(dashboard_db)
+
+    _mock_forecast(monkeypatch)
+
+    st.cache_data.clear()
+    at = AppTest.from_file(FLEET_OVERVIEW_PAGE)
+    _signed_in(at, user)
+    at.run()
+
+    filter_select = next(s for s in at.selectbox if s.label == "Filter by urgency")
+    filter_select.select("STOCKOUT").run()
+
+    assert not at.exception
+    markdown_values = " ".join(m.value for m in at.markdown)
+    assert f"Stocked Out Item ({stocked_out['sku']})" in markdown_values
+    assert f"Healthy Item ({healthy['sku']})" not in markdown_values
+    assert len([b for b in at.button if b.label == "View →"]) == 1
+
+
+def test_product_detail_deep_link_preselects_product(client, dashboard_db, monkeypatch):
+    product_a = create_product(client, "Alpha")
+    product_b = create_product(client, "Beta")
+    purchase(client, product_a["id"], 10)
+    purchase(client, product_b["id"], 10)
+    user = _make_dashboard_user(dashboard_db)
+
+    _mock_forecast(monkeypatch)
+
+    st.cache_data.clear()
+    at = AppTest.from_file("dashboard/views/product_detail.py")
+    _signed_in(at, user)
+    at.session_state["deep_link_product_id"] = product_b["id"]
+    at.run()
+
+    assert not at.exception
+    select = next(s for s in at.selectbox if s.label == "Select Product")
+    assert select.value == product_b["id"]
+    assert "deep_link_product_id" not in at.session_state

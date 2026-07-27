@@ -28,6 +28,7 @@ from dashboard.auth import require_login
 from dashboard.data import load_events, load_forecast, load_inventory, load_products, load_restock
 
 EVENTS_PAGE_SIZE = 20
+PRODUCT_SELECT_KEY = "product_detail_selected_product"
 
 current_user = require_login()
 
@@ -41,10 +42,18 @@ if not products:
 
 product_labels = {p["id"]: f"{p['name']} ({p['sku']})" for p in products}
 
+# A row-click deep link from Fleet Overview (issue #71) stashes the target
+# product id here before switching pages. Assigning to the widget's own
+# session_state key *before* the widget is created is what makes the
+# selectbox actually open on that product instead of its default.
+if "deep_link_product_id" in st.session_state:
+    st.session_state[PRODUCT_SELECT_KEY] = st.session_state.pop("deep_link_product_id")
+
 selected_product = st.sidebar.selectbox(
     "Select Product",
     options=list(product_labels.keys()),
     format_func=lambda pid: product_labels[pid],
+    key=PRODUCT_SELECT_KEY,
 )
 
 if st.sidebar.button("🔄 Refresh"):
