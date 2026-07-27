@@ -431,7 +431,7 @@ Tracked under the GitHub milestone "UX Improvements — Dashboard".
       not just being logged in — confirmation checkbox required before the
       destructive rebuild action is clickable, export mirrors the API's
       always-incremental behavior (#72)
-- [ ] Optional: .streamlit/config.toml theming polish
+- [x] Optional: .streamlit/config.toml theming polish (#73)
 
 ------------------------------------------------------------
 EPOCH 7.2 — Real Sales-Data Ingestion

@@ -1,0 +1,54 @@
+# .streamlit/config.toml
+#
+# Theming pass (issue #73), done last per that issue's own ordering —
+# after product_detail.py, fleet_overview.py, and the admin/ops panel
+# already existed to theme. primaryColor matches the indigo already
+# hardcoded into the forecast chart in dashboard/views/product_detail.py
+# (#6366f1), so the chart and the rest of the UI read as one system
+# instead of two different blues.
+#
+# chartCategoricalColors is only a valid key under the top-level [theme]
+# section in this Streamlit version (1.56.0) — there's no [theme.light]/
+# [theme.dark] override for it, confirmed by Streamlit logging "not a
+# valid config option" when tried there. So this uses the dataviz
+# skill's reference palette's *dark*-stepped values as the one set for
+# both modes: validated (scripts/validate_palette.js) at >=3:1 contrast
+# against the dark surface, and re-validated here against the light
+# surface too (only one color, #c98500, sits marginally under 3:1 at
+# 2.99 — already mitigated by this app's existing chart/dataframe
+# legends and labels, not color-alone).
+[theme]
+base = "light"
+primaryColor = "#6366f1"
+font = "sans-serif"
+baseRadius = "medium"
+buttonRadius = "medium"
+showWidgetBorder = true
+chartCategoricalColors = [
+    "#3987e5",
+    "#d95926",
+    "#199e70",
+    "#c98500",
+    "#d55181",
+    "#008300",
+    "#9085e9",
+    "#e66767",
+]
+
+[theme.light]
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f9f9f7"
+textColor = "#0b0b0b"
+linkColor = "#6366f1"
+borderColor = "#e1e0d9"
+dataframeBorderColor = "#e1e0d9"
+dataframeHeaderBackgroundColor = "#f9f9f7"
+
+[theme.dark]
+backgroundColor = "#0d0d0d"
+secondaryBackgroundColor = "#1a1a19"
+textColor = "#ffffff"
+linkColor = "#818cf8"
+borderColor = "#2c2c2a"
+dataframeBorderColor = "#2c2c2a"
+dataframeHeaderBackgroundColor = "#1a1a19"
