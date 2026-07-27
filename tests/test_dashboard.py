@@ -69,6 +69,9 @@ def test_dashboard_renders_without_exception(client, dashboard_db, monkeypatch):
     user = _make_dashboard_user(dashboard_db)
 
     monkeypatch.setattr("dashboard.data.forecast", lambda *a, **k: _fake_forecast_df())
+    monkeypatch.setattr(
+        "app.services.restock_service.forecast", lambda *a, **k: _fake_forecast_df()
+    )
 
     at = AppTest.from_file("dashboard/app.py")
     _signed_in(at, user)
@@ -83,6 +86,9 @@ def test_dashboard_shows_inventory_metric(client, dashboard_db, monkeypatch):
     user = _make_dashboard_user(dashboard_db)
 
     monkeypatch.setattr("dashboard.data.forecast", lambda *a, **k: _fake_forecast_df())
+    monkeypatch.setattr(
+        "app.services.restock_service.forecast", lambda *a, **k: _fake_forecast_df()
+    )
 
     at = AppTest.from_file("dashboard/app.py")
     _signed_in(at, user)
@@ -98,6 +104,9 @@ def test_dashboard_blocks_unauthenticated_visitor(client, dashboard_db, monkeypa
     purchase(client, product["id"], 50)
 
     monkeypatch.setattr("dashboard.data.forecast", lambda *a, **k: _fake_forecast_df())
+    monkeypatch.setattr(
+        "app.services.restock_service.forecast", lambda *a, **k: _fake_forecast_df()
+    )
 
     at = AppTest.from_file("dashboard/app.py")
     at.run()
@@ -118,6 +127,9 @@ def test_dashboard_login_success_unlocks_content(client, dashboard_db, monkeypat
     )
 
     monkeypatch.setattr("dashboard.data.forecast", lambda *a, **k: _fake_forecast_df())
+    monkeypatch.setattr(
+        "app.services.restock_service.forecast", lambda *a, **k: _fake_forecast_df()
+    )
 
     at = AppTest.from_file("dashboard/app.py")
     at.run()
@@ -143,6 +155,9 @@ def test_dashboard_login_failure_shows_error(client, dashboard_db, monkeypatch):
     )
 
     monkeypatch.setattr("dashboard.data.forecast", lambda *a, **k: _fake_forecast_df())
+    monkeypatch.setattr(
+        "app.services.restock_service.forecast", lambda *a, **k: _fake_forecast_df()
+    )
 
     at = AppTest.from_file("dashboard/app.py")
     at.run()
@@ -162,6 +177,9 @@ def test_dashboard_admin_sees_admin_ops_section(client, dashboard_db, monkeypatc
     admin = _make_dashboard_user(dashboard_db, email="ops-admin@example.com", role=UserRole.ADMIN)
 
     monkeypatch.setattr("dashboard.data.forecast", lambda *a, **k: _fake_forecast_df())
+    monkeypatch.setattr(
+        "app.services.restock_service.forecast", lambda *a, **k: _fake_forecast_df()
+    )
 
     at = AppTest.from_file("dashboard/app.py")
     _signed_in(at, admin)
@@ -177,6 +195,9 @@ def test_dashboard_member_does_not_see_admin_ops_section(client, dashboard_db, m
     member = _make_dashboard_user(dashboard_db, email="ops-member@example.com")
 
     monkeypatch.setattr("dashboard.data.forecast", lambda *a, **k: _fake_forecast_df())
+    monkeypatch.setattr(
+        "app.services.restock_service.forecast", lambda *a, **k: _fake_forecast_df()
+    )
 
     at = AppTest.from_file("dashboard/app.py")
     _signed_in(at, member)
@@ -194,6 +215,9 @@ def test_dashboard_admin_can_trigger_replay(client, admin_actions_db, monkeypatc
     )
 
     monkeypatch.setattr("dashboard.data.forecast", lambda *a, **k: _fake_forecast_df())
+    monkeypatch.setattr(
+        "app.services.restock_service.forecast", lambda *a, **k: _fake_forecast_df()
+    )
 
     at = AppTest.from_file("dashboard/app.py")
     _signed_in(at, admin)
@@ -232,6 +256,9 @@ def test_dashboard_admin_can_trigger_export(client, admin_actions_db, export_pat
     )
 
     monkeypatch.setattr("dashboard.data.forecast", lambda *a, **k: _fake_forecast_df())
+    monkeypatch.setattr(
+        "app.services.restock_service.forecast", lambda *a, **k: _fake_forecast_df()
+    )
 
     at = AppTest.from_file("dashboard/app.py")
     _signed_in(at, admin)
