@@ -63,15 +63,26 @@ def _fake_forecast_df():
     )
 
 
+def _mock_forecast(monkeypatch, fn=None):
+    """
+    Mocks both call sites that reach forecast_service.forecast(): the
+    dashboard's own load_forecast() (dashboard.data.forecast) and
+    restock_service.get_restock_recommendation()'s separate import
+    (app.services.restock_service.forecast) — see the fix in
+    fix(tests): mock restock_service.forecast, not just
+    dashboard.data.forecast for why both are required.
+    """
+    forecast_fn = fn or (lambda *a, **k: _fake_forecast_df())
+    monkeypatch.setattr("dashboard.data.forecast", forecast_fn)
+    monkeypatch.setattr("app.services.restock_service.forecast", forecast_fn)
+
+
 def test_dashboard_renders_without_exception(client, dashboard_db, monkeypatch):
     product = create_product(client)
     purchase(client, product["id"], 50)
     user = _make_dashboard_user(dashboard_db)
 
-    monkeypatch.setattr("dashboard.data.forecast", lambda *a, **k: _fake_forecast_df())
-    monkeypatch.setattr(
-        "app.services.restock_service.forecast", lambda *a, **k: _fake_forecast_df()
-    )
+    _mock_forecast(monkeypatch)
 
     at = AppTest.from_file("dashboard/app.py")
     _signed_in(at, user)
@@ -85,10 +96,7 @@ def test_dashboard_shows_inventory_metric(client, dashboard_db, monkeypatch):
     purchase(client, product["id"], 50)
     user = _make_dashboard_user(dashboard_db)
 
-    monkeypatch.setattr("dashboard.data.forecast", lambda *a, **k: _fake_forecast_df())
-    monkeypatch.setattr(
-        "app.services.restock_service.forecast", lambda *a, **k: _fake_forecast_df()
-    )
+    _mock_forecast(monkeypatch)
 
     at = AppTest.from_file("dashboard/app.py")
     _signed_in(at, user)
@@ -103,10 +111,7 @@ def test_dashboard_blocks_unauthenticated_visitor(client, dashboard_db, monkeypa
     product = create_product(client)
     purchase(client, product["id"], 50)
 
-    monkeypatch.setattr("dashboard.data.forecast", lambda *a, **k: _fake_forecast_df())
-    monkeypatch.setattr(
-        "app.services.restock_service.forecast", lambda *a, **k: _fake_forecast_df()
-    )
+    _mock_forecast(monkeypatch)
 
     at = AppTest.from_file("dashboard/app.py")
     at.run()
@@ -126,10 +131,7 @@ def test_dashboard_login_success_unlocks_content(client, dashboard_db, monkeypat
         password="correct-password",  # noqa: S106 -- test fixture value, not a real credential
     )
 
-    monkeypatch.setattr("dashboard.data.forecast", lambda *a, **k: _fake_forecast_df())
-    monkeypatch.setattr(
-        "app.services.restock_service.forecast", lambda *a, **k: _fake_forecast_df()
-    )
+    _mock_forecast(monkeypatch)
 
     at = AppTest.from_file("dashboard/app.py")
     at.run()
@@ -154,10 +156,7 @@ def test_dashboard_login_failure_shows_error(client, dashboard_db, monkeypatch):
         password="correct-password",  # noqa: S106 -- test fixture value, not a real credential
     )
 
-    monkeypatch.setattr("dashboard.data.forecast", lambda *a, **k: _fake_forecast_df())
-    monkeypatch.setattr(
-        "app.services.restock_service.forecast", lambda *a, **k: _fake_forecast_df()
-    )
+    _mock_forecast(monkeypatch)
 
     at = AppTest.from_file("dashboard/app.py")
     at.run()
@@ -176,10 +175,7 @@ def test_dashboard_admin_sees_admin_ops_section(client, dashboard_db, monkeypatc
     purchase(client, product["id"], 50)
     admin = _make_dashboard_user(dashboard_db, email="ops-admin@example.com", role=UserRole.ADMIN)
 
-    monkeypatch.setattr("dashboard.data.forecast", lambda *a, **k: _fake_forecast_df())
-    monkeypatch.setattr(
-        "app.services.restock_service.forecast", lambda *a, **k: _fake_forecast_df()
-    )
+    _mock_forecast(monkeypatch)
 
     at = AppTest.from_file("dashboard/app.py")
     _signed_in(at, admin)
@@ -194,10 +190,7 @@ def test_dashboard_member_does_not_see_admin_ops_section(client, dashboard_db, m
     purchase(client, product["id"], 50)
     member = _make_dashboard_user(dashboard_db, email="ops-member@example.com")
 
-    monkeypatch.setattr("dashboard.data.forecast", lambda *a, **k: _fake_forecast_df())
-    monkeypatch.setattr(
-        "app.services.restock_service.forecast", lambda *a, **k: _fake_forecast_df()
-    )
+    _mock_forecast(monkeypatch)
 
     at = AppTest.from_file("dashboard/app.py")
     _signed_in(at, member)
@@ -214,10 +207,7 @@ def test_dashboard_admin_can_trigger_replay(client, admin_actions_db, monkeypatc
         admin_actions_db, email="ops-replay-admin@example.com", role=UserRole.ADMIN
     )
 
-    monkeypatch.setattr("dashboard.data.forecast", lambda *a, **k: _fake_forecast_df())
-    monkeypatch.setattr(
-        "app.services.restock_service.forecast", lambda *a, **k: _fake_forecast_df()
-    )
+    _mock_forecast(monkeypatch)
 
     at = AppTest.from_file("dashboard/app.py")
     _signed_in(at, admin)
@@ -255,10 +245,7 @@ def test_dashboard_admin_can_trigger_export(client, admin_actions_db, export_pat
         admin_actions_db, email="ops-export-admin@example.com", role=UserRole.ADMIN
     )
 
-    monkeypatch.setattr("dashboard.data.forecast", lambda *a, **k: _fake_forecast_df())
-    monkeypatch.setattr(
-        "app.services.restock_service.forecast", lambda *a, **k: _fake_forecast_df()
-    )
+    _mock_forecast(monkeypatch)
 
     at = AppTest.from_file("dashboard/app.py")
     _signed_in(at, admin)
@@ -411,3 +398,118 @@ def test_recipes_page_add_ingredient_then_shows_it(client, dashboard_db):
     assert not at.exception
     assert not any("no recipe yet" in i.value for i in at.info)
     assert any("Bun" in md.value for md in at.markdown)
+
+
+# ---------------------------------------------------------------------------
+# Product Detail page enhancements (issue #70): forecast horizon slider,
+# safety_stock/days_of_stock_remaining KPI tiles, event-type filter +
+# pagination on the event history table.
+# ---------------------------------------------------------------------------
+
+
+def test_dashboard_shows_safety_stock_and_days_of_stock_metrics(client, dashboard_db, monkeypatch):
+    product = create_product(client)
+    purchase(client, product["id"], 50)
+    user = _make_dashboard_user(dashboard_db)
+
+    _mock_forecast(monkeypatch)
+
+    # load_products() etc. are @st.cache_data'd with no per-test isolation
+    # — see the Recipes/Purchase Orders section above for why this matters.
+    st.cache_data.clear()
+    at = AppTest.from_file("dashboard/app.py")
+    _signed_in(at, user)
+    at.run()
+
+    assert not at.exception
+    metric_labels = [m.label for m in at.metric]
+    assert "Safety Stock" in metric_labels
+    assert "Days of Stock Remaining" in metric_labels
+
+
+def test_dashboard_forecast_horizon_slider_changes_forecast_days(client, dashboard_db, monkeypatch):
+    product = create_product(client)
+    purchase(client, product["id"], 50)
+    user = _make_dashboard_user(dashboard_db)
+
+    requested_days = []
+
+    def fake_forecast(product_id, days=7):
+        requested_days.append(days)
+        return _fake_forecast_df()
+
+    _mock_forecast(monkeypatch, fn=fake_forecast)
+
+    st.cache_data.clear()
+    at = AppTest.from_file("dashboard/app.py")
+    _signed_in(at, user)
+    at.run()
+
+    assert not at.exception
+    assert 7 in requested_days  # default horizon on first render
+
+    slider = next(s for s in at.slider if s.label == "Forecast horizon (days)")
+    slider.set_value(30).run()
+
+    assert not at.exception
+    assert 30 in requested_days
+
+
+def test_dashboard_events_filtered_by_type(client, dashboard_db, monkeypatch):
+    product = create_product(client)
+    purchase(client, product["id"], 100)
+    client.post(
+        "/api/inventory/events",
+        json={
+            "product_id": product["id"],
+            "event_type": "ADJUSTMENT",
+            "quantity": -5,
+            "event_id": "evt-adjustment-filter-test",
+        },
+    )
+    user = _make_dashboard_user(dashboard_db)
+
+    _mock_forecast(monkeypatch)
+
+    st.cache_data.clear()
+    at = AppTest.from_file("dashboard/app.py")
+    _signed_in(at, user)
+    at.run()
+
+    filter_select = next(s for s in at.selectbox if s.label == "Filter by event type")
+    filter_select.select("ADJUSTMENT").run()
+
+    assert not at.exception
+    df = at.dataframe[0].value
+    assert list(df["Event Type"].unique()) == ["ADJUSTMENT"]
+
+
+def test_dashboard_events_pagination(client, dashboard_db, monkeypatch):
+    product = create_product(client)
+    for _ in range(25):
+        purchase(client, product["id"], 1)
+    user = _make_dashboard_user(dashboard_db)
+
+    _mock_forecast(monkeypatch)
+
+    st.cache_data.clear()
+    at = AppTest.from_file("dashboard/app.py")
+    _signed_in(at, user)
+    at.run()
+
+    assert not at.exception
+    assert any("Page 1 of 2 (25 events)" in c.value for c in at.caption)
+    assert len(at.dataframe[0].value) == 20
+
+    next_button = next(b for b in at.button if b.label == "Next ➡")
+    next_button.click().run()
+
+    assert not at.exception
+    assert any("Page 2 of 2 (25 events)" in c.value for c in at.caption)
+    assert len(at.dataframe[0].value) == 5
+
+    prev_button = next(b for b in at.button if b.label == "⬅ Previous")
+    prev_button.click().run()
+
+    assert not at.exception
+    assert any("Page 1 of 2 (25 events)" in c.value for c in at.caption)
