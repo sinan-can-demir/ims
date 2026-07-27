@@ -13,7 +13,7 @@ import streamlit as st
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.database import SessionLocal
-from app.models.enums import PurchaseOrderStatus
+from app.models.enums import EventType, PurchaseOrderStatus
 from app.models.inventory_event import InventoryEvent
 from app.models.recipe_item import RecipeItem
 from app.services.forecast_service import forecast
@@ -47,28 +47,35 @@ def _get_restock(product_id: int) -> dict:
         db.close()
 
 
-def _get_events(product_id: int) -> list[dict]:
+def _get_events(product_id: int, event_type: str | None, page_size: int, offset: int) -> dict:
     db = SessionLocal()
     try:
+        query = db.query(InventoryEvent).filter(InventoryEvent.product_id == product_id)
+        if event_type:
+            query = query.filter(InventoryEvent.event_type == EventType(event_type))
+
+        total = query.count()
         events = (
-            db.query(InventoryEvent)
-            .filter(InventoryEvent.product_id == product_id)
-            .order_by(InventoryEvent.created_at.desc())
-            .limit(20)
+            query.order_by(InventoryEvent.created_at.desc(), InventoryEvent.id.desc())
+            .offset(offset)
+            .limit(page_size)
             .all()
         )
         # Serialize to plain dicts here, inside the session,
         # before the session closes. Never let ORM objects
         # escape the session boundary.
-        return [
-            {
-                "Date": e.created_at.strftime("%Y-%m-%d %H:%M"),
-                "Event Type": e.event_type.value,
-                "Quantity": e.quantity,
-                "Event ID": e.event_id,
-            }
-            for e in events
-        ]
+        return {
+            "total": total,
+            "events": [
+                {
+                    "Date": e.created_at.strftime("%Y-%m-%d %H:%M"),
+                    "Event Type": e.event_type.value,
+                    "Quantity": e.quantity,
+                    "Event ID": e.event_id,
+                }
+                for e in events
+            ],
+        }
     finally:
         db.close()
 
@@ -153,13 +160,15 @@ def load_restock(product_id: int) -> dict:
 
 
 @st.cache_data(ttl=CACHE_TTL)
-def load_forecast(product_id: int) -> pd.DataFrame:
-    return forecast(product_id, days=7)
+def load_forecast(product_id: int, days: int = 7) -> pd.DataFrame:
+    return forecast(product_id, days=days)
 
 
 @st.cache_data(ttl=CACHE_TTL)
-def load_events(product_id: int) -> list[dict]:
-    return _get_events(product_id)
+def load_events(
+    product_id: int, event_type: str | None = None, page_size: int = 20, offset: int = 0
+) -> dict:
+    return _get_events(product_id, event_type, page_size, offset)
 
 
 @st.cache_data(ttl=CACHE_TTL)

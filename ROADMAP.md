@@ -417,9 +417,9 @@ Tracked under the GitHub milestone "UX Improvements — Dashboard".
       product selector sourced from the products table instead of the
       feature-store parquet file (fixes numeric-ID-only display and
       products-with-no-sales-history being invisible) (#69)
-- [ ] Product Detail page enhancements — forecast horizon slider (1-90,
+- [x] Product Detail page enhancements — forecast horizon slider (1-90,
       matching the API bound), safety_stock/days_of_stock_remaining KPI
-      tiles, event-type filter + pagination
+      tiles, event-type filter + pagination (#70)
 - [ ] Fleet Overview page — portfolio-wide KPIs, urgency filtering, row-click
       deep link into Product Detail
 - [x] Admin/Ops page (replay + export controls) — was deferred until #32

@@ -12,6 +12,7 @@
 # sales history yet never had a parquet row, so it was previously
 # invisible here even though it exists.
 
+import math
 import sys
 from pathlib import Path
 
@@ -21,9 +22,12 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
+from app.models.enums import EventType
 from dashboard.admin_actions import run_export, run_replay
 from dashboard.auth import require_login
 from dashboard.data import load_events, load_forecast, load_inventory, load_products, load_restock
+
+EVENTS_PAGE_SIZE = 20
 
 current_user = require_login()
 
@@ -64,6 +68,14 @@ with col2:
 with col3:
     st.metric("Recommended Order", f"{restock['recommended_order_qty']} units")
 
+col4, col5 = st.columns(2)
+
+with col4:
+    st.metric("Safety Stock", f"{restock['safety_stock']} units")
+
+with col5:
+    st.metric("Days of Stock Remaining", f"{restock['days_of_stock_remaining']} days")
+
 # ---------------------------------------------------------------
 # Section 2 — Restock alert
 # ---------------------------------------------------------------
@@ -94,11 +106,18 @@ else:
 # Section 3 — Forecast chart
 # ---------------------------------------------------------------
 st.divider()
-st.subheader("7-Day Demand Forecast")
+st.subheader("Demand Forecast")
+
+forecast_days = st.slider(
+    "Forecast horizon (days)",
+    min_value=1,
+    max_value=90,  # matches GET /api/forecast/{product_id}'s days bound
+    value=7,
+)
 
 try:
     with st.spinner("Loading forecast..."):
-        forecast_df = load_forecast(selected_product)
+        forecast_df = load_forecast(selected_product, forecast_days)
 
     fig = go.Figure()
 
@@ -140,17 +159,48 @@ except FileNotFoundError:
     st.info("⚠️ No trained model found for this product. Run make train first.")
 
 # ---------------------------------------------------------------
-# Section 4 — Event history table
+# Section 4 — Event history table (filter + pagination, issue #70)
 # ---------------------------------------------------------------
 st.divider()
-st.subheader("Recent Inventory Events")
+st.subheader("Inventory Events")
 
-events = load_events(selected_product)
+event_type_filter = st.selectbox(
+    "Filter by event type", options=["All", *(e.value for e in EventType)]
+)
+
+# Reset to page 1 whenever the product or filter changes — otherwise a
+# stale page number from a longer list could point past the end of a
+# shorter, newly-filtered one.
+events_filter_key = (selected_product, event_type_filter)
+if st.session_state.get("_events_filter_key") != events_filter_key:
+    st.session_state["_events_filter_key"] = events_filter_key
+    st.session_state["events_page"] = 1
+
+page = st.session_state.setdefault("events_page", 1)
+offset = (page - 1) * EVENTS_PAGE_SIZE
+event_type_arg = None if event_type_filter == "All" else event_type_filter
+
+events_result = load_events(selected_product, event_type_arg, EVENTS_PAGE_SIZE, offset)
+events = events_result["events"]
+total_events = events_result["total"]
 
 if events:
     st.dataframe(pd.DataFrame(events), use_container_width=True, hide_index=True)
 else:
-    st.info("No events recorded for this product yet.")
+    st.info("No events match this filter.")
+
+total_pages = max(1, math.ceil(total_events / EVENTS_PAGE_SIZE))
+col_prev, col_page, col_next = st.columns([1, 2, 1])
+with col_prev:
+    if st.button("⬅ Previous", disabled=page <= 1):
+        st.session_state["events_page"] = page - 1
+        st.rerun()
+with col_page:
+    st.caption(f"Page {page} of {total_pages} ({total_events} events)")
+with col_next:
+    if st.button("Next ➡", disabled=page >= total_pages):
+        st.session_state["events_page"] = page + 1
+        st.rerun()
 
 # ---------------------------------------------------------------
 # Section 5 — Admin / Ops (issue #72) — replay + export controls,
