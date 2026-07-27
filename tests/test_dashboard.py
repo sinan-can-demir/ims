@@ -1,9 +1,6 @@
 # tests/test_dashboard.py
 
-import os
-
 import pandas as pd
-import pytest
 import streamlit as st
 from streamlit.testing.v1 import AppTest
 
@@ -14,13 +11,8 @@ from app.models.user import User
 
 from .utils import create_product, purchase
 
-RECIPES_PAGE = "dashboard/pages/1_Recipes.py"
-
-_FEATURE_FILE = os.path.join(
-    os.path.dirname(__file__), "..", "feature_store", "daily_sales.parquet"
-)
-_FEATURE_SKIP_REASON = "feature store not built — run make features"
-PURCHASE_ORDERS_PAGE = "dashboard/pages/2_Purchase_Orders.py"
+RECIPES_PAGE = "dashboard/views/recipes.py"
+PURCHASE_ORDERS_PAGE = "dashboard/views/purchase_orders.py"
 
 
 def _make_dashboard_user(
@@ -71,13 +63,15 @@ def _fake_forecast_df():
     )
 
 
-@pytest.mark.skipif(not os.path.exists(_FEATURE_FILE), reason=_FEATURE_SKIP_REASON)
 def test_dashboard_renders_without_exception(client, dashboard_db, monkeypatch):
     product = create_product(client)
     purchase(client, product["id"], 50)
     user = _make_dashboard_user(dashboard_db)
 
     monkeypatch.setattr("dashboard.data.forecast", lambda *a, **k: _fake_forecast_df())
+    monkeypatch.setattr(
+        "app.services.restock_service.forecast", lambda *a, **k: _fake_forecast_df()
+    )
 
     at = AppTest.from_file("dashboard/app.py")
     _signed_in(at, user)
@@ -86,13 +80,15 @@ def test_dashboard_renders_without_exception(client, dashboard_db, monkeypatch):
     assert not at.exception
 
 
-@pytest.mark.skipif(not os.path.exists(_FEATURE_FILE), reason=_FEATURE_SKIP_REASON)
 def test_dashboard_shows_inventory_metric(client, dashboard_db, monkeypatch):
     product = create_product(client)
     purchase(client, product["id"], 50)
     user = _make_dashboard_user(dashboard_db)
 
     monkeypatch.setattr("dashboard.data.forecast", lambda *a, **k: _fake_forecast_df())
+    monkeypatch.setattr(
+        "app.services.restock_service.forecast", lambda *a, **k: _fake_forecast_df()
+    )
 
     at = AppTest.from_file("dashboard/app.py")
     _signed_in(at, user)
@@ -103,12 +99,14 @@ def test_dashboard_shows_inventory_metric(client, dashboard_db, monkeypatch):
     assert "Current Inventory" in metric_labels
 
 
-@pytest.mark.skipif(not os.path.exists(_FEATURE_FILE), reason=_FEATURE_SKIP_REASON)
 def test_dashboard_blocks_unauthenticated_visitor(client, dashboard_db, monkeypatch):
     product = create_product(client)
     purchase(client, product["id"], 50)
 
     monkeypatch.setattr("dashboard.data.forecast", lambda *a, **k: _fake_forecast_df())
+    monkeypatch.setattr(
+        "app.services.restock_service.forecast", lambda *a, **k: _fake_forecast_df()
+    )
 
     at = AppTest.from_file("dashboard/app.py")
     at.run()
@@ -119,7 +117,6 @@ def test_dashboard_blocks_unauthenticated_visitor(client, dashboard_db, monkeypa
     assert not at.metric
 
 
-@pytest.mark.skipif(not os.path.exists(_FEATURE_FILE), reason=_FEATURE_SKIP_REASON)
 def test_dashboard_login_success_unlocks_content(client, dashboard_db, monkeypatch):
     product = create_product(client)
     purchase(client, product["id"], 50)
@@ -130,6 +127,9 @@ def test_dashboard_login_success_unlocks_content(client, dashboard_db, monkeypat
     )
 
     monkeypatch.setattr("dashboard.data.forecast", lambda *a, **k: _fake_forecast_df())
+    monkeypatch.setattr(
+        "app.services.restock_service.forecast", lambda *a, **k: _fake_forecast_df()
+    )
 
     at = AppTest.from_file("dashboard/app.py")
     at.run()
@@ -145,7 +145,6 @@ def test_dashboard_login_success_unlocks_content(client, dashboard_db, monkeypat
     assert "Current Inventory" in metric_labels
 
 
-@pytest.mark.skipif(not os.path.exists(_FEATURE_FILE), reason=_FEATURE_SKIP_REASON)
 def test_dashboard_login_failure_shows_error(client, dashboard_db, monkeypatch):
     product = create_product(client)
     purchase(client, product["id"], 50)
@@ -156,6 +155,9 @@ def test_dashboard_login_failure_shows_error(client, dashboard_db, monkeypatch):
     )
 
     monkeypatch.setattr("dashboard.data.forecast", lambda *a, **k: _fake_forecast_df())
+    monkeypatch.setattr(
+        "app.services.restock_service.forecast", lambda *a, **k: _fake_forecast_df()
+    )
 
     at = AppTest.from_file("dashboard/app.py")
     at.run()
@@ -169,13 +171,15 @@ def test_dashboard_login_failure_shows_error(client, dashboard_db, monkeypatch):
     assert any("Invalid email or password" in e.value for e in at.error)
 
 
-@pytest.mark.skipif(not os.path.exists(_FEATURE_FILE), reason=_FEATURE_SKIP_REASON)
 def test_dashboard_admin_sees_admin_ops_section(client, dashboard_db, monkeypatch):
     product = create_product(client)
     purchase(client, product["id"], 50)
     admin = _make_dashboard_user(dashboard_db, email="ops-admin@example.com", role=UserRole.ADMIN)
 
     monkeypatch.setattr("dashboard.data.forecast", lambda *a, **k: _fake_forecast_df())
+    monkeypatch.setattr(
+        "app.services.restock_service.forecast", lambda *a, **k: _fake_forecast_df()
+    )
 
     at = AppTest.from_file("dashboard/app.py")
     _signed_in(at, admin)
@@ -185,13 +189,15 @@ def test_dashboard_admin_sees_admin_ops_section(client, dashboard_db, monkeypatc
     assert any("Admin / Ops" in s.value for s in at.subheader)
 
 
-@pytest.mark.skipif(not os.path.exists(_FEATURE_FILE), reason=_FEATURE_SKIP_REASON)
 def test_dashboard_member_does_not_see_admin_ops_section(client, dashboard_db, monkeypatch):
     product = create_product(client)
     purchase(client, product["id"], 50)
     member = _make_dashboard_user(dashboard_db, email="ops-member@example.com")
 
     monkeypatch.setattr("dashboard.data.forecast", lambda *a, **k: _fake_forecast_df())
+    monkeypatch.setattr(
+        "app.services.restock_service.forecast", lambda *a, **k: _fake_forecast_df()
+    )
 
     at = AppTest.from_file("dashboard/app.py")
     _signed_in(at, member)
@@ -201,7 +207,6 @@ def test_dashboard_member_does_not_see_admin_ops_section(client, dashboard_db, m
     assert not any("Admin / Ops" in s.value for s in at.subheader)
 
 
-@pytest.mark.skipif(not os.path.exists(_FEATURE_FILE), reason=_FEATURE_SKIP_REASON)
 def test_dashboard_admin_can_trigger_replay(client, admin_actions_db, monkeypatch):
     product = create_product(client)
     purchase(client, product["id"], 50)
@@ -210,6 +215,9 @@ def test_dashboard_admin_can_trigger_replay(client, admin_actions_db, monkeypatc
     )
 
     monkeypatch.setattr("dashboard.data.forecast", lambda *a, **k: _fake_forecast_df())
+    monkeypatch.setattr(
+        "app.services.restock_service.forecast", lambda *a, **k: _fake_forecast_df()
+    )
 
     at = AppTest.from_file("dashboard/app.py")
     _signed_in(at, admin)
@@ -240,7 +248,6 @@ def test_dashboard_admin_can_trigger_replay(client, admin_actions_db, monkeypatc
         session.close()
 
 
-@pytest.mark.skipif(not os.path.exists(_FEATURE_FILE), reason=_FEATURE_SKIP_REASON)
 def test_dashboard_admin_can_trigger_export(client, admin_actions_db, export_paths, monkeypatch):
     product = create_product(client)
     purchase(client, product["id"], 50)
@@ -249,6 +256,9 @@ def test_dashboard_admin_can_trigger_export(client, admin_actions_db, export_pat
     )
 
     monkeypatch.setattr("dashboard.data.forecast", lambda *a, **k: _fake_forecast_df())
+    monkeypatch.setattr(
+        "app.services.restock_service.forecast", lambda *a, **k: _fake_forecast_df()
+    )
 
     at = AppTest.from_file("dashboard/app.py")
     _signed_in(at, admin)
@@ -275,8 +285,11 @@ def test_dashboard_admin_can_trigger_export(client, admin_actions_db, export_pat
 
 
 # ---------------------------------------------------------------------------
-# Purchase Orders page (dashboard/pages/2_Purchase_Orders.py) — no
-# feature-store dependency, unlike app.py above.
+# Purchase Orders page (dashboard/views/purchase_orders.py), routed via
+# st.navigation() but tested standalone via AppTest.from_file() — the
+# page no longer calls st.set_page_config()/require_login() as its real
+# gate (that moved to dashboard/app.py, see #69), so running it directly
+# with a pre-seeded session_state works the same as before.
 # ---------------------------------------------------------------------------
 
 
@@ -293,8 +306,8 @@ def test_purchase_orders_page_renders_without_exception(client, dashboard_db):
 
 
 # ---------------------------------------------------------------------------
-# Recipes / BOM page (dashboard/pages/1_Recipes.py) — no feature-store
-# dependency, unlike app.py above, so no _FEATURE_FILE skipif needed.
+# Recipes / BOM page (dashboard/views/recipes.py) — same standalone
+# AppTest pattern as Purchase Orders above.
 # ---------------------------------------------------------------------------
 
 

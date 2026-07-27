@@ -428,7 +428,7 @@ pytest --cov=app tests/  # with coverage
 | `test_warehouse.py` | dbt dimension/fact table builds, `_safe_path()` traversal/symlink guard |
 | `test_replay.py` | Rebuilding `InventoryState` from the event log |
 | `test_pagination.py` | `limit`/`offset` on list endpoints |
-| `test_dashboard.py` | Streamlit dashboard renders and shows inventory metrics (AppTest); also covers the Recipes page (`dashboard/pages/1_Recipes.py`) and the Purchase Orders page (`dashboard/pages/2_Purchase_Orders.py`) |
+| `test_dashboard.py` | Streamlit dashboard renders and shows inventory metrics (AppTest), multi-page routing via `st.navigation()`; also covers the Recipes page (`dashboard/views/recipes.py`) and the Purchase Orders page (`dashboard/views/purchase_orders.py`) |
 | `test_purchase_orders.py` | Supplier/PO CRUD, full draft→submit→receive lifecycle, state-transition guards, generate-from-forecast, retry-safety after a partial receive failure |
 | `test_security_headers.py` | Response headers: nosniff/X-Frame-Options/Referrer-Policy, conditional HSTS |
 | `test_db_isolation.py` | Test DB isolation between test cases |

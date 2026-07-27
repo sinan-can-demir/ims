@@ -1,10 +1,13 @@
-# dashboard/pages/2_Purchase_Orders.py
+# dashboard/views/purchase_orders.py
 #
 # Manage suppliers and purchase orders: create a draft (manually or
 # generated from a product's forecast/restock recommendation), submit it,
 # then receive it — receiving creates real PURCHASE inventory events (see
-# app/services/purchase_order_service.py). Uses Streamlit's classic
-# pages/ auto-discovery, same as app.py and 1_Recipes.py.
+# app/services/purchase_order_service.py). Routed via
+# st.navigation()/st.Page() in dashboard/app.py — page_config and the
+# auth gate happen once there, not per-page; require_login() here is a
+# cheap no-op safety net for running this file standalone (dev, tests),
+# not the real gate.
 
 import sys
 from pathlib import Path
@@ -24,8 +27,6 @@ from dashboard.po_actions import (
     receive_po,
     submit_po,
 )
-
-st.set_page_config(page_title="IMS Dashboard — Purchase Orders", page_icon="📦", layout="wide")
 
 current_user = require_login()
 
