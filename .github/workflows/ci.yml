@@ -70,9 +70,18 @@ jobs:
   # Exercises the export -> warehouse -> dbt pipeline end-to-end against a
   # real Postgres with real (seeded) data, catching regressions that
   # lint/test/docker-build can't — e.g. a broken dbt model or schema test
-  # only ever surfaces here, never in the API test suite.
+  # only ever surfaces here, never in the API test suite. Matrixed over
+  # local disk and S3 (MinIO) storage backends — the S3 code path
+  # (app/core/storage.py's fsspec/s3fs wrapping, warehouse's DuckDB httpfs
+  # wiring) shipped in #22 with only manual verification; this closes that
+  # regression-coverage gap (#130).
   pipeline:
     runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        storage_backend: [local, s3]
 
     services:
       postgres:
@@ -101,6 +110,42 @@ jobs:
           cache: pip
 
       - run: pip install -r requirements.txt
+
+      # A `services:` container can't be given a command, and the official
+      # minio/minio image (same one docker-compose.minio.yml/
+      # docker-compose.prod.yml already use) has no working default one —
+      # started directly as a step instead, same image/command as those
+      # compose files.
+      - name: Start MinIO
+        if: matrix.storage_backend == 's3'
+        run: |
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=ci_minio_user \
+            -e MINIO_ROOT_PASSWORD=ci_minio_password \
+            minio/minio:latest server /data --console-address ":9001"
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:9000/minio/health/live && exit 0
+            sleep 1
+          done
+          echo "MinIO did not become healthy in time" >&2
+          exit 1
+
+      - name: Create S3 test bucket and point pipeline storage roots at it
+        if: matrix.storage_backend == 's3'
+        run: |
+          AWS_ACCESS_KEY_ID=ci_minio_user AWS_SECRET_ACCESS_KEY=ci_minio_password \
+            aws --endpoint-url http://localhost:9000 --region us-east-1 s3 mb s3://ims-ci-test
+          {
+            echo "DATA_LAKE_ROOT=s3://ims-ci-test/data_lake"
+            echo "WAREHOUSE_ROOT=s3://ims-ci-test/warehouse"
+            echo "FEATURE_STORE_PATH=s3://ims-ci-test/feature_store"
+            echo "MODELS_DIR=s3://ims-ci-test/models"
+            echo "S3_ENDPOINT_URL=http://localhost:9000"
+            echo "S3_URL_STYLE=path"
+            echo "AWS_ACCESS_KEY_ID=ci_minio_user"
+            echo "AWS_SECRET_ACCESS_KEY=ci_minio_password"
+            echo "AWS_REGION=us-east-1"
+          } >> "$GITHUB_ENV"
 
       - name: Apply migrations
         run: alembic upgrade head
