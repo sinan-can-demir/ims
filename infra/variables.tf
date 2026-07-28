@@ -124,6 +124,18 @@ variable "github_repository" {
   default     = "sinan-can-demir/ims-manual"
 }
 
+variable "data_lake_bucket_name" {
+  description = "Name for the data lake S3 bucket (DATA_LAKE_ROOT/WAREHOUSE_ROOT/FEATURE_STORE_PATH/MODELS_DIR). S3 bucket names are globally unique across all AWS accounts, so the default (\"<project>-<environment>-data-lake\") may collide — override if it does. null uses the default."
+  type        = string
+  default     = null
+}
+
+variable "data_lake_bucket_versioning" {
+  description = "Enable S3 versioning on the data lake bucket, mirroring the durability story documented for the self-hosted MinIO path (docs/deployment/self-hosted.md). Leave enabled unless you have your own durability mechanism."
+  type        = bool
+  default     = true
+}
+
 # On the very first `terraform apply`, the ECR repo is empty — there is no
 # image at this tag yet. Push one manually with this tag before the first
 # full apply (see README.md's bootstrap steps). Every deploy after that is

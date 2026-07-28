@@ -30,3 +30,8 @@ output "rds_endpoint" {
   value     = aws_db_instance.main.endpoint
   sensitive = true
 }
+
+output "data_lake_bucket_name" {
+  description = "Point DATA_LAKE_ROOT/WAREHOUSE_ROOT/FEATURE_STORE_PATH/MODELS_DIR at s3://<this>/<subpath>."
+  value       = aws_s3_bucket.data_lake.id
+}

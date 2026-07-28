@@ -44,13 +44,46 @@ resource "aws_iam_role_policy" "ecs_task_execution_secrets" {
 
 # ---------------------------------------------------------------------------
 # ECS task role — used by application code inside the container for any AWS
-# SDK calls it makes itself. Empty for this API-only slice; this is the
-# attach point for S3 access when the data pipeline migrates to S3.
+# SDK calls it makes itself. Grants access to the data lake S3 bucket
+# (app/core/storage.py's fsspec/s3fs wrapping, used by the 4 pipeline
+# storage roots) — see #22 for the storage abstraction itself and #130 for
+# this AWS-path wiring.
 # ---------------------------------------------------------------------------
 
 resource "aws_iam_role" "ecs_task" {
   name               = "${local.name_prefix}-ecs-task"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume.json
+}
+
+# Bucket-level (ListBucket, for fsspec's glob()/exists()) vs. object-level
+# (Get/Put/Delete, for the actual reads/writes) actions need separate
+# statements — they apply to different ARN shapes (bucket vs. bucket/*).
+# The multipart actions cover s3fs's chunked upload path for larger
+# parquet/model files.
+data "aws_iam_policy_document" "ecs_task_s3" {
+  statement {
+    sid       = "DataLakeListBucket"
+    actions   = ["s3:ListBucket"]
+    resources = [aws_s3_bucket.data_lake.arn]
+  }
+
+  statement {
+    sid = "DataLakeReadWrite"
+    actions = [
+      "s3:GetObject",
+      "s3:PutObject",
+      "s3:DeleteObject",
+      "s3:AbortMultipartUpload",
+      "s3:ListMultipartUploadParts",
+    ]
+    resources = ["${aws_s3_bucket.data_lake.arn}/*"]
+  }
+}
+
+resource "aws_iam_role_policy" "ecs_task_s3" {
+  name   = "${local.name_prefix}-ecs-task-s3"
+  role   = aws_iam_role.ecs_task.id
+  policy = data.aws_iam_policy_document.ecs_task_s3.json
 }
 
 # ---------------------------------------------------------------------------

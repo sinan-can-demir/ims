@@ -1,9 +1,11 @@
 # AWS Infrastructure (Enterprise Deployment)
 
 Terraform for the IMS API on ECS Fargate — sub-phase 1 of the AWS deployment
-(ROADMAP.md Epoch 7 Phase 5). Deploys the API + RDS Postgres behind an ALB.
-**Not included yet**: the data pipeline (S3), the Streamlit dashboard, a
-custom domain/HTTPS. See the root `ROADMAP.md` for what's planned next.
+(ROADMAP.md Epoch 7 Phase 5). Deploys the API + RDS Postgres behind an ALB,
+plus the data lake S3 bucket and IAM wiring for the pipeline's 4 storage
+roots (`#130`, split from `#22`). **Not included yet**: the Streamlit
+dashboard, a custom domain/HTTPS. See the root `ROADMAP.md` for what's
+planned next.
 
 This is the **enterprise path** — for teams already running on AWS who want
 a `terraform apply`-and-go deployment. If you just want to run IMS somewhere
@@ -141,3 +143,12 @@ curl -H "Authorization: Bearer $TOKEN" http://$(terraform output -raw alb_dns_na
     automatically, and a second destroy under the same identifier will fail
     on a name collision unless you delete the old snapshot yourself first
     (AWS console or `aws rds delete-db-snapshot`).
+- The data lake S3 bucket + IAM policy (`infra/s3.tf`, `infra/iam.tf`'s
+  `aws_iam_role_policy.ecs_task_s3`) have only been checked with
+  `terraform validate`/`fmt` — no AWS account was available to `apply`
+  against and confirm the role can actually `PutObject`/`GetObject`
+  scoped to the bucket. Verify that live before relying on this in
+  production. The pipeline's storage roots (`DATA_LAKE_ROOT` etc., see
+  `app/core/storage.py`) also aren't wired into `aws_ecs_task_definition.api`'s
+  environment yet — this issue only provisions the bucket and the IAM
+  attach point, not full production wiring of the pipeline onto it.
