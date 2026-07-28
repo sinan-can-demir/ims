@@ -1,5 +1,6 @@
 # app/services/forecast_service.py
 
+from pathlib import Path
 
 import joblib
 import pandas as pd
@@ -7,6 +8,13 @@ from prophet import Prophet
 
 from app.config import FEATURE_STORE_PATH, MLFLOW_EXPERIMENT_NAME, MLFLOW_TRACKING_URI, MODELS_DIR
 from app.core.logging import logger
+
+# app.config exports these as plain strings (so an s3:// URI doesn't get
+# mangled by Path), but this file hasn't been migrated to
+# app.core.storage yet (see #22) — wrap back to Path here so existing
+# local-mode behavior stays exactly as it was.
+FEATURE_STORE_PATH = Path(FEATURE_STORE_PATH)
+MODELS_DIR = Path(MODELS_DIR)
 
 # Backtested against restaurant-shaped synthetic demand (weekday/weekend
 # spikes, including a sharp single-day-spike shape): at exactly 7 days

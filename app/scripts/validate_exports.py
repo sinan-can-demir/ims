@@ -1,9 +1,17 @@
+from pathlib import Path
+
 import pandas as pd
 from sqlalchemy.orm import Session
 
 from app.config import INVENTORY_EVENTS_ROOT
 from app.database import SessionLocal
 from app.models.inventory_event import InventoryEvent
+
+# app.config exports this as a plain string (so an s3:// URI doesn't get
+# mangled by Path), but this file hasn't been migrated to
+# app.core.storage yet (see #22) — wrap back to Path here so existing
+# local-mode behavior stays exactly as it was.
+INVENTORY_EVENTS_ROOT = Path(INVENTORY_EVENTS_ROOT)
 
 
 def validate_exports(db: Session) -> dict:

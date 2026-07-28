@@ -1,9 +1,18 @@
 # app/services/feature_service.py
 
+from pathlib import Path
+
 import duckdb
 
 from app.config import FEATURE_STORE_PATH, WAREHOUSE_ROOT
 from app.core.logging import logger
+
+# app.config exports these as plain strings (so an s3:// URI doesn't get
+# mangled by Path), but this file hasn't been migrated to
+# app.core.storage yet (see #22) — wrap back to Path here so existing
+# local-mode behavior stays exactly as it was.
+FEATURE_STORE_PATH = Path(FEATURE_STORE_PATH)
+WAREHOUSE_ROOT = Path(WAREHOUSE_ROOT)
 
 
 def _ensure_directories() -> None:

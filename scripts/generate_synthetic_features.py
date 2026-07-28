@@ -11,11 +11,18 @@
 #   python scripts/generate_synthetic_features.py
 
 from datetime import date, timedelta
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from app.config import FEATURE_STORE_PATH
+
+# app.config exports this as a plain string (so an s3:// URI doesn't get
+# mangled by Path), but this file hasn't been migrated to
+# app.core.storage yet (see #22) — wrap back to Path here so existing
+# local-mode behavior stays exactly as it was.
+FEATURE_STORE_PATH = Path(FEATURE_STORE_PATH)
 
 # -------------------------------------------------------------------
 # Configuration
