@@ -3,6 +3,7 @@ from .audit_log import AuditLog as AuditLog
 from .enums import *  # noqa: F403
 from .inventory_event import InventoryEvent as InventoryEvent
 from .inventory_state import InventoryState as InventoryState
+from .organization import Organization as Organization
 from .product import Product as Product
 from .purchase_order import PurchaseOrder as PurchaseOrder
 from .purchase_order_line import PurchaseOrderLine as PurchaseOrderLine

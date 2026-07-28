@@ -53,6 +53,17 @@ S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL", "")
 S3_URL_STYLE = os.getenv("S3_URL_STYLE", "")
 
 # -------------------------
+# Multi-tenancy (Epoch 10)
+# -------------------------
+# Gates UI/CLI *visibility* of org concepts only — never the schema. Every
+# deployment (self-hosted or not) always has organization_id on every row;
+# a self-hosted single-tenant install just never sees org-selection UI or
+# scripts/create_organization.py's "more than the bootstrap org" prompts
+# unless this is explicitly turned on. Self-hosted stays a mode, not a
+# fork of the schema.
+ALLOW_MULTIPLE_ORGS = os.getenv("ALLOW_MULTIPLE_ORGS", "false").lower() == "true"
+
+# -------------------------
 # Model Registry (MLflow)
 # -------------------------
 # SQLite-backed by default (single file, no server to run) — MLflow's plain
