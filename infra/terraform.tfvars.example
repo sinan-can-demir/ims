@@ -15,3 +15,9 @@ jwt_secret = "REPLACE_ME"
 # db_multi_az                = false  # single-AZ, ~half the RDS cost
 # db_backup_retention_period = 7      # days; 0 disables automated backups
 # db_deletion_protection     = true   # must be false before `terraform destroy`
+
+# Data lake S3 bucket (infra/s3.tf) — override the name if the default
+# ("<project>-<environment>-data-lake") collides with an existing bucket
+# somewhere else in AWS (bucket names are globally unique):
+# data_lake_bucket_name       = "ims-prod-data-lake"
+# data_lake_bucket_versioning = true
