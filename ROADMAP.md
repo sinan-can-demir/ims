@@ -559,12 +559,29 @@ Epoch 10+ below (Path B) was originally scoped to start once Path A had
 real signal that more than one business wants this. **That signal never
 arrived — contact with the friend running Path A was lost, so there is no
 real-world usage data and no way to get any in the near term.** As of
-2026-07-27, whether to start Epoch 10 at all is an explicit open decision,
-not something waiting on a specific future event: either #74 (deploying
-the self-hosted stack to a real VPS) generates independent signal first,
-or Path B gets committed to deliberately without restaurant-derived
-signal. Not yet decided — the scoping below exists so that decision can be
-made with real numbers instead of the original guess.
+2026-07-27, whether to start Epoch 10 at all is an explicit open decision;
+the scoping below exists so that decision can be made with real numbers
+instead of the original guess.
+
+**Decided 2026-07-27: #74 (deploy the self-hosted stack to a real VPS)
+happens first, before Epoch 10 starts.** Not a hard technical dependency —
+Epoch 10 doesn't require a live deployment to exist — but the cheapest way
+to get *some* real signal before committing ~2-2.5 months to a hard-to-reverse
+architectural change is to actually run the current single-tenant product
+somewhere real first. #74 was previously deferred on a no-cost budget
+constraint; revisit that constraint before committing to a specific host.
+One concrete option if the constraint stands: Oracle Cloud's Always Free
+tier (genuinely permanent, not a 12-month trial — up to 4 ARM Ampere A1
+cores / 24GB RAM), which the current stack should run on cleanly — Prophet
+1.3.0 ships a real Linux `aarch64` wheel, `cmdstanpy` is a pure-Python
+universal wheel, and the only piece needing compilation (CmdStan itself,
+via `install_cmdstan()`) is a standard portable C++/`make` build with no
+known ARM issue. `make train` also isn't containerized today (runs as a
+host command per the Makefile/README quickstart) — the deployed API/
+dashboard containers only ever `load_model()` a pre-trained `.pkl`, so
+even a training-side ARM problem, if one ever turned up, wouldn't block
+serving. `docker/Dockerfile`'s own base-image comments already show it was
+pinned with `arm64` in mind (manifest-list digest, not a single-arch tag).
 
 ------------------------------------------------------------
 EPOCH 10 — Multi-Tenancy (Path B, not yet started — decision to start is open, see above)
