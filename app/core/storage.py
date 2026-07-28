@@ -101,3 +101,31 @@ def to_parquet(df: pd.DataFrame, path: str, **kwargs) -> None:
 
 def read_parquet(path: str, **kwargs) -> pd.DataFrame:
     return pd.read_parquet(path, storage_options=storage_options(path), **kwargs)
+
+
+def _sql_quote(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def configure_duckdb_s3(conn) -> None:
+    """Load DuckDB's httpfs extension and point it at the configured S3
+    endpoint/credentials. Call once per connection before any
+    read_parquet('s3://...')/write on it. No-op for anything not read from
+    env config here — real AWS S3 doesn't need s3_endpoint/s3_url_style at
+    all, only MinIO/self-hosted S3-compatible servers do.
+    """
+    conn.execute("INSTALL httpfs")
+    conn.execute("LOAD httpfs")
+    if AWS_REGION:
+        conn.execute(f"SET s3_region={_sql_quote(AWS_REGION)}")
+    if AWS_ACCESS_KEY_ID:
+        conn.execute(f"SET s3_access_key_id={_sql_quote(AWS_ACCESS_KEY_ID)}")
+    if AWS_SECRET_ACCESS_KEY:
+        conn.execute(f"SET s3_secret_access_key={_sql_quote(AWS_SECRET_ACCESS_KEY)}")
+    if S3_ENDPOINT_URL:
+        # DuckDB's s3_endpoint wants host[:port], not a full URL with scheme.
+        scheme, _, endpoint = S3_ENDPOINT_URL.partition("://")
+        conn.execute(f"SET s3_endpoint={_sql_quote(endpoint)}")
+        conn.execute(f"SET s3_use_ssl={'true' if scheme == 'https' else 'false'}")
+    if S3_URL_STYLE == "path":
+        conn.execute("SET s3_url_style='path'")
