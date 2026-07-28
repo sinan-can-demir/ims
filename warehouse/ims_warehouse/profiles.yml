@@ -9,7 +9,32 @@ ims_warehouse:
   outputs:
     dev:
       type: duckdb
+      # The catalog file itself always stays local — see #22 and
+      # app/services/warehouse_service.py's own S3 wiring. There's no
+      # supported way to run a writable DuckDB database directly on S3, so
+      # WAREHOUSE_ROOT staying local here is intentional even when the
+      # *source* parquet it reads (models/sources.yml) is on S3 — this
+      # path is unaffected either way; only httpfs/settings below change
+      # once DATA_LAKE_ROOT/WAREHOUSE_ROOT are s3:// URIs.
+      #
       # Relative to the cwd dbt runs from (warehouse/ims_warehouse/), so
       # this resolves to warehouse/ims.duckdb with no env var needed.
       path: "{{ env_var('WAREHOUSE_ROOT', '..') }}/ims.duckdb"
       threads: 4
+      # httpfs is harmless to load unconditionally — local-only runs never
+      # touch it. Every setting below is blank/DuckDB's own default when
+      # unset, so local mode (no S3/MinIO configured) is unaffected; see
+      # app/core/storage.py's configure_duckdb_s3() for the Python-side
+      # equivalent these mirror.
+      extensions:
+        - httpfs
+      settings:
+        s3_region: "{{ env_var('AWS_REGION', '') }}"
+        s3_access_key_id: "{{ env_var('AWS_ACCESS_KEY_ID', '') }}"
+        s3_secret_access_key: "{{ env_var('AWS_SECRET_ACCESS_KEY', '') }}"
+        # DuckDB's s3_endpoint wants host[:port], not a full URL with
+        # scheme — S3_ENDPOINT_URL is documented as a full URL (e.g.
+        # http://minio:9000) to match app/core/storage.py, so strip it here.
+        s3_endpoint: "{{ env_var('S3_ENDPOINT_URL', '')|replace('http://', '')|replace('https://', '') }}"
+        s3_use_ssl: "{{ env_var('S3_ENDPOINT_URL', '').startswith('https') }}"
+        s3_url_style: "{{ env_var('S3_URL_STYLE', 'vhost') }}"
