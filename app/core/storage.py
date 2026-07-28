@@ -84,14 +84,14 @@ def glob(root: str, pattern: str) -> list[str]:
     return matches
 
 
-def open_read(path: str, mode: str = "r"):
+def open_read(path: str, mode: str = "r", **kwargs):
     """Context manager: `with open_read(path) as f: ...`"""
-    return fsspec.open(path, mode, **storage_options(path))
+    return fsspec.open(path, mode, **storage_options(path), **kwargs)
 
 
-def open_write(path: str, mode: str = "w"):
+def open_write(path: str, mode: str = "w", **kwargs):
     """Context manager: `with open_write(path) as f: ...`"""
-    return fsspec.open(path, mode, **storage_options(path))
+    return fsspec.open(path, mode, **storage_options(path), **kwargs)
 
 
 def to_parquet(df: pd.DataFrame, path: str, **kwargs) -> None:

@@ -11,18 +11,12 @@
 #   python scripts/generate_synthetic_features.py
 
 from datetime import date, timedelta
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from app.config import FEATURE_STORE_PATH
-
-# app.config exports this as a plain string (so an s3:// URI doesn't get
-# mangled by Path), but this file hasn't been migrated to
-# app.core.storage yet (see #22) — wrap back to Path here so existing
-# local-mode behavior stays exactly as it was.
-FEATURE_STORE_PATH = Path(FEATURE_STORE_PATH)
+from app.core import storage
 
 # -------------------------------------------------------------------
 # Configuration
@@ -140,9 +134,9 @@ def main() -> None:
     combined = combined.sort_values(["product_id", "date"]).reset_index(drop=True)
 
     # Write to feature store
-    FEATURE_STORE_PATH.mkdir(parents=True, exist_ok=True)
-    output_path = FEATURE_STORE_PATH / "daily_sales.parquet"
-    combined.to_parquet(output_path, index=False)
+    storage.mkdir(FEATURE_STORE_PATH)
+    output_path = storage.join(FEATURE_STORE_PATH, "daily_sales.parquet")
+    storage.to_parquet(combined, output_path)
 
     print(f"\n✓ Written to {output_path}")
     print(f"  Total rows : {len(combined)}")
