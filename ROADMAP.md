@@ -607,6 +607,17 @@ Zero bugs found. **What's still open, and now the actual remaining scope of
 Caddy HTTPS overlay — that still needs an actual reachable host, which
 remains blocked on the card-free-hosting question above.
 
+**Closed 2026-07-28.** Also fixed a real pre-existing bug found along the
+way (dashboard healthcheck was checking the API's port, not its own —
+PR #118), and demonstrated genuine public reachability via a Cloudflare
+quick tunnel — a real `https://*.trycloudflare.com` URL served the live
+dashboard, fetched externally and confirmed working (PR #119, which also
+documents why a *permanent* address isn't achievable this way: both routes
+to a persistent named Cloudflare Tunnel require either a card or a domain
+already owned elsewhere). Closing #74 on that basis — the self-hosted path
+is fully verified and public reachability is proven possible, just not
+permanent. Reopen if a card or an owned domain becomes available.
+
 ------------------------------------------------------------
 EPOCH 10 — Multi-Tenancy (Path B, not yet started — decision to start is open, see above)
 ------------------------------------------------------------
