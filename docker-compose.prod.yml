@@ -30,7 +30,18 @@ services:
 
   api:
     restart: unless-stopped
-    volumes: !override [] # run the built image as-is — no dev-mode source bind-mount
+    # `!override` replaces the base file's `.:/app:Z` dev source bind-mount
+    # (running the built image as-is) with just the 4 pipeline directories —
+    # local-fallback mode (no S3/MinIO configured) previously had nowhere
+    # durable to write in prod, so `data_lake`/`warehouse`/`feature_store`/
+    # `models` were silently lost on every container recreate. Shared with
+    # `dashboard` below (same volumes, same mount paths) since both read the
+    # same underlying pipeline output, not independent copies.
+    volumes: !override
+      - data_lake_data:/app/data_lake
+      - warehouse_data:/app/warehouse
+      - feature_store_data:/app/feature_store
+      - models_data:/app/models
     env_file:
       - .env
     environment:
@@ -50,7 +61,11 @@ services:
 
   dashboard:
     restart: unless-stopped
-    volumes: !override [] # run the built image as-is — no dev-mode source bind-mount
+    volumes: !override
+      - data_lake_data:/app/data_lake
+      - warehouse_data:/app/warehouse
+      - feature_store_data:/app/feature_store
+      - models_data:/app/models
     env_file:
       - .env
     environment:
@@ -63,3 +78,9 @@ services:
     # prod.yml without the Caddy overlay leaves the dashboard unreachable,
     # not unauthenticated.
     ports: !override []
+
+volumes:
+  data_lake_data:
+  warehouse_data:
+  feature_store_data:
+  models_data:

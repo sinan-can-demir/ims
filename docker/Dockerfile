@@ -40,7 +40,18 @@ ENV PYTHONPATH=/app
 # UID 1000 matches the default first-user UID on most Linux distros
 # (including Fedora), so the dev bind-mount in docker-compose.yml stays
 # writable without needing a matching --user override.
-RUN useradd --create-home --uid 1000 appuser && chown -R appuser:appuser /app
+#
+# The 4 `mkdir -p` targets must exist here with correct ownership
+# regardless of whether the build context happens to have content in them
+# (data_lake/feature_store are gitignored and may be genuinely empty on a
+# fresh clone) — docker-compose.prod.yml mounts named volumes at these
+# exact paths, and Docker only copies the image's existing ownership into
+# a fresh named volume on first mount if the directory already exists in
+# the image. Without this, an empty/absent dir gets created root-owned,
+# and appuser's own `Path.mkdir()` calls at runtime fail with EACCES.
+RUN useradd --create-home --uid 1000 appuser \
+    && mkdir -p data_lake warehouse feature_store models \
+    && chown -R appuser:appuser /app
 USER appuser
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
