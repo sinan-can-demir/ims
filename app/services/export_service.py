@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -9,6 +10,13 @@ from sqlalchemy.orm import Session
 from app.config import CHECKPOINT_FILE, INVENTORY_EVENTS_ROOT
 from app.core.logging import logger
 from app.models.inventory_event import InventoryEvent
+
+# app.config exports these as plain strings (so an s3:// URI doesn't get
+# mangled by Path), but this file hasn't been migrated to
+# app.core.storage yet (see #22) — wrap back to Path here so existing
+# local-mode behavior stays exactly as it was.
+CHECKPOINT_FILE = Path(CHECKPOINT_FILE)
+INVENTORY_EVENTS_ROOT = Path(INVENTORY_EVENTS_ROOT)
 
 CHECKPOINT_KEY = "inventory_events"
 
