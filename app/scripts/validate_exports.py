@@ -1,21 +1,14 @@
-from pathlib import Path
-
 import pandas as pd
 from sqlalchemy.orm import Session
 
 from app.config import INVENTORY_EVENTS_ROOT
+from app.core import storage
 from app.database import SessionLocal
 from app.models.inventory_event import InventoryEvent
 
-# app.config exports this as a plain string (so an s3:// URI doesn't get
-# mangled by Path), but this file hasn't been migrated to
-# app.core.storage yet (see #22) — wrap back to Path here so existing
-# local-mode behavior stays exactly as it was.
-INVENTORY_EVENTS_ROOT = Path(INVENTORY_EVENTS_ROOT)
-
 
 def validate_exports(db: Session) -> dict:
-    parquet_files = list(INVENTORY_EVENTS_ROOT.rglob("*.parquet"))
+    parquet_files = storage.glob(INVENTORY_EVENTS_ROOT, "*.parquet")
 
     db_count = db.query(InventoryEvent).count()
 
@@ -27,7 +20,7 @@ def validate_exports(db: Session) -> dict:
             "schema_valid": True,
         }
 
-    frames = [pd.read_parquet(path) for path in parquet_files]
+    frames = [storage.read_parquet(path) for path in parquet_files]
     df = pd.concat(frames, ignore_index=True)
 
     duplicate_event_ids = int(df["event_id"].duplicated().sum())

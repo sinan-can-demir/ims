@@ -1,45 +1,41 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any
 
 import pandas as pd
 from sqlalchemy.orm import Session
 
 from app.config import CHECKPOINT_FILE, INVENTORY_EVENTS_ROOT
+from app.core import storage
 from app.core.logging import logger
 from app.models.inventory_event import InventoryEvent
-
-# app.config exports these as plain strings (so an s3:// URI doesn't get
-# mangled by Path), but this file hasn't been migrated to
-# app.core.storage yet (see #22) — wrap back to Path here so existing
-# local-mode behavior stays exactly as it was.
-CHECKPOINT_FILE = Path(CHECKPOINT_FILE)
-INVENTORY_EVENTS_ROOT = Path(INVENTORY_EVENTS_ROOT)
 
 CHECKPOINT_KEY = "inventory_events"
 
 
 def _ensure_directories() -> None:
-    INVENTORY_EVENTS_ROOT.mkdir(parents=True, exist_ok=True)
-    CHECKPOINT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    # A single mkdir suffices — CHECKPOINT_FILE always lives directly under
+    # DATA_LAKE_ROOT (app/config.py), which INVENTORY_EVENTS_ROOT is nested
+    # one level under, so creating the latter (with parents) also creates
+    # the former's parent. No-op entirely under S3 (see app/core/storage.py).
+    storage.mkdir(INVENTORY_EVENTS_ROOT)
 
 
 def _load_checkpoints() -> dict[str, Any]:
     _ensure_directories()
 
-    if not CHECKPOINT_FILE.exists():
+    if not storage.exists(CHECKPOINT_FILE):
         return {}
 
-    with CHECKPOINT_FILE.open("r", encoding="utf-8") as f:
+    with storage.open_read(CHECKPOINT_FILE, encoding="utf-8") as f:
         return json.load(f)
 
 
 def _save_checkpoints(checkpoints: dict[str, Any]) -> None:
     _ensure_directories()
 
-    with CHECKPOINT_FILE.open("w", encoding="utf-8") as f:
+    with storage.open_write(CHECKPOINT_FILE, encoding="utf-8") as f:
         json.dump(checkpoints, f, indent=2)
 
 
@@ -111,13 +107,17 @@ def _write_partitioned_parquet(df: pd.DataFrame) -> tuple[int, int]:
     grouped = df.groupby(["year", "month", "day"], sort=True)
 
     for (year, month, day), partition_df in grouped:
-        partition_path = INVENTORY_EVENTS_ROOT / f"year={year}" / f"month={month}" / f"day={day}"
-        partition_path.mkdir(parents=True, exist_ok=True)
+        partition_path = storage.join(
+            INVENTORY_EVENTS_ROOT, f"year={year}", f"month={month}", f"day={day}"
+        )
+        storage.mkdir(partition_path)
 
         start_id = int(partition_df["id"].min())
         end_id = int(partition_df["id"].max())
 
-        file_path = partition_path / f"inventory_events_start_{start_id}_end_{end_id}.parquet"
+        file_path = storage.join(
+            partition_path, f"inventory_events_start_{start_id}_end_{end_id}.parquet"
+        )
 
         write_df = (
             partition_df[["id", "event_id", "product_id", "event_type", "quantity", "created_at"]]
@@ -125,7 +125,7 @@ def _write_partitioned_parquet(df: pd.DataFrame) -> tuple[int, int]:
             .reset_index(drop=True)
         )
 
-        write_df.to_parquet(file_path, index=False)
+        storage.to_parquet(write_df, file_path)
 
         partitions_written += 1
         files_written += 1
