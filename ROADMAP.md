@@ -555,12 +555,19 @@ takes a real user with real daily friction to find out what actually
 matters versus what only sounds important. Path A *is* the responsible way
 to get to Path B — not a detour from it.
 
-Epoch 10+ below (Path B) is only worth starting once Path A has real
-signal that more than one business wants this — revisit after Path A has
-been in the friend's hands for a few weeks, not before.
+Epoch 10+ below (Path B) was originally scoped to start once Path A had
+real signal that more than one business wants this. **That signal never
+arrived — contact with the friend running Path A was lost, so there is no
+real-world usage data and no way to get any in the near term.** As of
+2026-07-27, whether to start Epoch 10 at all is an explicit open decision,
+not something waiting on a specific future event: either #74 (deploying
+the self-hosted stack to a real VPS) generates independent signal first,
+or Path B gets committed to deliberately without restaurant-derived
+signal. Not yet decided — the scoping below exists so that decision can be
+made with real numbers instead of the original guess.
 
 ------------------------------------------------------------
-EPOCH 10 — Multi-Tenancy (Path B, deferred until Path A has signal)
+EPOCH 10 — Multi-Tenancy (Path B, not yet started — decision to start is open, see above)
 ------------------------------------------------------------
 
 Goal: one deployment can safely serve more than one business. Has to
@@ -570,17 +577,120 @@ it in from the start, and it's a better foundation now that real user
 accounts (`users`, JWT, roles) already exist than retrofitting onto the
 old shared-API-key model.
 
-- [ ] `organization_id` on every table — products, events, state, feature
-      store, forecasts, and on `users` itself
-- [ ] Row-level isolation enforced at the query layer, not just checked in
-      route handlers — same discipline as `_safe_path()`'s path-traversal
-      guard, applied to org scoping
-- [ ] JWT claims scoped to an org, `require_role()` extended to also check
-      org membership
-- [ ] Warehouse/dbt models and Prophet training partitioned per tenant
-- [ ] Resolve #22 (S3 data lake) with org partitioning in mind — an
-      `org_id=` layer alongside the existing date partitioning
-- [ ] Extend `audit_log` to record org context, not just user
+**Scoped in detail 2026-07-27** (three parallel codebase audits + one
+design pass, independently re-verified against source, not just the
+audits' word) — full reasoning in the session, condensed here:
+
+**Architecture: shared schema + `organization_id` on every table, enforced
+via composite foreign keys — not schema-per-tenant, not database-per-tenant.**
+Matches the codebase's existing convention of threading owner/actor ids as
+plain columns + explicit function parameters (`record_event(...,
+created_by_id)`); needs no new infrastructure class. Self-hosted stays a
+*mode*, not a fork: schema always has `organization_id`, but every
+self-hosted deployment bootstraps exactly one org row and a feature flag
+(`ALLOW_MULTIPLE_ORGS`, default `false`) hides multi-org UI from it
+entirely — no retrofit tax paid twice.
+
+**Load-bearing decision: keep surrogate integer PKs (`product.id`, etc.)
+globally unique across orgs; only business/natural keys (`sku`, `event_id`)
+become org-scoped** (`UNIQUE (organization_id, sku)` /
+`UNIQUE (organization_id, event_id)` — confirmed only these two need to
+change, `users.email` deliberately stays globally unique, one person one
+login, no org-selection step). This eliminates false collision risk in the
+feature store and Prophet/MLflow model naming that an earlier, less
+verified pass through this scoping assumed (confirmed: `Product.id` is a
+plain global `Integer` PK with no per-org reset), while still meaning
+**every** table —
+`products`, `suppliers`, `inventory_events`, `inventory_state`,
+`recipe_items`, `purchase_orders`, `purchase_order_lines`, `audit_log`,
+`users` (9 tables) — needs the column, backfilled via its parent where one
+exists (not a hardcoded constant), plus `UNIQUE (organization_id, id)` on
+parents and composite FKs on children so cross-org references are
+structurally impossible at the DB level — the same "DB-enforced invariant,
+not just code convention" discipline already established by the
+`audit_log` tamper-protection trigger and `_safe_path()`'s traversal
+guard.
+
+**`organization_id` propagation is explicit parameter-threading, not a
+JWT claim and not a contextvar.** Same reasoning as why `role` isn't
+trusted from the JWT today (`require_current_user` always re-fetches the
+live `User` row so revocation/role changes take effect without a token
+refresh) — a `get_current_org_id()` dependency composes on
+`require_current_user` exactly the way `require_role()` already does, and
+every service function gains an explicit `organization_id` parameter, the
+same shape `created_by_id`/`actor_id` already take everywhere.
+
+**Full pipeline, not just Postgres/API** — the entire downstream chain has
+zero tenant dimension today and each stage needs its own fix, not one
+generic one: Parquet export gains an `org_id=` partition level + column
+(current date-only partitioning and single global checkpoint watermark
+stay correct as-is, since surrogate PKs remain globally unique); dbt's 3
+warehouse models gain an `organization_id` column plus a join-boundary
+test; the feature store and Prophet model files/MLflow registry get
+per-org partitioning/naming for operability and to fix `build_features()`
+rebuilding the *entire* table every run (not for collision safety — there
+isn't any); every dashboard loader in `dashboard/data.py` needs the org id
+threaded through, including as part of the `@st.cache_data` cache key
+itself (`st.cache_data` caches by argument value — omitting it would leak
+cached results across orgs viewed in the same process).
+
+**Two real gaps this epoch must close as the same work, not separately:**
+1. `recipe_service.py`/`purchase_order_service.py`'s mutation functions
+   (`update_recipe_item_quantity`, `remove_purchase_order_line`,
+   `submit_purchase_order`, etc.) look up records by bare integer ID with
+   **zero ownership check** today — harmless only because there's
+   currently one implicit tenant. IDOR-shaped; needs a dedicated
+   regression test per function once org-scoping lands.
+2. Webhook ingestion (`POST /api/webhooks/ingest`) authenticates via one
+   *global* `WEBHOOK_SECRET` with no org identity anywhere in the payload
+   or route — confirmed in `app/core/auth.py`'s `require_webhook_signature`.
+   Breaks outright once `record_event()` requires an org id. Fix: per-org
+   webhook secret, org identified in the route
+   (`POST /webhooks/{organization_id}/ingest`) — this is also a
+   prerequisite Epoch 11's real connectors need anyway (per-org, per-source
+   credentials), so it's not wasted work building it here.
+
+- [ ] `organizations` table + bootstrap row; `organization_id` added to all
+      9 tables above, backfilled via parent where one exists
+- [ ] `products.sku` / `inventory_events.event_id` become
+      `UNIQUE (organization_id, ...)` — the `event_id` change must land in
+      the same PR as the 3 call sites in `inventory_service.py` that query
+      it (idempotency pre-check, duplicate-catch retry, recipe-cascade
+      derived id), not a follow-up
+- [ ] Composite FKs (`UNIQUE (organization_id, id)` on parents,
+      `FOREIGN KEY (organization_id, product_id) REFERENCES
+      products(organization_id, id)` on children) so cross-org references
+      are impossible at the DB level, not just checked in code
+- [ ] `get_current_org_id()` dependency (composes on `require_current_user`
+      like `require_role()` does) wired into all ~9 route files; ~9 service
+      files get an explicit `organization_id` parameter added
+- [ ] Recipe/PO ownership-check gap closed; per-org webhook secret +
+      `/webhooks/{organization_id}/ingest` routing
+- [ ] Parquet export `org_id=` partition + column; dbt models +
+      `organization_id` + join-boundary test; feature store and Prophet
+      model files/MLflow registry partitioned per org (also resolves how
+      #22's eventual S3 migration should be org-partitioned, since the
+      same `org_id=` partition level applies whether the data lake root is
+      local disk or S3)
+- [ ] Dashboard: `organization_id` in `dashboard/auth.py`'s session dict
+      (same precedent as adding `role` ahead of #72's admin gate); all
+      `dashboard/data.py` loaders and their `@st.cache_data` keys updated
+- [ ] New cross-org isolation test suite (same-SKU/same-event_id-different-org,
+      cross-org 404s on PO/recipe mutation, fleet/forecast/restock
+      scoping, webhook→org resolution) + a new multi-tenancy design doc
+      matching `docs/model-registry.md`'s style
+- [ ] Explicitly deferred to a later hardening pass, not required for exit
+      criteria: Postgres RLS as a second, DB-enforced layer on top of the
+      composite-FK design (same "code convention + DB backstop" pattern as
+      the audit_log trigger)
+
+Rough phased estimate (re-derived 2026-07-27 from the actual codebase, not
+a generic guess): design lock-in 0.5-1wk, core schema + write path
+1.5-2.5wk (highest-risk — the idempotency-critical `with_for_update()` row
+lock), services/API/auth 1.5-2wk, pipeline 1.5-2wk, dashboard 1wk,
+cross-org tests + hardening 1.5-2wk. **Total ~7.5-10.5 weeks (~2-2.5
+months) for multi-tenancy alone** — see the note at the end of this Path B
+section for what this means for the combined Epochs 10-15 estimate.
 
 Exit criteria: two unrelated businesses could run on the same instance
 without either seeing the other's data, even under a bug.
@@ -596,6 +706,11 @@ connector. Each normalizes into the existing `InventoryEvent` shape via
 the shared ingestion core, so analytics/forecasting/dashboard need zero
 changes to support a new source.
 
+**Sequencing (2026-07-27):** right after Epoch 10 — the first connector
+(Shopify) is the first real-world validation of the multi-tenancy
+plumbing, and Epoch 10 already forces building per-org webhook identity
+that this epoch needs anyway.
+
 Exit criteria: a Shopify seller can connect their store and see inventory
 update automatically, with zero manual CSV work.
 
@@ -608,6 +723,11 @@ Goal: `Order`/`OrderLine` entities referencing one or more
 shipped → returned) separate from the immutable event log. Ties Epoch 11's
 connectors' incoming sales into orders, not just raw SALE events.
 
+**Sequencing (2026-07-27):** after Epoch 11's first connector ships (real
+order data to validate against), reusing Epoch 10's composite-FK
+org-scoping pattern for `Order`/`OrderLine` from day one rather than
+inventing a new one.
+
 Exit criteria: look up "order #1234" and see its full lifecycle, not just
 infer it from a pile of events.
 
@@ -619,6 +739,11 @@ B2B ordering portal (recommended — smaller surface area, showcases the
 event-sourced core) or a basic POS (bigger lift, only if targeting
 brick-and-mortar sellers). Pick based on target user, not both at once.
 
+**Sequencing (2026-07-27):** after Epoch 12 if the recommended B2B-portal
+option is chosen (needs order management underneath to be meaningful);
+re-estimate separately if the POS alternative is picked instead — assume
+materially larger, not covered by this estimate.
+
 ------------------------------------------------------------
 EPOCH 14 — Manufacturing / BOM (Path B, optional, segment-dependent)
 ------------------------------------------------------------
@@ -626,6 +751,10 @@ EPOCH 14 — Manufacturing / BOM (Path B, optional, segment-dependent)
 Skip unless there's a specific maker segment that needs it — a full
 `BillOfMaterials` + `PRODUCTION` event type + cost roll-up, the general
 version of Path A's restaurant-specific recipes/BOM above.
+
+**Sequencing (2026-07-27):** independent of Epochs 11-13, can run any time
+after Epoch 10. Don't refine this estimate further without real
+maker-segment signal, per the original framing above.
 
 ------------------------------------------------------------
 EPOCH 15 — Onboarding & Trust Infrastructure (Path B)
@@ -635,6 +764,13 @@ Not code-heavy, but necessary before anyone non-technical can use this: a
 setup wizard or one-command hosted signup, a real docs site, a
 managed/hosted tier option, status page + backup/restore runbook + basic
 SLA language if offering hosting.
+
+**Sequencing (2026-07-27):** split in two, not "last" as a whole. The
+org-bootstrap/setup-wizard half is easiest to build *alongside* Epoch 10,
+while the org-creation code path is fresh — don't bolt it on afterward.
+The other half (status page, SLA language, managed-tier billing) only
+makes sense once there's an actual hosted tier to sell, so that half stays
+last, after Epochs 11-14.
 
 ------------------------------------------------------------
 What NOT to prioritize (Path B)
@@ -647,11 +783,20 @@ What NOT to prioritize (Path B)
 - A marketplace of 700 integrations — impossible for a solo dev to match
   Cin7 here. Winning 3-4 integrations well beats a long tail of shallow ones.
 
-Rough estimate for Path B (Epochs 10-15): roughly 2-4 months of solo
-part-time work — multi-tenancy alone is 2-4 weeks, each integration
-1-2 weeks, order management 1-2 weeks, front-office 2-3 weeks. See
-`~/Downloads/ims-manual-roadmap.md` for the full session this split came
-from.
+**Original estimate for Path B (Epochs 10-15) is stale, superseded
+2026-07-27:** the original rough total ("2-4 months of solo part-time
+work," with multi-tenancy priced at "2-4 weeks") came from an earlier
+planning session (`~/Downloads/ims-manual-roadmap.md`) before Epoch 10 was
+scoped against the actual codebase. That scoping pass put Epoch 10 alone
+at **~7.5-10.5 weeks (~2-2.5 months)** — see Epoch 10 above for the full
+breakdown and reasoning — which by itself could consume nearly the entire
+old combined budget. Epochs 11-14's original per-item estimates (each
+integration 1-2 weeks, order management 1-2 weeks, front-office 2-3 weeks)
+haven't been re-scoped in the same detail and should be treated as
+unverified rough guesses, not re-derived numbers, until each is actually
+scoped the way Epoch 10 now has been — likely once Epoch 10 is underway
+and the org-scoping pattern it establishes is concrete enough to estimate
+against. Don't quote a combined Path B total until that happens.
 
 ------------------------------------------------------------
 Full Pipeline (Current)
