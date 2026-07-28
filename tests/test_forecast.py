@@ -157,6 +157,65 @@ def test_train_model_registers_to_mlflow(tmp_path, monkeypatch):
     assert len(versions) == 1
     assert versions[0].run_id == result["mlflow_run_id"]
 
+    # Every train run auto-promotes to champion (not a review gate — see
+    # docs/model-registry.md) so the registry reflects what's actually live.
+    champion = client.get_model_version_by_alias("prophet_1", "champion")
+    assert int(champion.version) == result["mlflow_model_version"]
+
+
+@pytest.mark.skipif(not os.path.exists(_FEATURE_FILE), reason=_FEATURE_SKIP_REASON)
+def test_rollback_model_restores_prior_version_and_champion(tmp_path, monkeypatch):
+    pytest.importorskip("mlflow", reason="run `make train-deps` to install training dependencies")
+
+    import mlflow
+
+    import app.services.forecast_service as forecast_service
+
+    monkeypatch.setattr(forecast_service, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(
+        forecast_service, "MLFLOW_TRACKING_URI", f"sqlite:///{tmp_path / 'mlflow.db'}"
+    )
+    monkeypatch.chdir(tmp_path)
+
+    first = forecast_service.train_model(1)
+    second = forecast_service.train_model(1)
+    assert second["mlflow_model_version"] == first["mlflow_model_version"] + 1
+
+    # Second train run's file overwrote the first's — modification time
+    # alone can't prove a rollback happened, so hash the artifact instead.
+    import hashlib
+
+    model_path = tmp_path / "prophet_1.pkl"
+    after_second_train = hashlib.sha256(model_path.read_bytes()).hexdigest()
+
+    result = forecast_service.rollback_model(1, first["mlflow_model_version"])
+    assert result["version"] == first["mlflow_model_version"]
+
+    after_rollback = hashlib.sha256(model_path.read_bytes()).hexdigest()
+    assert after_rollback != after_second_train
+
+    client = mlflow.MlflowClient()
+    champion = client.get_model_version_by_alias("prophet_1", "champion")
+    assert int(champion.version) == first["mlflow_model_version"]
+
+
+@pytest.mark.skipif(not os.path.exists(_FEATURE_FILE), reason=_FEATURE_SKIP_REASON)
+def test_rollback_model_rejects_nonexistent_version(tmp_path, monkeypatch):
+    pytest.importorskip("mlflow", reason="run `make train-deps` to install training dependencies")
+
+    import app.services.forecast_service as forecast_service
+
+    monkeypatch.setattr(forecast_service, "MODELS_DIR", tmp_path)
+    monkeypatch.setattr(
+        forecast_service, "MLFLOW_TRACKING_URI", f"sqlite:///{tmp_path / 'mlflow.db'}"
+    )
+    monkeypatch.chdir(tmp_path)
+
+    forecast_service.train_model(1)
+
+    with pytest.raises(ValueError):
+        forecast_service.rollback_model(1, 99999)
+
 
 def test_forecast_endpoint_no_model(client):
     response = client.get("/api/forecast/99999")

@@ -58,35 +58,37 @@ Then open `http://localhost:5000`.
 
 MLflow's model *stages* API (Staging/Production) is deprecated in favor of
 **aliases** — arbitrary named pointers to a specific version. This project
-uses `champion` as the alias for "the version restock/forecast decisions
-should be based on" (a convention, not something the API reads — see
-Serving above).
+uses `champion` as the alias for "the version currently being served."
 
-Promote a version to champion:
+**Promotion is automatic, not a review gate.** Every `make train` run
+immediately overwrites `models/prophet_{product_id}.pkl` (what
+`forecast_service.load_model()` reads) and now also moves `champion` to
+match, via `forecast_service._log_run_to_mlflow()` — the alias just makes
+the registry tell the truth about what's live; it was never a gate a human
+had to approve before this, and adding one here would silently break
+automated retraining's whole point (see the "Automated retraining" section
+below).
 
-```python
-import mlflow
-mlflow.set_tracking_uri("sqlite:///mlflow.db")
-client = mlflow.MlflowClient()
-client.set_registered_model_alias("prophet_1", "champion", version=3)
+**Rolling back what's actually serving:**
+
+```bash
+python -m app.scripts.rollback_model --product-id 1 --version 2
 ```
 
-Roll back — same call, pointed at the previous version:
+This is `forecast_service.rollback_model()` — loads that version's artifact
+from the registry, overwrites `models/prophet_{product_id}.pkl` with it
+(the same S3-aware `storage` write path `train_model()` uses, so this works
+whether `MODELS_DIR` is local disk or S3/MinIO), and re-points `champion` at
+that version so the registry stays consistent with what's live. Find the
+version to roll back to via the Python client or web UI shown above
+(`client.search_model_versions("name='prophet_1'")`).
 
-```python
-client.set_registered_model_alias("prophet_1", "champion", version=2)
-```
+## Automated retraining
 
-Load whichever version is currently `champion`:
-
-```python
-import mlflow.prophet
-model = mlflow.prophet.load_model("models:/prophet_1@champion")
-```
-
-Promoting a `champion` alias doesn't change what the API serves — that's
-still `models/prophet_{product_id}.pkl`, written by every `make train` run
-regardless of registry state. To actually roll back what's serving, restore
-the `.pkl` for the version you want (via `mlflow artifacts download` against
-that run, or by re-running training against older feature data) and copy it
-into `models/`.
+`scripts/retrain_cron.sh` wraps `make features && make train` for
+unattended, scheduled retraining — see its own header comment and
+`docs/deployment/self-hosted.md`'s "Automated retraining" section for the
+crontab line. There is no promotion review step: a cron-triggered retrain
+goes live immediately, same as a manually-run `make train` always has.
+If a bad retrain ever needs undoing, `rollback_model` above is the fix, not
+a pre-emptive approval gate on every run.
