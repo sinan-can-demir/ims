@@ -104,3 +104,19 @@ def require_role(role: UserRole):
         return current_user
 
     return _check
+
+
+def get_current_org_id(current_user: User = Depends(require_current_user)) -> int:
+    """
+    Epoch 10 (multi-tenancy). Same shape as require_role() above — composes
+    on require_current_user rather than trusting a JWT claim, so
+    current_user.organization_id read here is already the live value from
+    the freshly-reloaded User row; moving a user to a different org takes
+    effect on the very next request, no token refresh needed, same
+    reasoning as role/is_active.
+
+    Not wired into any route yet (Epoch 10 PR 3) — added standalone so
+    later PRs can start depending on it without a schema/route change
+    landing in the same commit.
+    """
+    return current_user.organization_id

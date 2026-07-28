@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -54,6 +54,18 @@ def db():
     # anything the test suite creates needs it to exist first.
     session.add(Organization(id=1, name="Default Organization"))
     session.commit()
+    if TEST_DATABASE_URL:
+        # Same resync the real migration does (see
+        # 6eb479a8a33c_add_organizations_table.py) and for the same
+        # reason: an explicit id=1 insert doesn't advance Postgres's
+        # sequence, so the next auto-assigned insert (e.g. the
+        # `second_org` fixture) would collide on id=1 without this.
+        # SQLite has no equivalent sequence object to resync — its
+        # rowid-based autoincrement doesn't have this failure mode, so
+        # this is a no-op there, guarded by TEST_DATABASE_URL like the
+        # engine selection above.
+        session.execute(text("SELECT setval('organizations_id_seq', 1)"))
+        session.commit()
     try:
         yield session
     finally:
@@ -134,6 +146,73 @@ def admin_client(db):
         display_name="Test Admin",
         role=UserRole.ADMIN,
         organization_id=1,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    token = create_access_token(user)
+    return TestClient(app, headers={"Authorization": f"Bearer {token}"})
+
+
+@pytest.fixture
+def second_org(db):
+    """
+    A real 2nd organization for the Epoch 10 cross-org isolation suite —
+    every org-scoped table's organization_id is a NOT NULL FK, so a
+    "different org" test fixture needs an actual Organization row to point
+    at, same as org 1's bootstrap row the `db` fixture itself creates.
+    """
+    org = Organization(name="Second Org")
+    db.add(org)
+    db.commit()
+    db.refresh(org)
+    return org
+
+
+@pytest.fixture(scope="function")
+def client_org2(db, second_org):
+    """
+    Same shape as `client`, authenticated as a user in `second_org` instead
+    of the bootstrap org — cross-org isolation tests use this alongside
+    `client`/`admin_client` to prove org 1's data is invisible to org 2's
+    user, and vice versa.
+    """
+
+    def override_get_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    user = User(
+        email="test-client-org2@example.com",
+        password_hash=hash_password("test-client-org2-password"),
+        display_name="Test Client Org2",
+        organization_id=second_org.id,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    token = create_access_token(user)
+    return TestClient(app, headers={"Authorization": f"Bearer {token}"})
+
+
+@pytest.fixture(scope="function")
+def admin_client_org2(db, second_org):
+    """Same shape as `admin_client`, in `second_org` instead of org 1."""
+
+    def override_get_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    user = User(
+        email="test-admin-org2@example.com",
+        password_hash=hash_password("test-admin-org2-password"),
+        display_name="Test Admin Org2",
+        role=UserRole.ADMIN,
+        organization_id=second_org.id,
     )
     db.add(user)
     db.commit()

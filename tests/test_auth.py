@@ -9,7 +9,12 @@ from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.testclient import TestClient
 
 from app.core import auth as auth_core
-from app.core.auth import create_access_token, require_current_user, require_role
+from app.core.auth import (
+    create_access_token,
+    get_current_org_id,
+    require_current_user,
+    require_role,
+)
 from app.core.security import hash_password
 from app.main import app
 from app.models.enums import UserRole
@@ -218,3 +223,29 @@ def test_require_role_promotion_takes_effect_without_new_token(db):
 
     resolved = require_current_user(credentials=credentials, db=db)
     assert check(current_user=resolved).id == user.id
+
+
+def test_get_current_org_id_returns_users_organization_id(db):
+    user = _make_user(db, "org-check@example.com", "pw")
+    assert get_current_org_id(current_user=user) == user.organization_id == 1
+
+
+def test_get_current_org_id_reflects_live_row_without_new_token(db, second_org):
+    """
+    No org claim in the JWT (see create_access_token) — moving a user to a
+    different org takes effect on the very next request with the same,
+    still-unexpired token, same live-DB-recheck convention as
+    role/is_active above.
+    """
+    user = _make_user(db, "org-move@example.com", "pw")
+    token = create_access_token(user)
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+    resolved = require_current_user(credentials=credentials, db=db)
+    assert get_current_org_id(current_user=resolved) == 1
+
+    user.organization_id = second_org.id
+    db.commit()
+
+    resolved = require_current_user(credentials=credentials, db=db)
+    assert get_current_org_id(current_user=resolved) == second_org.id
