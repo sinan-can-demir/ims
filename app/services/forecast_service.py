@@ -1,5 +1,7 @@
 # app/services/forecast_service.py
 
+import hashlib
+import tempfile
 from pathlib import Path
 
 import joblib
@@ -7,14 +9,14 @@ import pandas as pd
 from prophet import Prophet
 
 from app.config import FEATURE_STORE_PATH, MLFLOW_EXPERIMENT_NAME, MLFLOW_TRACKING_URI, MODELS_DIR
+from app.core import storage
 from app.core.logging import logger
 
-# app.config exports these as plain strings (so an s3:// URI doesn't get
-# mangled by Path), but this file hasn't been migrated to
-# app.core.storage yet (see #22) — wrap back to Path here so existing
-# local-mode behavior stays exactly as it was.
-FEATURE_STORE_PATH = Path(FEATURE_STORE_PATH)
-MODELS_DIR = Path(MODELS_DIR)
+# Local write-through cache for load_model() (the live-serving path only —
+# train_model()'s save always goes straight to storage). Avoids a network
+# round-trip to S3 on every forecast request; see load_model() for the
+# cache-key-based invalidation that picks up a retrain.
+_MODEL_CACHE_DIR = Path(tempfile.gettempdir()) / "ims_model_cache"
 
 # Backtested against restaurant-shaped synthetic demand (weekday/weekend
 # spikes, including a sharp single-day-spike shape): at exactly 7 days
@@ -29,8 +31,8 @@ _MIN_TRAINING_DAYS = 14
 
 
 def _ensure_directories() -> None:
-    MODELS_DIR.mkdir(exist_ok=True)
-    FEATURE_STORE_PATH.mkdir(exist_ok=True)
+    storage.mkdir(MODELS_DIR)
+    storage.mkdir(FEATURE_STORE_PATH)
 
 
 def _log_run_to_mlflow(
@@ -91,7 +93,7 @@ def train_model(product_id: int) -> dict:
     logger.info("model_training_started", extra={"product_id": product_id})
 
     # 1. Load features for this product
-    df = pd.read_parquet(FEATURE_STORE_PATH / "daily_sales.parquet")
+    df = storage.read_parquet(storage.join(FEATURE_STORE_PATH, "daily_sales.parquet"))
     product_df = df[df["product_id"] == product_id].copy()
 
     if len(product_df) < _MIN_TRAINING_DAYS:
@@ -123,10 +125,13 @@ def train_model(product_id: int) -> dict:
     )
     model.fit(prophet_df)
 
-    # 4. Save the model to disk (unchanged serving path — forecast()/load_model()
-    #    keep reading this file regardless of the registry below)
-    model_path = MODELS_DIR / f"prophet_{product_id}.pkl"
-    joblib.dump(model, model_path)
+    # 4. Save the model (unchanged serving path — forecast()/load_model()
+    #    keep reading this file regardless of the registry below). joblib
+    #    doesn't understand s3:// URIs natively — needs an actual file
+    #    handle, unlike the pandas to_parquet/read_parquet calls elsewhere.
+    model_path = storage.join(MODELS_DIR, f"prophet_{product_id}.pkl")
+    with storage.open_write(model_path, "wb") as f:
+        joblib.dump(model, f)
 
     # 5. In-sample fit quality — cheap to compute, useful signal for the
     #    registry; not a substitute for held-out backtesting
@@ -166,22 +171,44 @@ def train_model(product_id: int) -> dict:
 def train_all_models() -> list[dict]:
     """Train a model for every product in the feature store."""
 
-    df = pd.read_parquet(FEATURE_STORE_PATH / "daily_sales.parquet")
+    df = storage.read_parquet(storage.join(FEATURE_STORE_PATH, "daily_sales.parquet"))
     product_ids = df["product_id"].unique().tolist()
 
     return [train_model(pid) for pid in product_ids]
 
 
 def load_model(product_id: int) -> Prophet:
-    """Load a trained model from disk. Raises if not found."""
+    """Load a trained model. Raises if not found.
+
+    For local paths, reads directly. For S3 paths, checks a local
+    write-through cache first (avoiding a network round-trip on every
+    forecast request) — cache_key() changes whenever the underlying S3
+    object changes, so a retrain automatically invalidates the old entry
+    (new key -> new cache filename -> cache miss -> refetch).
+    """
     _ensure_directories()
 
-    model_path = MODELS_DIR / f"prophet_{product_id}.pkl"
-    if not model_path.exists():
+    model_path = storage.join(MODELS_DIR, f"prophet_{product_id}.pkl")
+    if not storage.exists(model_path):
         raise FileNotFoundError(
             f"No trained model found for product {product_id}. Run make train first."
         )
-    return joblib.load(model_path)
+
+    if not storage.is_s3(model_path):
+        with storage.open_read(model_path, "rb") as f:
+            return joblib.load(f)
+
+    key = storage.cache_key(model_path)
+    _MODEL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    key_hash = hashlib.sha256(key.encode()).hexdigest()[:16]
+    cache_file = _MODEL_CACHE_DIR / f"prophet_{product_id}_{key_hash}.pkl"
+
+    if not cache_file.exists():
+        with storage.open_read(model_path, "rb") as f:
+            cache_file.write_bytes(f.read())
+
+    with cache_file.open("rb") as f:
+        return joblib.load(f)
 
 
 def forecast(product_id: int, days: int = 7) -> pd.DataFrame:
