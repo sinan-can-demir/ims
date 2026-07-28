@@ -767,8 +767,14 @@ is fully verified and public reachability is proven possible, just not
 permanent. Reopen if a card or an owned domain becomes available.
 
 ------------------------------------------------------------
-EPOCH 10 — Multi-Tenancy (Path B, not yet started — decision to start is open, see above)
+EPOCH 10 — Multi-Tenancy (Path B, in progress — started 2026-07-28)
 ------------------------------------------------------------
+
+**Decision to start (2026-07-28):** deliberately started without waiting for
+real multi-tenant demand signal — explicitly for portfolio/learning value,
+not because a second business is lined up. Sequenced as 16 PRs (GitHub
+milestone "Epoch 10 — Multi-Tenancy", issues #137-#152), built one PR at a
+time. See PR #137 onward for progress.
 
 Goal: one deployment can safely serve more than one business. Has to
 happen before integrations or a hosted offering — retrofitting tenant
