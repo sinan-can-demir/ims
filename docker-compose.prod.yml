@@ -28,8 +28,34 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-ims}
     command: alembic upgrade head
 
+  # S3-compatible object storage for the data pipeline — see #22 and
+  # app/core/storage.py. Runs by default in prod (self-hosted's zero-cost
+  # S3-compatible backend), independent of whether DATA_LAKE_ROOT etc. are
+  # actually pointed at it yet — local disk (this file's default) works
+  # fine with MinIO just sitting idle. Never published to the host, same
+  # as `db` above — only reachable from other containers on the internal
+  # Docker network.
+  minio:
+    image: minio/minio:latest
+    container_name: ims_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   api:
     restart: unless-stopped
+    depends_on:
+      minio:
+        condition: service_healthy
     # `!override` replaces the base file's `.:/app:Z` dev source bind-mount
     # (running the built image as-is) with just the 4 pipeline directories —
     # local-fallback mode (no S3/MinIO configured) previously had nowhere
@@ -49,6 +75,12 @@ services:
       # Required so /metrics can merge counters across Gunicorn's worker
       # processes — see gunicorn.conf.py and app/core/metrics.py.
       PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus_multiproc
+      # MinIO wiring — only actually used once DATA_LAKE_ROOT etc. (in .env)
+      # are pointed at s3:// URIs; harmless no-op while they stay local.
+      S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+      S3_URL_STYLE: path
     # Gunicorn + UvicornWorker instead of the base file's single-worker dev
     # command — real concurrency for production traffic. WEB_CONCURRENCY
     # defaults to 4, tuned for the "1-2 vCPU / 2-4GB RAM" box the deployment
@@ -61,6 +93,9 @@ services:
 
   dashboard:
     restart: unless-stopped
+    depends_on:
+      minio:
+        condition: service_healthy
     volumes: !override
       - data_lake_data:/app/data_lake
       - warehouse_data:/app/warehouse
@@ -70,6 +105,10 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-ims}
+      S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+      S3_URL_STYLE: path
     # Unlike `api`, the dashboard has no app-level auth (no bearer-token
     # equivalent) — Caddy's basic_auth is its only protection. So, unlike
     # api's port staying published here, the dashboard's port is hidden by
@@ -84,3 +123,4 @@ volumes:
   warehouse_data:
   feature_store_data:
   models_data:
+  minio_data:

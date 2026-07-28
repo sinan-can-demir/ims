@@ -1,0 +1,51 @@
+# Optional: run a local MinIO container as an S3-compatible backend for the
+# data pipeline, so you can develop/test the S3 code path without touching
+# real AWS. Stack on top of the base file:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.minio.yml up -d
+#
+# Requires MINIO_ROOT_USER and MINIO_ROOT_PASSWORD set in .env. This file
+# alone only starts the MinIO server and wires api/dashboard's S3 env vars
+# at it — it does NOT change what the app actually reads/writes. To route
+# the pipeline through MinIO, also point DATA_LAKE_ROOT/WAREHOUSE_ROOT/
+# FEATURE_STORE_PATH/MODELS_DIR at s3://<bucket>/... URIs in .env, and
+# create the bucket first (e.g. via the MinIO console at :9001, or `mc mb`).
+#
+# Skip this file entirely to keep using local disk (the default).
+
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: ims_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+    ports:
+      - "9000:9000" # S3 API
+      - "9001:9001" # Web console
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    environment:
+      S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+      S3_URL_STYLE: path
+
+  dashboard:
+    environment:
+      S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+      S3_URL_STYLE: path
+
+volumes:
+  minio_data:
