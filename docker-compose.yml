@@ -70,6 +70,14 @@ services:
       - PYTHONPATH=/app
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/ims
     command: streamlit run dashboard/app.py --server.address=0.0.0.0 --server.port=8501
+    # Overrides the image's baked-in HEALTHCHECK (docker/Dockerfile), which
+    # always curls :8000/health — correct for `api`, but this service is
+    # Streamlit on :8501 with its own health endpoint.
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
 volumes:
   postgres_data:
