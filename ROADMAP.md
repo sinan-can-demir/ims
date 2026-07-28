@@ -494,31 +494,161 @@ state for #72 to consume later.
 - [x] Update SECURITY.md's auth-model section to describe the role model
 
 ------------------------------------------------------------
-EPOCH 8 — Kafka Streaming (Optional)
+EPOCH 8 — Kafka Streaming (Optional, deferred — see below)
 ------------------------------------------------------------
 
-Goal: Process inventory events in real time via Kafka.
+Goal: Process inventory events in real time via Kafka instead of only
+synchronous PostgreSQL writes.
 
-- [ ] Kafka + Zookeeper via Docker Compose  
-- [ ] Event producer (FastAPI publishes to Kafka after DB write)  
-- [ ] Projection updater consumer  
-- [ ] Data lake writer consumer  
-- [ ] Deduplication on consumer side  
-- [ ] Replay via compacted topic  
+**Scoped in detail 2026-07-28** (#76, one Explore-agent codebase audit,
+independently spot-verified against source): more expensive than the rough
+bullet list below implies, and no concrete need for it has actually appeared
+yet — the current synchronous path already gives atomic writes and O(1)
+projection reads. Recommendation: **defer indefinitely; if ever pursued,
+sequence after Epoch 10** (reasoning below), not as a default next step.
+
+**Real gap the rough bullet list glossed over — dual-write atomicity.**
+`record_event()` (`app/services/inventory_service.py:154-168`) already
+commits the event insert, the `inventory_state` projection update, and any
+recipe/BOM cascade atomically in one transaction (confirmed: single
+`db.commit()` at line 168, covering everything `_apply_event()` flushed
+first). A producer call "after DB write," as originally phrased below, is a
+*second, uncoordinated* write to a second system — the Postgres commit can
+succeed while the Kafka publish fails, silently desyncing the topic from the
+source of truth, with nothing to detect or repair that gap. Needs an
+explicit choice: accept at-least-once-with-retry-and-idempotent-producer
+semantics, or add an outbox table (write intent in the same transaction as
+line 168, a separate relay polls/publishes it) for a real guarantee.
+
+**Real scope multiplier — zero existing async/worker infrastructure.** No
+Celery, no APScheduler, no `BackgroundTasks`, no cron, no queue library
+anywhere in this codebase (`requirements.txt` has none). Every current
+service in the compose files is either request-driven (`api`, `dashboard`)
+or one-shot-and-exit (`migrate`) — there is no precedent for a detached
+long-running worker. Kafka would introduce that pattern for the first time,
+alongside Kafka itself, not on top of something already proven here.
+
+**Real cost reduction — dedup is mostly already solved.** `event_id`'s DB
+unique constraint (`uq_inventory_events_event_id`) plus `record_event()`'s
+existing catch-`IntegrityError`-and-return-existing logic
+(`inventory_service.py:173-188`) means a projection-updater consumer can
+reuse `record_event()`/`_apply_event()` almost unchanged and inherit
+exact-once-at-the-DB-layer semantics despite Kafka's own at-least-once
+delivery — "deduplication on consumer side" below is largely already built,
+not a fresh subsystem.
+
+**Coupling with Epoch 10 is real and asymmetric — the main reason to
+sequence after it, not before.** Epoch 10 threads `organization_id` as an
+explicit parameter through `record_event()` and requires
+`event_id` uniqueness to become `UNIQUE(organization_id, event_id)`. If
+Kafka ships first, its message schema necessarily ships without
+`organization_id` — and since "replay via compacted topic" below implies
+indefinitely-retained messages, that's a permanently org-less poisoned
+replay topic once Epoch 10 lands, plus rework on both producer and
+consumer. If Epoch 10 ships first, the schema just includes the field from
+day one (same as `created_by_id` already does), at ~zero extra cost.
+
+**Other corrections to the original rough shape:**
+- "Kafka + Zookeeper" → evaluate KRaft-mode Kafka instead (ZooKeeper-free,
+  the recommended production mode since Kafka 3.5+) — cuts an entire second
+  stateful sidecar (its own volume, healthcheck, version-compatibility
+  matrix), consistent with this repo's existing bias toward minimal stateful
+  services (only Postgres + optional MinIO today).
+- "Replay via compacted topic" needs to state what it adds beyond the
+  already-shipped `rebuild_inventory_state()` (`app/services/replay_service.py`,
+  `POST /inventory/replay`) — likely: rebuilding a *consumer's own* derived
+  state (e.g. the data-lake writer's Parquet output), not the Postgres
+  projection, which already has a working replay path.
+- Needs an explicit decision on `app/scripts/export_events.py`/`make export`
+  coexisting with vs. being retired by a Kafka data-lake-writer consumer —
+  running both risks duplicate or divergent output (different checkpoint
+  semantics: Postgres row-id watermark vs. Kafka consumer offsets).
+- `scripts/seed_data.py` writes `InventoryEvent` rows directly, bypassing
+  `record_event()` entirely — would need to be updated too, or seeded data
+  would silently never reach the topic.
+
+Rough shape (unchanged from the original filing, corrections above apply on
+top):
+
+- [ ] Kafka (KRaft mode, no Zookeeper) via Docker Compose
+- [ ] Outbox-pattern or explicit at-least-once decision for the event
+      producer (embed in `record_event()`, the existing single choke point
+      for all 3 real call sites — `app/api/inventory.py`,
+      `purchase_order_service.py`, `ingestion_service.py`)
+- [ ] Projection updater consumer (reuse `record_event()`/`_apply_event()`
+      directly — dedup mostly free, see above)
+- [ ] Data lake writer consumer (decide coexistence-vs-retirement of
+      `export_events.py` first)
+- [ ] Replay via compacted topic (scope against what `rebuild_inventory_state()`
+      doesn't already cover)
 
 ------------------------------------------------------------
-EPOCH 9 — Advanced ML (Optional)
+EPOCH 9 — ML Platform Maturity
 ------------------------------------------------------------
 
-Goal: Productionize the ML layer.  
+Goal: Productionize the ML layer beyond today's single-shot `make train`.
 
-- [ ] Automated retraining pipeline  
-- [ ] Model versioning  
-- [ ] Feature importance analysis  
-- [ ] A/B testing framework for models  
+**Scoped in detail 2026-07-28** (#77, one Explore-agent codebase audit,
+independently spot-verified against source — confirmed `load_model()`,
+`app/services/forecast_service.py:180-211`, has no version/alias concept of
+any kind). Splits cleanly into two cheap, real, do-anytime items and two
+items that were scoped from a mismatched mental model or don't match this
+project's actual current scale (3 seeded products, 30-90 days of data, one
+dashboard operator).
+
+- [ ] **Finish model-versioning wiring (cheap, ~50% already done).** The
+      MLflow registry already works today — every `train_model()` call logs
+      params/metrics and registers a new version
+      (`forecast_service.py:38-82`), confirmed by
+      `tests/test_forecast.py:134-158`. `docs/model-registry.md` already
+      designs a `champion` alias for promotion/rollback, but it's never read
+      anywhere in application code — `load_model()` always resolves the
+      single fixed filename `prophet_{product_id}.pkl`, with no concept of
+      "which registry version is this." Remaining work: wire
+      `load_model()`/`train_model()` to the alias mechanism the docs already
+      designed. Small, well-bounded — finishing an existing design, not
+      building a new one.
+- [ ] **Automated retraining via host cron (cheap, 0% done today).** No
+      scheduler exists anywhere in this codebase (no cron, no GitHub Actions
+      `schedule:`, no worker service, no API trigger). At this project's
+      actual scale, the proportionate answer is a plain host cron entry
+      calling the existing `make features && make train` — works today
+      against the standing local `docker-compose.prod.yml` deployment from
+      #74, doesn't need a hosted VPS. Do this *after* fixing
+      `build_features()`'s full-table-rebuild-every-run behavior
+      (`app/services/feature_service.py:14-53` — already scoped as an Epoch
+      10 "for operability" fix) if that lands first; harmless either way at
+      current data volume.
+- [ ] **Re-scoped: Prophet decomposition surfacing, not "feature importance"
+      (small, optional).** Prophet is univariate here — training only ever
+      uses `ds`/`y` (`forecast_service.py:109`); 2 of the 5 columns
+      `build_features()` computes (`rolling_avg_7d`, `units_purchased`) are
+      unused, and there are zero `add_regressor()` calls anywhere.
+      "Feature importance" as originally filed (SHAP/tree-model framing)
+      doesn't apply to a univariate additive decomposition model. The real,
+      proportionate substitute: surface Prophet's own trend/seasonality
+      decomposition (already computed by `predict()`, never shown in the
+      dashboard) and/or actually wire the 2 unused columns in as regressors.
+- [ ] **Deferred indefinitely: A/B testing framework for models.**
+      Disproportionate at current scale — no real traffic exists to split
+      (one restaurant, one dashboard viewer, 3 SKUs), and it would reverse
+      `docs/model-registry.md`'s explicit design decision to keep the
+      registry out of the request path. No comparison/scoring
+      infrastructure exists to build on today (only in-sample MAE at
+      training time). Revisit only once there's real multi-org or
+      multi-source traffic to split — realistically not before both Epoch
+      10 and Epoch 11 exist.
+
+**Sequencing vs. Epoch 10:** the two cheap items above are safe to build any
+time, independent of whether/when Epoch 10 starts. Epoch 10 already plans
+per-org partitioning of `MODELS_DIR`/MLflow names "for operability," and
+`app/core/storage.py`'s path-agnostic design (recursive `glob()`,
+content-hash `cache_key()`) means that's a path-rename, not an architecture
+change, if these ship first — mildly wasteful to touch `build_features()`'s
+scheduling twice, not a real redo.
 
 ------------------------------------------------------------
-PATH A — Restaurant Deployment (near-term, in progress)
+PATH A — Restaurant Deployment (shipped 2026-07-26, PRs #100-106)
 ------------------------------------------------------------
 
 Goal (added 2026-07-26, see full discussion in the roadmap session this
@@ -528,20 +658,27 @@ below (multi-tenancy, integrations, org isolation) is needed for this —
 it's one business, one deployment. This is deliberately sequenced ahead of
 Epoch 10+ (Path B) — see "Why Path A comes first" below.
 
-- [ ] Recipes / BOM for restaurants — dishes consume ingredients in fixed
+- [x] Recipes / BOM for restaurants — dishes consume ingredients in fixed
       quantities on SALE, a simpler version of Epoch 14's manufacturing/BOM
-      idea. The actual feature requested.
-- [ ] `WASTE` event type — spoilage/waste tracked distinctly from `DAMAGE`
-- [ ] Real `PurchaseOrder` object — supplier, line items, quantities; turns
+      idea. The actual feature requested. (`app/services/recipe_service.py`)
+- [x] `WASTE` event type — spoilage/waste tracked distinctly from `DAMAGE`
+      (`app/models/enums.py`)
+- [x] Real `PurchaseOrder` object — supplier, line items, quantities; turns
       a forecast + current stock into an actual, persisted, actionable
       order instead of just a restock number on the dashboard
-- [ ] Day-of-week-aware forecasting — restaurant demand shape is spikier
+      (`app/models/purchase_order.py`)
+- [x] Day-of-week-aware forecasting — restaurant demand shape is spikier
       (weekday/weekend) than typical e-commerce SKU demand; tune Prophet's
       seasonality rather than assume the existing model generalizes as-is
-- [ ] CLI wrapper around the Makefile (`ims start`/`ims setup`/`ims backup`)
+      (PR #103, `weekly_seasonality=True`, backtested in
+      `tests/test_forecast.py`) — this checkbox was found stale (still
+      unchecked despite shipping) during #76/#77's 2026-07-28 scoping pass
+- [x] CLI wrapper around the Makefile (`ims start`/`ims setup`/`ims backup`)
       — doubles as the first-run setup wizard, no separate wizard needed
-- [ ] Backup routine — cron/rsync of Postgres + the local data lake to a
+      (PR #106, `scripts/ims.py`)
+- [x] Backup routine — cron/rsync of Postgres + the local data lake to a
       second location; explicitly not S3/MinIO, unnecessary at this scale
+      (`scripts/backup.sh`, `scripts/restore.sh`)
 - [ ] Explicitly skip for Path A: S3/object storage, multi-tenancy,
       integrations, AWS deployment — none of it serves one restaurant
 
