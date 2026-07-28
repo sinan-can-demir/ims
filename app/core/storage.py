@@ -59,6 +59,16 @@ def storage_options(path: str) -> dict:
     return opts
 
 
+def rmtree(root: str) -> None:
+    """Recursively delete everything under root. No-op if root doesn't
+    exist. Used by `make reset` (app/scripts/reset_storage.py) to actually
+    clear S3-mode roots — the plain `rm -rf` commands in the Makefile only
+    ever touch local disk, silently leaving S3 data behind otherwise."""
+    fs, fs_root = fsspec.core.url_to_fs(root, **storage_options(root))
+    if fs.exists(fs_root):
+        fs.rm(fs_root, recursive=True)
+
+
 def mkdir(path: str) -> None:
     """No-op under S3 — object storage has no real directories, and
     writing an object creates its "prefix" implicitly."""

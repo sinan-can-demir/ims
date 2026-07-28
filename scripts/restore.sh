@@ -44,6 +44,31 @@ if [[ ! -f "$WORK_DIR/postgres.sql.gz" ]]; then
   fail "$ARCHIVE doesn't look like a scripts/backup.sh archive (missing postgres.sql.gz)"
 fi
 
+# This script only ever restores to local disk — see backup.sh's matching
+# check and #22. Warn loudly if a root is actually pointed at S3, since
+# restoring to the local fallback paths would silently do nothing useful
+# for a deployment actually running against S3/MinIO.
+_resolve_var() {
+  local var_name="$1" current="${!1:-}"
+  if [[ -n "$current" ]]; then
+    echo "$current"
+    return
+  fi
+  [[ -f "$PROJECT_ROOT/.env" ]] && grep -E "^${var_name}=" "$PROJECT_ROOT/.env" 2>/dev/null | tail -1 | cut -d'=' -f2-
+}
+
+_s3_roots=()
+for _var in DATA_LAKE_ROOT WAREHOUSE_ROOT FEATURE_STORE_PATH MODELS_DIR; do
+  _value="$(_resolve_var "$_var")"
+  [[ "$_value" == s3://* ]] && _s3_roots+=("$_var=$_value")
+done
+
+if [[ ${#_s3_roots[@]} -gt 0 ]]; then
+  echo -e "${RED}WARNING:${NC} the following are configured as S3 URIs and will NOT be touched by this restore (this script only covers local disk):"
+  printf '  %s\n' "${_s3_roots[@]}"
+  echo "Restoring S3/MinIO data needs its own recovery path (bucket versioning, etc.) — see docs/deployment/self-hosted.md."
+fi
+
 echo "This will REPLACE the current database and local pipeline artifacts"
 echo "(data_lake/inventory_events, feature_store/*.parquet, warehouse/*.parquet,"
 echo "warehouse/*.duckdb, models/*.pkl) with the contents of:"
