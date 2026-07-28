@@ -10,19 +10,13 @@ import pandas as pd
 from sqlalchemy.orm import Session
 
 from app.config import INVENTORY_EVENTS_ROOT, WAREHOUSE_ROOT
+from app.core import storage
 from app.core.logging import logger
 from app.models.product import Product
 
-# app.config exports these as plain strings (so an s3:// URI doesn't get
-# mangled by Path), but this file hasn't been migrated to
-# app.core.storage yet (see #22) — wrap back to Path here so existing
-# local-mode behavior stays exactly as it was.
-INVENTORY_EVENTS_ROOT = Path(INVENTORY_EVENTS_ROOT)
-WAREHOUSE_ROOT = Path(WAREHOUSE_ROOT)
-
 
 def _ensure_directories() -> None:
-    WAREHOUSE_ROOT.mkdir(parents=True, exist_ok=True)
+    storage.mkdir(WAREHOUSE_ROOT)
 
 
 _UNSAFE_CHARS = frozenset("'\";\\")
@@ -35,6 +29,12 @@ def _safe_path(path: Path, root: Path) -> str:
     somewhere inside root and contains no unsafe characters. root is never
     attacker-influenced today, but this keeps the guard meaningful once
     paths derive from more than static env config.
+
+    Local filesystem only — see _safe_s3_path() for the S3-URI case, which
+    can't use Path.resolve()/is_relative_to() (no such thing for object
+    storage). Deliberately not touched/generalized: this is a documented
+    f-string-injection mitigation (docs/archive/report.md M3) and a sloppy
+    rewrite risks reopening that bug class.
     """
     resolved = path.resolve()
     resolved_root = root.resolve()
@@ -46,6 +46,30 @@ def _safe_path(path: Path, root: Path) -> str:
     if bad:
         raise ValueError(f"Path contains unsafe characters {bad!r}: {resolved_str}")
     return resolved_str
+
+
+def _safe_s3_path(path: str, root: str) -> str:
+    """S3-URI counterpart to _safe_path() for the same DuckDB f-string
+    interpolation use — a string-prefix allowlist against the configured
+    root instead of filesystem containment (there's no resolve()/
+    is_relative_to() equivalent for object storage), plus the same
+    unsafe-character check.
+    """
+    if not path.startswith(root):
+        raise ValueError(f"Path {path} escapes expected root {root}")
+
+    bad = _UNSAFE_CHARS & set(path)
+    if bad:
+        raise ValueError(f"Path contains unsafe characters {bad!r}: {path}")
+    return path
+
+
+def _safe_read_path(path: str, root: str) -> str:
+    """Dispatches to _safe_path() or _safe_s3_path() based on whether root
+    is local or an s3:// URI."""
+    if storage.is_s3(root):
+        return _safe_s3_path(path, root)
+    return _safe_path(Path(path), Path(root))
 
 
 def build_dim_products(db: Session) -> int:
@@ -65,8 +89,8 @@ def build_dim_products(db: Session) -> int:
     _ensure_directories()
 
     # 4. Write to parquet
-    file_path = WAREHOUSE_ROOT / "dim_products.parquet"
-    df.to_parquet(file_path, index=False)
+    file_path = storage.join(WAREHOUSE_ROOT, "dim_products.parquet")
+    storage.to_parquet(df, file_path)
 
     return len(df)
 
@@ -93,8 +117,8 @@ def build_dim_dates(start_date, end_date) -> int:
     _ensure_directories()
 
     # 4. write to parquet
-    file_path = WAREHOUSE_ROOT / "dim_dates.parquet"
-    df.to_parquet(file_path, index=False)
+    file_path = storage.join(WAREHOUSE_ROOT, "dim_dates.parquet")
+    storage.to_parquet(df, file_path)
 
     # 5. return the row count
     return len(df)
@@ -108,14 +132,21 @@ def build_fact_table() -> int:
     # 2. Ensure directory exists
     _ensure_directories()
 
+    # httpfs is needed if either side of the join below is on S3 — both
+    # reads happen through the same connection/query regardless of which
+    # root is actually S3, so check both rather than just WAREHOUSE_ROOT.
+    if storage.is_s3(INVENTORY_EVENTS_ROOT) or storage.is_s3(WAREHOUSE_ROOT):
+        storage.configure_duckdb_s3(conn)
+
     # 3. Read inventory events from data_lake
     # This query has 2 scanning (FROM looks for events AND JOIN looks for products)
     # and one conditional check(ON) for product id. normally makes an O(m X n) complexity.
     # But DuckDB uses a hash join here — O(n + m) where n is events and m is products.
     # Products table is small so the hash table fits in memory entirely,
     # making this effectively O(n) in practice.
-    events_path = _safe_path(INVENTORY_EVENTS_ROOT, root=INVENTORY_EVENTS_ROOT)
-    products_path = _safe_path(WAREHOUSE_ROOT / "dim_products.parquet", root=WAREHOUSE_ROOT)
+    events_path = _safe_read_path(INVENTORY_EVENTS_ROOT, root=INVENTORY_EVENTS_ROOT)
+    dim_products_path = storage.join(WAREHOUSE_ROOT, "dim_products.parquet")
+    products_path = _safe_read_path(dim_products_path, root=WAREHOUSE_ROOT)
 
     # noqa justification: paths are config-derived (INVENTORY_EVENTS_ROOT /
     # WAREHOUSE_ROOT) and already containment-checked by _safe_path() above —
@@ -136,8 +167,8 @@ def build_fact_table() -> int:
     """).df()  # noqa: S608 -- .df() converts directly to pandas DataFrame
 
     # 4. write to warehouse/fact_inventory_events.parquet
-    file_path = WAREHOUSE_ROOT / "fact_inventory_events.parquet"
-    result.to_parquet(file_path, index=False)
+    file_path = storage.join(WAREHOUSE_ROOT, "fact_inventory_events.parquet")
+    storage.to_parquet(result, file_path)
 
     # 5. Close duckdb connection
     conn.close()
