@@ -583,6 +583,30 @@ even a training-side ARM problem, if one ever turned up, wouldn't block
 serving. `docker/Dockerfile`'s own base-image comments already show it was
 pinned with `arm64` in mind (manifest-list digest, not a single-arch tag).
 
+**2026-07-28: no-cost budget constraint still stands** — every VPS option
+checked (including Oracle's Always Free tier above) requires a card on file
+for identity verification, even when nothing gets charged, which isn't
+available. Rather than block on that, ran the actual production-mode stack
+(`docker-compose.prod.yml`, no Caddy/no domain yet) end-to-end on real
+hardware, in an isolated Docker project/volume so it couldn't touch the
+existing dev stack's data. Every documented step in
+`docs/deployment/self-hosted.md` held up exactly as written outside local
+dev shortcuts: 15 Alembic migrations applied clean to a fresh DB; Gunicorn
+came up with real multi-worker concurrency; Postgres confirmed genuinely
+unpublished to the host (`ports: !override []`); real account creation,
+login, and JWT-gated `/api` routes all worked; `restart: unless-stopped`
+correctly did *not* restart after an explicit `docker kill`/`stop` (by
+design) but correctly did auto-restart after an unmediated crash
+(RestartCount incremented); a full `down`/`up` cycle preserved the Postgres
+volume; and `scripts/backup.sh` + `scripts/restore.sh` were proven to
+actually round-trip real state (created a 2nd user, took a backup, created
+a 3rd user, restored the earlier backup, confirmed the 3rd user's login now
+401s while the first two still work — not just "the script exited 0").
+Zero bugs found. **What's still open, and now the actual remaining scope of
+#74**: nothing here tested real public reachability, a real domain, or the
+Caddy HTTPS overlay — that still needs an actual reachable host, which
+remains blocked on the card-free-hosting question above.
+
 ------------------------------------------------------------
 EPOCH 10 — Multi-Tenancy (Path B, not yet started — decision to start is open, see above)
 ------------------------------------------------------------
