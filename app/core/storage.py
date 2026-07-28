@@ -72,6 +72,22 @@ def exists(path: str) -> bool:
     return fs.exists(fs_path)
 
 
+def cache_key(path: str) -> str:
+    """A short string that changes whenever the object at path changes —
+    ETag for S3 (content-hash-based), mtime/size fallback otherwise. For
+    invalidating local read-through caches of remote files — see
+    forecast_service.py's load_model()."""
+    fs, fs_path = fsspec.core.url_to_fs(path, **storage_options(path))
+    info = fs.info(fs_path)
+    for key in ("ETag", "etag"):
+        if info.get(key):
+            return str(info[key]).strip('"')
+    for key in ("LastModified", "mtime", "last_modified"):
+        if info.get(key):
+            return str(info[key])
+    return str(info.get("size", ""))
+
+
 def glob(root: str, pattern: str) -> list[str]:
     """Recursive glob under root, e.g. glob(INVENTORY_EVENTS_ROOT, "*.parquet").
     Returns full paths/URIs usable directly by read_parquet/open_read.
