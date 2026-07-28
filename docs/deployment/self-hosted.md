@@ -43,6 +43,12 @@ Edit `.env` and set, at minimum:
   [`SECURITY.md`](../../SECURITY.md).
 - `CORS_ORIGINS` — if you're also running the dashboard, point this at
   wherever it's served from.
+- `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` — MinIO (the self-hosted
+  S3-compatible object storage backend, see below) runs by default
+  alongside the rest of the stack and refuses to start without these,
+  same as `POSTGRES_PASSWORD`. You don't have to actually *use* it —
+  local disk stays the default for the data pipeline either way — but
+  it needs valid credentials to boot regardless.
 
 ## 3. Start the stack
 
@@ -68,9 +74,13 @@ manual cert management. The API is now reachable at `https://your-domain.com`.
 
 In both modes, `docker-compose.prod.yml` also: runs the built image only (no
 live source bind-mount), restarts containers automatically on crash/reboot
-(`restart: unless-stopped`), and stops publishing Postgres's port to the
-outside world — only the `api` container can reach it, over the internal
-Docker network.
+(`restart: unless-stopped`), stops publishing Postgres's port to the outside
+world — only the `api` container can reach it, over the internal Docker
+network — and starts a `minio` container the same way (see
+[S3 / MinIO storage](#s3--minio-storage-optional) below). The data pipeline
+doesn't actually route through MinIO by default — local disk stays its
+default storage regardless — `minio` just runs alongside everything else,
+ready if you turn it on.
 
 ## 4. Verify
 
@@ -99,6 +109,53 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml [-f docker-compo
 
 Migrations run automatically on container start (same `alembic upgrade head`
 step as local dev).
+
+## S3 / MinIO storage (optional)
+
+The data pipeline (`data_lake/`, `warehouse/`, `feature_store/`, `models/`)
+defaults to local disk — the named volumes from step 3 already make that
+durable across redeploys. MinIO (an open-source S3-compatible object store)
+runs alongside the rest of the stack by default too, but nothing routes
+through it until you point the relevant paths at it.
+
+To actually use it, set these in `.env` (in addition to
+`MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD` from step 2):
+
+```bash
+S3_ENDPOINT_URL=http://minio:9000
+AWS_ACCESS_KEY_ID=<same as MINIO_ROOT_USER>
+AWS_SECRET_ACCESS_KEY=<same as MINIO_ROOT_PASSWORD>
+S3_URL_STYLE=path
+```
+
+Then point whichever of the 4 pipeline paths you want on S3 at a bucket URI,
+e.g.:
+
+```bash
+DATA_LAKE_ROOT=s3://ims/data_lake
+WAREHOUSE_ROOT=s3://ims/warehouse
+FEATURE_STORE_PATH=s3://ims/feature_store
+MODELS_DIR=s3://ims/models
+```
+
+Create the bucket first — `docker compose exec minio mc alias set local
+http://localhost:9000 $MINIO_ROOT_USER $MINIO_ROOT_PASSWORD && docker compose
+exec minio mc mb local/ims` — then recreate the stack (`docker compose -f
+docker-compose.yml -f docker-compose.prod.yml up -d --build`) to pick up the
+new `.env` values.
+
+One path stays local no matter what: `WAREHOUSE_DB_PATH` (the DuckDB catalog
+file dbt and the feature-builder both open) — there's no supported way to
+run a writable DuckDB database directly on S3, so it's always a local file,
+rebuilt from S3-hosted source parquet on each `dbt run` when `WAREHOUSE_ROOT`
+itself is on S3. Don't set it to an `s3://` URI.
+
+`scripts/backup.sh`/`scripts/restore.sh` only ever cover local disk — they
+print an explicit warning naming which paths they're skipping if any are on
+S3. For S3/MinIO durability instead, use bucket versioning (`docker compose
+exec minio mc version enable local/ims`) and back up the `minio_data` Docker
+volume itself on whatever schedule matters to you, the same way you would
+any other named volume.
 
 ## Dashboard (optional, requires a domain)
 
