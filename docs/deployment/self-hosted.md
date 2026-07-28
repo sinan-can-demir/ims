@@ -138,6 +138,70 @@ The dashboard is now reachable at `https://your-domain.com:8501`, prompting
 for the username/password above. Make sure port `8501` is open in your
 server's firewall alongside `80`/`443`.
 
+## Temporary public demo (no domain, no Cloudflare account needed)
+
+If you just want to show someone the dashboard live over the internet —
+not a real deployment, no domain, no signup of any kind — use Cloudflare's
+**quick tunnel**. It gives you a real public HTTPS URL pointed at whatever's
+running locally, for free, with zero account.
+
+```bash
+# One-time install
+curl -fsSL -o ~/.local/bin/cloudflared \
+  https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+chmod +x ~/.local/bin/cloudflared
+```
+
+The dashboard isn't published to the host at all under `docker-compose.prod.yml`
+without the Caddy overlay (see above), so the tunnel has nothing to point at
+until you temporarily publish it to localhost:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+  -f - up -d dashboard <<'EOF'
+services:
+  dashboard:
+    ports:
+      - "127.0.0.1:8501:8501"
+EOF
+```
+
+Then start the tunnel:
+
+```bash
+~/.local/bin/cloudflared tunnel --url http://localhost:8501
+```
+
+It prints a URL like `https://some-random-words.trycloudflare.com` within
+a few seconds — that's a real, publicly reachable HTTPS address serving the
+live dashboard, from anywhere. Anyone with the link can open it; the
+dashboard's own per-user login is the only thing gating actual access.
+
+**This is not a permanent deployment**, by design:
+- The URL only exists as long as that `cloudflared` process keeps running.
+  Close the terminal, sleep the laptop, or lose network, and it's gone.
+- Restarting `cloudflared` (crash, reconnect after a long outage, etc.)
+  generates a **new random URL** — the old one doesn't come back.
+- Cloudflare's own banner is explicit: account-less tunnels have no uptime
+  guarantee and aren't for production use.
+
+When you're done, `Ctrl+C` the tunnel and revert the port publish:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d dashboard
+```
+
+**Why not a stable custom domain instead?** A permanent address needs a
+Cloudflare *named* tunnel, and as of 2026-07 both ways to create one are
+blocked without either a payment method or a domain you already own:
+the Zero Trust dashboard flow requires a card on file even for its "$0/month"
+free plan (to authorize potential overage), and the classic CLI flow
+(`cloudflared tunnel login`) requires selecting an existing zone in your
+Cloudflare account — a free subdomain like [is-a.dev](https://is-a.dev/)
+can't fill that slot, since its zone belongs to that project, not you.
+So a real stable public URL for this deployment still needs either a paid
+domain or an actual reachable host (see `#74` in ROADMAP.md).
+
 ## Backups
 
 `scripts/backup.sh <destination_dir>` backs up the Postgres database
