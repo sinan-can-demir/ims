@@ -17,6 +17,12 @@
 # nobody reviewed). To promote/demote an existing account, use
 # scripts/set_user_role.py instead of re-running this.
 #
+# --organization-id defaults to 1 (the bootstrap org every deployment has,
+# see Epoch 10's organizations migration) — matches the single-tenant
+# shape every self-hosted deployment actually is unless ALLOW_MULTIPLE_ORGS
+# is on and scripts/create_organization.py has been used to provision a
+# real 2nd org.
+#
 # Requirements:
 #   - Postgres must be reachable at DATABASE_URL (make up)
 
@@ -36,7 +42,11 @@ from app.models.user import User  # noqa: E402
 
 
 def create_user(
-    email: str, password: str, display_name: str, role: str = UserRole.MEMBER.value
+    email: str,
+    password: str,
+    display_name: str,
+    role: str = UserRole.MEMBER.value,
+    organization_id: int = 1,
 ) -> User:
     db = SessionLocal()
     try:
@@ -45,6 +55,7 @@ def create_user(
             password_hash=hash_password(password),
             display_name=display_name,
             role=role,
+            organization_id=organization_id,
         )
         db.add(user)
         db.commit()
@@ -66,6 +77,7 @@ def main() -> None:
         choices=[role.value for role in UserRole],
         default=UserRole.MEMBER.value,
     )
+    parser.add_argument("--organization-id", type=int, default=1)
     args = parser.parse_args()
 
     password = getpass.getpass("Password: ")
@@ -75,12 +87,15 @@ def main() -> None:
         raise SystemExit(1)
 
     try:
-        user = create_user(args.email, password, args.display_name, args.role)
+        user = create_user(args.email, password, args.display_name, args.role, args.organization_id)
     except ValueError as exc:
         print(f"✗ {exc}")
         raise SystemExit(1) from exc
 
-    print(f"✓ Created user '{user.email}' (id={user.id}, role={user.role.value})")
+    print(
+        f"✓ Created user '{user.email}' "
+        f"(id={user.id}, role={user.role.value}, organization_id={user.organization_id})"
+    )
 
 
 if __name__ == "__main__":
