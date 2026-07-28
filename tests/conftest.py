@@ -14,6 +14,7 @@ from app.core.security import hash_password
 from app.database import Base, get_db
 from app.main import app
 from app.models.enums import UserRole
+from app.models.organization import Organization
 from app.models.user import User
 
 TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL")
@@ -48,6 +49,11 @@ def pytest_collection_modifyitems(config, items):
 def db():
     Base.metadata.create_all(bind=engine)
     session = TestingSessionLocal()
+    # Bootstrap org (id=1), same as the real Epoch 10 migration's seed row
+    # — every table with organization_id is a NOT NULL FK to this, so
+    # anything the test suite creates needs it to exist first.
+    session.add(Organization(id=1, name="Default Organization"))
+    session.commit()
     try:
         yield session
     finally:
@@ -98,6 +104,7 @@ def client(db):
         email="test-client@example.com",
         password_hash=hash_password("test-client-password"),
         display_name="Test Client",
+        organization_id=1,
     )
     db.add(user)
     db.commit()
@@ -126,6 +133,7 @@ def admin_client(db):
         password_hash=hash_password("test-admin-password"),
         display_name="Test Admin",
         role=UserRole.ADMIN,
+        organization_id=1,
     )
     db.add(user)
     db.commit()

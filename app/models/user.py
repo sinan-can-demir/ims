@@ -1,4 +1,13 @@
-from sqlalchemy import Boolean, Column, DateTime, Enum, Integer, String
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.sql import func
 
 from app.database import Base
@@ -8,7 +17,23 @@ from app.models.enums import UserRole
 class User(Base):
     __tablename__ = "users"
 
+    # Composite-FK target for purchase_orders.created_by_id,
+    # inventory_events.created_by_id, audit_log.actor_id (Epoch 10). One
+    # org per user (a scalar column, not a join table) — nothing in this
+    # codebase models multi-org-per-user, and email stays globally unique
+    # below (no org-selection step at login), so a single org per account
+    # is the only self-consistent shape; see ROADMAP.md's EPOCH 10 section.
+    __table_args__ = (UniqueConstraint("organization_id", "id", name="uq_users_org_id"),)
+
     id = Column(Integer, primary_key=True, index=True)
+
+    # server_default="1" kept permanently, same idiom as is_active/role
+    # below — a safety net for any User(...) construction that doesn't
+    # explicitly pass organization_id, even though scripts/create_user.py
+    # (this PR) and every route (a later Epoch 10 PR) do.
+    organization_id = Column(
+        Integer, ForeignKey("organizations.id"), nullable=False, server_default="1", index=True
+    )
 
     email = Column(String, unique=True, nullable=False, index=True)
 
