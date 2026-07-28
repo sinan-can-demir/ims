@@ -1,26 +1,20 @@
 # app/services/feature_service.py
 
-from pathlib import Path
-
 import duckdb
 
-from app.config import FEATURE_STORE_PATH, WAREHOUSE_ROOT
+from app.config import FEATURE_STORE_PATH, WAREHOUSE_DB_PATH
+from app.core import storage
 from app.core.logging import logger
-
-# app.config exports these as plain strings (so an s3:// URI doesn't get
-# mangled by Path), but this file hasn't been migrated to
-# app.core.storage yet (see #22) — wrap back to Path here so existing
-# local-mode behavior stays exactly as it was.
-FEATURE_STORE_PATH = Path(FEATURE_STORE_PATH)
-WAREHOUSE_ROOT = Path(WAREHOUSE_ROOT)
 
 
 def _ensure_directories() -> None:
-    FEATURE_STORE_PATH.mkdir(parents=True, exist_ok=True)
+    storage.mkdir(FEATURE_STORE_PATH)
 
 
 def build_features() -> int:
-    conn = duckdb.connect(str(WAREHOUSE_ROOT / "ims.duckdb"))
+    # Always local — see app/config.py's WAREHOUSE_DB_PATH and
+    # warehouse/ims_warehouse/profiles.yml, which opens this same file.
+    conn = duckdb.connect(WAREHOUSE_DB_PATH)
 
     logger.info("feature_build_started")
 
@@ -52,7 +46,7 @@ def build_features() -> int:
 
     # Step 3 — Write to feature store
     _ensure_directories()
-    df.to_parquet(FEATURE_STORE_PATH / "daily_sales.parquet", index=False)
+    storage.to_parquet(df, storage.join(FEATURE_STORE_PATH, "daily_sales.parquet"))
 
     logger.info("feature_build_completed", extra={"rows_written": len(df)})
 
