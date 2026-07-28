@@ -8,7 +8,7 @@ An event-driven inventory platform with a full analytics pipeline and ML-powered
 **Stack:** FastAPI · PostgreSQL · dbt · DuckDB · Prophet · Streamlit · Docker
 
 > **Project status:** actively developed learning project, not a hardened production system.
-> Auth is per-user JWT bearer tokens with two roles (admin/member) — see [SECURITY.md](SECURITY.md) for the current auth model. Current focus is Path A: getting one real restaurant running this daily (see [ROADMAP.md](ROADMAP.md)) — see [Deployment](#deployment) below for how to run it yourself.
+> Auth is per-user JWT bearer tokens with two roles (admin/member) — see [SECURITY.md](SECURITY.md) for the current auth model. Path A (restaurant deployment) and the self-hosted deployment/S3 hardening work (`#74`, `#22`) are both shipped — see [ROADMAP.md](ROADMAP.md) for what's next (Path B / multi-tenancy is scoped but not started). See [Deployment](#deployment) below for how to run it yourself.
 
 ---
 
@@ -17,7 +17,8 @@ An event-driven inventory platform with a full analytics pipeline and ML-powered
 - [x] Event-sourced inventory core — append-only `InventoryEvent` log +
       `InventoryState` projection, idempotent writes (`event_id`), oversell
       protection
-- [x] Product + inventory REST API (FastAPI/Postgres), API-key auth
+- [x] Product + inventory REST API (FastAPI/Postgres), per-user JWT bearer
+      auth (two roles: admin/member — see [SECURITY.md](SECURITY.md))
 - [x] Recipes/BOM — a dish consumes its ingredients in fixed quantities when
       sold, atomically with the sale (`POST /api/recipes`)
 - [x] Real Purchase Order object (draft/submit/receive) — turns a
@@ -44,7 +45,13 @@ An event-driven inventory platform with a full analytics pipeline and ML-powered
       tests), Docker build, dependency/secret/image vulnerability scanning
       (Dependabot + gitleaks + pip-audit + trivy), and a dedicated pipeline
       job exercising export → warehouse → dbt against a real Postgres
-- [x] Self-hosted deployment path (Docker Compose + optional Caddy HTTPS)
+- [x] Self-hosted deployment path (Docker Compose + optional Caddy HTTPS) —
+      verified against a real running deployment, including public
+      reachability
+- [x] S3-compatible object storage for the data pipeline — MinIO by default
+      for self-hosted (runs alongside the stack, zero extra cost), real AWS
+      S3 for the AWS path; local disk stays the default either way. See
+      [docs/deployment/self-hosted.md](docs/deployment/self-hosted.md#s3--minio-storage-optional)
 - [x] `scripts/backup.sh` / `scripts/restore.sh` — one archive covering
       both Postgres and the local pipeline artifacts (data lake, feature
       store, warehouse, models); see
@@ -79,18 +86,25 @@ filtering, click-through to Product Detail), Product Detail enhancements
 KPI tiles, event-type filter + pagination on the event history table), and
 a `.streamlit/config.toml` theming pass.
 
+**Deployment verification + S3-compatible storage:** `#74` — the
+self-hosted `docker-compose.prod.yml` path fully verified against a real
+running deployment (real secrets, real migrations, restart/crash-recovery
+semantics, backup/restore round-trip), plus a real fixed data-loss bug
+(pipeline directories now persist across redeploys) and demonstrated public
+reachability. `#22` — the data pipeline (data lake, warehouse, feature
+store, trained models) migrated to a pluggable local-or-S3 storage layer,
+with MinIO as the zero-cost self-hosted default; local disk stays the
+out-of-the-box default either way.
+
 ## Deferred (Path B)
 
 Deferred until Path A has real signal that more than one business wants
 this (general small/mid-business audience — see
 [ROADMAP.md](ROADMAP.md) Epochs 10-15):
 
-- [ ] Move the data lake off the local filesystem onto S3-compatible object
-      storage (`#22` — rescoped, not blocked: MinIO for self-hosted, real
-      S3 for AWS)
-- [ ] Deploy the self-hosted stack to a real VPS (`#74` — deferred on a
-      separate no-cost budget constraint, not signal-gating like the rest
-      of this list)
+- [ ] Real S3 + Terraform/IAM for the AWS deployment path, and a CI test
+      matrix covering both local and S3 storage (`#130` — split off `#22`,
+      since the AWS path isn't in active use)
 - [ ] Deploy the dashboard on AWS (ECS, reading the feature store from S3)
 - [ ] Apply the AWS Terraform — ECS/RDS/ALB infra is written, not yet running
 - [ ] Multi-tenancy, real integrations (Shopify/QuickBooks/etc.), order
@@ -172,13 +186,14 @@ See [ROADMAP.md](ROADMAP.md) for the full backlog.
 ims-manual/
 ├── app/                    # FastAPI application
 │   ├── api/                # Route handlers (products, inventory)
+│   ├── core/               # storage.py (local/S3 abstraction), auth, logging
 │   ├── models/             # SQLAlchemy models
 │   ├── schemas/            # Pydantic schemas
+│   ├── scripts/            # export/warehouse/feature/train pipeline entry points
 │   └── services/           # Business logic
 ├── migrations/             # Alembic migrations
 ├── tests/                  # Unit, integration, and e2e tests
-├── pipelines/              # PostgreSQL → Parquet export
-├── data_lake/              # Parquet event snapshots
+├── data_lake/              # Parquet event snapshots (or an s3:// URI — see below)
 ├── warehouse/              # DuckDB + dbt project
 │   └── ims_warehouse/
 │       ├── models/         # dbt dim/fact models
@@ -191,6 +206,7 @@ ims-manual/
 ├── docker-compose.yml            # local dev
 ├── docker-compose.prod.yml       # self-hosted prod hardening (overlay)
 ├── docker-compose.caddy.yml      # optional automatic HTTPS (overlay)
+├── docker-compose.minio.yml      # optional local MinIO for testing S3 storage (overlay)
 ├── docs/deployment/        # self-hosted deployment guide
 ├── docs/model-registry.md  # MLflow setup, promotion/rollback
 ├── docs/observability.md   # Prometheus metrics, structured request logging
@@ -515,10 +531,16 @@ decisions no wizard should make silently.
 | `CORS_ORIGINS` | `http://localhost:8501` | Comma-separated list of allowed CORS origins |
 | `JWT_SECRET` | unset | Signs/verifies JWTs issued by `POST /api/auth/login`; unset falls back to a fixed, publicly-known dev secret (local dev only — see [SECURITY.md](SECURITY.md)) |
 | `WEBHOOK_SECRET` | unset | Shared secret for verifying `POST /api/webhooks/ingest` signatures (`X-Webhook-Signature`); unset disables verification (local dev only) |
-| `DATA_LAKE_ROOT` | `./data_lake` | Parquet data lake root |
-| `WAREHOUSE_ROOT` | `./warehouse` | DuckDB warehouse root |
-| `FEATURE_STORE_PATH` | `./feature_store` | Feature store output path |
-| `MODELS_DIR` | `./models` | Trained Prophet model output path |
+| `RATE_LIMIT` | `100/minute` | Default rate limit on `/api` routes (slowapi syntax) |
+| `DATA_LAKE_ROOT` | `./data_lake` | Parquet data lake root — local path or an `s3://` URI |
+| `WAREHOUSE_ROOT` | `./warehouse` | Warehouse mart/dim Parquet output — local path or an `s3://` URI |
+| `WAREHOUSE_DB_PATH` | `./warehouse/ims.duckdb` | The DuckDB catalog file dbt and the feature builder both open — always local, never `s3://` (no supported way to run a writable DuckDB database on S3); separate from `WAREHOUSE_ROOT` above on purpose |
+| `FEATURE_STORE_PATH` | `./feature_store` | Feature store output path — local path or an `s3://` URI |
+| `MODELS_DIR` | `./models` | Trained Prophet model output path — local path or an `s3://` URI |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_REGION` | unset | S3-compatible object storage credentials — only used if one of the 4 paths above is an `s3://` URI |
+| `S3_ENDPOINT_URL` | unset | S3-compatible endpoint (e.g. `http://minio:9000`); leave unset for real AWS S3 |
+| `S3_URL_STYLE` | unset | `path` for MinIO/most self-hosted S3-compatible servers; unset (AWS's default `vhost` style) for real AWS S3 |
+| `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | unset | MinIO's own admin credentials — `docker-compose.prod.yml`/`docker-compose.minio.yml` only, required to start the `minio` container. See [docs/deployment/self-hosted.md](docs/deployment/self-hosted.md#s3--minio-storage-optional) |
 | `MLFLOW_TRACKING_URI` | `sqlite:///./mlflow.db` | MLflow model registry backend, used by `make train` only — see [docs/model-registry.md](docs/model-registry.md) |
 | `MLFLOW_EXPERIMENT_NAME` | `prophet-demand-forecasting` | MLflow experiment name for training runs |
 | `WAREHOUSE_START_DATE` / `WAREHOUSE_END_DATE` | `2020-01-01` / `2030-12-31` | Date range for the generated `dim_dates` warehouse table |
@@ -542,10 +564,10 @@ Copy `.env.example` to `.env` and adjust as needed.
 | 4 | Feature Engineering | ✅ Complete |
 | 5 | ML Platform (Prophet forecasting) | ✅ Complete |
 | 6 | Streamlit Dashboard | ✅ Complete |
-| 7 | Production Hardening + Deployment (self-hosted + AWS) | Nearly complete — `#22` (S3 data lake) open, deferred to Path B |
+| 7 | Production Hardening + Deployment (self-hosted + AWS) | ✅ Complete for self-hosted — `#74` (deploy verified) and `#22` (S3 storage) both shipped. AWS-path S3/Terraform tracked separately in `#130` |
 | 7.1 | Dashboard UX Overhaul — multi-page nav, Fleet Overview, Product Detail enhancements, theming | ✅ Complete |
 | Path A | Restaurant deployment — recipes/BOM, `WASTE` events, real POs, forecasting tuning, CLI wrapper, backups | ✅ Complete |
-| 10-15 | General small/mid-business platform (Path B) | Deferred until Path A has signal |
+| 10-15 | General small/mid-business platform (Path B) | Scoped in detail (multi-tenancy alone: ~2-2.5mo), not started — whether to start at all is an open decision, not just a matter of time |
 
 ---
 
