@@ -284,3 +284,25 @@ scripts/restore.sh /path/to/backup/dir/ims-backup-<timestamp>.tar.gz
 ```
 
 Both require the `db` service to be up (`docker compose up -d db`).
+
+## Automated retraining
+
+`make train` (Prophet demand forecasting) is a hand-run command by
+default. `scripts/retrain_cron.sh` wraps `make features && make train` for
+unattended, scheduled retraining via a plain host cron entry:
+
+```bash
+# Daily at 3am, output appended to a log file:
+0 3 * * * cd /path/to/ims-manual && scripts/retrain_cron.sh >> /var/log/ims-retrain.log 2>&1
+```
+
+Requires training dependencies installed on the host (`make train-deps`)
+and a real Postgres reachable at `DATABASE_URL`, same as running
+`make train` by hand. Every run immediately replaces every product's
+live-serving model — there's no review gate (see
+[`docs/model-registry.md`](../model-registry.md#automated-retraining)).
+If a bad retrain needs undoing:
+
+```bash
+python -m app.scripts.rollback_model --product-id 1 --version 2
+```

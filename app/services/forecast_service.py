@@ -76,6 +76,17 @@ def _log_run_to_mlflow(
             registered_model_name=f"prophet_{product_id}",
         )
 
+        # Every training run's model immediately becomes what's served (see
+        # train_model()'s unconditional file write below) — set champion to
+        # match so the registry accurately reflects "what's currently
+        # live." This is a rollback reference point, not a review gate —
+        # training was already unconditionally promoting before this alias
+        # existed; this just makes the registry tell the truth about it.
+        # See docs/model-registry.md and rollback_model() below.
+        mlflow.MlflowClient().set_registered_model_alias(
+            f"prophet_{product_id}", "champion", model_info.registered_model_version
+        )
+
     return {
         "mlflow_run_id": run.info.run_id,
         "mlflow_model_version": model_info.registered_model_version,
@@ -175,6 +186,52 @@ def train_all_models() -> list[dict]:
     product_ids = df["product_id"].unique().tolist()
 
     return [train_model(pid) for pid in product_ids]
+
+
+def rollback_model(product_id: int, version: int) -> dict:
+    """
+    Roll back a product's live-serving model to a specific prior MLflow
+    registry version — the missing half of docs/model-registry.md's
+    versioning story (the registry has tracked every run since day one;
+    there was no way to act on that until this function). Overwrites
+    models/prophet_{product_id}.pkl (the exact file load_model() reads)
+    with that version's artifact, and re-points the champion alias so the
+    registry stays consistent with what's actually live.
+    """
+    try:
+        import mlflow
+        import mlflow.prophet
+    except ImportError as e:
+        raise ImportError(
+            "mlflow is required to roll back models. Install training dependencies with: "
+            "pip install -r requirements-train.txt"
+        ) from e
+
+    _ensure_directories()
+
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+    registered_name = f"prophet_{product_id}"
+    client = mlflow.MlflowClient()
+
+    try:
+        client.get_model_version(registered_name, str(version))
+    except mlflow.exceptions.MlflowException as e:
+        raise ValueError(f"No version {version} found for '{registered_name}'") from e
+
+    model = mlflow.prophet.load_model(f"models:/{registered_name}/{version}")
+
+    model_path = storage.join(MODELS_DIR, f"prophet_{product_id}.pkl")
+    with storage.open_write(model_path, "wb") as f:
+        joblib.dump(model, f)
+
+    client.set_registered_model_alias(registered_name, "champion", version)
+
+    logger.info(
+        "model_rollback_completed",
+        extra={"product_id": product_id, "version": version, "model_path": str(model_path)},
+    )
+
+    return {"product_id": product_id, "version": version, "model_path": str(model_path)}
 
 
 def load_model(product_id: int) -> Prophet:
