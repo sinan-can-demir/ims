@@ -239,10 +239,12 @@ Self-hosted (default, docs/deployment/self-hosted.md):
       no exposed DB port, fail-loud on missing secrets)  
 - [x] docker-compose.caddy.yml — optional automatic HTTPS via Caddy  
 - [x] Self-hosted deployment guide  
-- [ ] Move data lake from local filesystem to object storage (#22 — decided,
-      not blocked: S3-compatible via a configurable endpoint, MinIO as the
-      self-hosted default, real S3 + Terraform for the AWS path; see Phase C
-      below for the up-to-date scope)  
+- [x] Move data lake from local filesystem to object storage (#22 — shipped
+      2026-07-28, PRs #121-129: storage abstraction (app/core/storage.py),
+      MinIO as the self-hosted default, all 4 pipeline roots + dbt/DuckDB
+      wired for S3, backup/reset safety nets. AWS S3 Terraform/IAM + a CI
+      local+S3 test matrix split into a follow-up issue, since the AWS path
+      isn't in active use — see Phase C below)  
 - [x] Deploy dashboard alongside the API in the self-hosted stack — `dashboard`
       compose service; its port stays unpublished until the Caddy overlay
       fronts it with basic_auth on a dedicated port (#32). Now also has its
@@ -254,7 +256,9 @@ AWS (enterprise, infra/README.md):
 - [~] Configure AWS infrastructure (ECS Fargate, RDS PostgreSQL, ALB) — Terraform written (infra/), not yet applied  
 - [~] Store secrets in AWS Secrets Manager, inject as environment variables — wired in Terraform, not yet applied  
 - [~] Wire CloudWatch Logs — wired in Terraform, not yet applied  
-- [ ] Move data lake from local filesystem to S3 (#22)  
+- [ ] Move data lake from local filesystem to S3 (self-hosted/MinIO path
+      shipped via #22; the real-S3/Terraform/IAM half of this for the AWS
+      path is split into #130, not yet started)  
 - [ ] Deploy dashboard (Streamlit on ECS, read feature store from S3)  
 - [ ] Set up domain + HTTPS via ACM + ALB  
 - [x] Harden RDS Terraform defaults — backups, deletion_protection, multi-AZ
@@ -355,17 +359,24 @@ Hardening Phase C — Needs Scoping:
       dashboard sign-in gate (#90). No self-service registration —
       accounts are CLI-only via `scripts/create_user.py`. See SECURITY.md
       for the current auth model.  
-- [ ] Move data lake to S3, update export/dbt to use S3 (#22 — rescoped
-      2026-07-26: no longer blocked, the self-hosted-vs-AWS decision is
-      made — S3-compatible via a configurable endpoint/`DATA_LAKE_ROOT`,
-      MinIO added as a `docker-compose`/`docker-compose.prod.yml` service
-      for the self-hosted default, real S3 + Terraform (versioning,
-      lifecycle rules, IAM) for the AWS path. Estimate: 1-3 days.)  
+- [x] Move data lake to S3, update export/dbt to use S3 (#22 — shipped
+      2026-07-28, PRs #121-129, ~2 days across a 9-PR arc, not the
+      original 1-3 day estimate: new `app/core/storage.py` abstraction,
+      MinIO as the self-hosted default (`docker-compose.prod.yml`/
+      `docker-compose.minio.yml`), every pipeline root (export, warehouse,
+      dbt/DuckDB `httpfs`, feature store, models) migrated and verified
+      live against real MinIO, backup/reset S3-mode safety nets. The
+      DuckDB catalog file stays local always (new `WAREHOUSE_DB_PATH`,
+      decoupled from `WAREHOUSE_ROOT` — no supported way to run a
+      writable DuckDB database on S3). Real S3 + Terraform + IAM for the
+      AWS path, and a CI local+S3 test matrix, split into #130 since the
+      AWS path isn't in active use.)  
 
 Milestone: Hardening Phase A complete. Phase B complete — #20 (RDS
-Terraform hardening) shipped as #97. Phase C nearly complete — the
-JWT/user-accounts arc (#23) shipped in full; only #22 (S3 data lake, now
-rescoped and ready, not blocked) remains open. See Phase D below for a
+Terraform hardening) shipped as #97. Phase C complete — the JWT/user-
+accounts arc (#23) shipped in full, #22 (S3 data lake) shipped for the
+self-hosted path. #130 (AWS S3 Terraform + CI matrix) tracks the
+remaining AWS-path piece, not yet started. See Phase D below for a
 second, later audit pass. See the issue tracker for live status.  
 
 Hardening Phase D — Fresh Pre-Deployment Security Audit (2026-07-26):
@@ -721,9 +732,9 @@ cached results across orgs viewed in the same process).
 - [ ] Parquet export `org_id=` partition + column; dbt models +
       `organization_id` + join-boundary test; feature store and Prophet
       model files/MLflow registry partitioned per org (also resolves how
-      #22's eventual S3 migration should be org-partitioned, since the
-      same `org_id=` partition level applies whether the data lake root is
-      local disk or S3)
+      #22's S3-capable storage, shipped, should be org-partitioned, since
+      the same `org_id=` partition level applies whether the data lake
+      root is local disk or S3)
 - [ ] Dashboard: `organization_id` in `dashboard/auth.py`'s session dict
       (same precedent as adding `role` ahead of #72's admin gate); all
       `dashboard/data.py` loaders and their `@st.cache_data` keys updated
