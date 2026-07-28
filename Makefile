@@ -46,6 +46,7 @@ reset:
 	rm -f feature_store/*.parquet
 	rm -f warehouse/*.parquet warehouse/ims.duckdb
 	rm -f models/*.pkl
+	$(PYTHON) -m app.scripts.reset_storage
 	docker compose up --build
 
 rebuild:
