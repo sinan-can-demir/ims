@@ -19,7 +19,15 @@ CHECKPOINT_FILE = f"{DATA_LAKE_ROOT.rstrip('/')}/checkpoints.json"
 # ------------------
 # Warehouse
 # ------------------
+# WAREHOUSE_ROOT can be s3:// (mart parquet output: dim_products.parquet,
+# dim_dates.parquet, fact_inventory_events.parquet). WAREHOUSE_DB_PATH is
+# deliberately a *separate* setting, always local — there's no supported
+# way to run a writable DuckDB database directly on S3 (see
+# warehouse/ims_warehouse/profiles.yml and app/services/feature_service.py,
+# both of which open this same file), so the catalog can't just live under
+# WAREHOUSE_ROOT whenever that's pointed at S3.
 WAREHOUSE_ROOT = os.getenv("WAREHOUSE_ROOT", str(BASE_DIR / "warehouse"))
+WAREHOUSE_DB_PATH = os.getenv("WAREHOUSE_DB_PATH", str(BASE_DIR / "warehouse" / "ims.duckdb"))
 WAREHOUSE_START_DATE = os.getenv("WAREHOUSE_START_DATE", "2020-01-01")
 WAREHOUSE_END_DATE = os.getenv("WAREHOUSE_END_DATE", "2030-12-31")
 
