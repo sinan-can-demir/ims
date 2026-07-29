@@ -1,5 +1,12 @@
-import pytest
+import uuid
 
+import pytest
+from sqlalchemy.exc import DBAPIError
+
+from app.models.enums import EventType
+from app.models.inventory_event import InventoryEvent
+from app.models.inventory_state import InventoryState
+from app.models.product import Product
 from app.models.user import User
 
 from .utils import create_product
@@ -89,3 +96,44 @@ def test_projection_consistency(client):
     response = client.get(f"/api/inventory/{pid}")
 
     assert response.json()["quantity"] == 15
+
+
+@pytest.mark.postgres
+def test_inventory_event_composite_fk_rejects_cross_org_product(db, second_org):
+    """
+    DB-enforced, not just application-checked: a hand-inserted
+    inventory_events row can't point at a product belonging to a
+    different org, even though nothing in the service layer threads
+    organization_id yet (Epoch 10 PR 4/16, see migrations/versions/
+    688eb809961b).
+    """
+    org2_product = Product(organization_id=second_org.id, name="Org2 Widget", sku=f"sku-{uuid.uuid4()}")
+    db.add(org2_product)
+    db.commit()
+    db.refresh(org2_product)
+
+    db.add(
+        InventoryEvent(
+            event_id=f"evt-{uuid.uuid4()}",
+            organization_id=1,
+            product_id=org2_product.id,
+            event_type=EventType.PURCHASE,
+            quantity=1,
+        )
+    )
+    with pytest.raises(DBAPIError):
+        db.commit()
+    db.rollback()
+
+
+@pytest.mark.postgres
+def test_inventory_state_composite_fk_rejects_cross_org_product(db, second_org):
+    org2_product = Product(organization_id=second_org.id, name="Org2 Widget", sku=f"sku-{uuid.uuid4()}")
+    db.add(org2_product)
+    db.commit()
+    db.refresh(org2_product)
+
+    db.add(InventoryState(product_id=org2_product.id, organization_id=1, quantity=0))
+    with pytest.raises(DBAPIError):
+        db.commit()
+    db.rollback()
