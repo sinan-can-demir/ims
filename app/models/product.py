@@ -12,7 +12,17 @@ class Product(Base):
     # stays a plain, globally-unique PK across every org (see ROADMAP.md's
     # EPOCH 10 section) — this is an *additional* uniqueness guarantee for
     # the composite-FK shape, not a replacement for it.
-    __table_args__ = (UniqueConstraint("organization_id", "id", name="uq_products_org_id"),)
+    #
+    # uq_products_org_sku (Epoch 10 PR 6, see migrations/versions/
+    # ffdda217be31): sku moved from globally-unique to
+    # UNIQUE(organization_id, sku) — two orgs can now share a sku string.
+    # get_product_by_sku() still queries by sku alone, unscoped, until
+    # product_service.py is org-threaded in a later PR (#143); safe until
+    # then since nothing can create a product outside org 1 yet.
+    __table_args__ = (
+        UniqueConstraint("organization_id", "id", name="uq_products_org_id"),
+        UniqueConstraint("organization_id", "sku", name="uq_products_org_sku"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
 
@@ -34,7 +44,9 @@ class Product(Base):
 
     name = Column(String, nullable=False)
 
-    sku = Column(String, unique=True, index=True)
+    # No unique=True/index=True here — uniqueness is now org-scoped, see
+    # uq_products_org_sku above (that constraint also backs lookups).
+    sku = Column(String)
 
     # Free-text display label (e.g. "g", "ml", "each") — not a unit-of-
     # measure/conversion system. Recipe quantities (RecipeItem.quantity)

@@ -7,6 +7,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    UniqueConstraint,
 )
 from sqlalchemy.sql import func
 
@@ -34,11 +35,17 @@ class InventoryEvent(Base):
             ["users.organization_id", "users.id"],
             name="fk_inventory_events_org_created_by",
         ),
+        # Epoch 10 PR 6 (see migrations/versions/ffdda217be31): event_id
+        # moved from globally-unique to UNIQUE(organization_id, event_id)
+        # — two orgs can now record the same event_id string independently.
+        UniqueConstraint("organization_id", "event_id", name="uq_inventory_events_org_event_id"),
     )
 
     id = Column(Integer, primary_key=True)
 
-    event_id = Column(String, unique=True, nullable=False)
+    # No unique=True here — uniqueness is now org-scoped, see
+    # uq_inventory_events_org_event_id above.
+    event_id = Column(String, nullable=False)
 
     # Backfilled via products.organization_id (see 688eb809961b) — kept
     # permanently, not dropped, until inventory_service.py threads

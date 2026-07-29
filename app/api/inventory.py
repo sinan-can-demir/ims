@@ -4,7 +4,7 @@ import pandas as pd
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
-from app.core.auth import require_current_user, require_role
+from app.core.auth import get_current_org_id, require_current_user, require_role
 from app.database import get_db
 from app.models.enums import UserRole
 from app.models.inventory_event import InventoryEvent
@@ -38,9 +38,16 @@ def create_inventory_event(
     event: InventoryEventCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_current_user),
+    organization_id: int = Depends(get_current_org_id),
 ):
     return record_event(
-        db, event.product_id, event.event_type, event.quantity, event.event_id, current_user.id
+        db,
+        event.product_id,
+        event.event_type,
+        event.quantity,
+        event.event_id,
+        current_user.id,
+        organization_id,
     )
 
 
@@ -105,10 +112,14 @@ def get_product_events(
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
+    organization_id: int = Depends(get_current_org_id),
 ):
     events = (
         db.query(InventoryEvent)
-        .filter(InventoryEvent.product_id == product_id)
+        .filter(
+            InventoryEvent.product_id == product_id,
+            InventoryEvent.organization_id == organization_id,
+        )
         .order_by(InventoryEvent.created_at.asc(), InventoryEvent.id.asc())
         .offset(offset)
         .limit(limit)
@@ -119,8 +130,14 @@ def get_product_events(
 
 
 @router.get("/{product_id}", response_model=InventoryStateResponse)
-def inventory_level(product_id: int, db: Session = Depends(get_db)):
-    return InventoryStateResponse(product_id=product_id, quantity=get_inventory(db, product_id))
+def inventory_level(
+    product_id: int,
+    db: Session = Depends(get_db),
+    organization_id: int = Depends(get_current_org_id),
+):
+    return InventoryStateResponse(
+        product_id=product_id, quantity=get_inventory(db, product_id, organization_id)
+    )
 
 
 @router.post("/export", response_model=ExportMetadata)
