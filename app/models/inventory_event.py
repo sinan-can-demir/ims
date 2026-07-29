@@ -1,4 +1,13 @@
-from sqlalchemy import Column, DateTime, Enum, ForeignKey, Index, Integer, String
+from sqlalchemy import (
+    Column,
+    DateTime,
+    Enum,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    Integer,
+    String,
+)
 from sqlalchemy.sql import func
 
 from app.database import Base
@@ -12,11 +21,31 @@ class InventoryEvent(Base):
         Index("ix_inventory_events_product_id", "product_id"),
         Index("ix_inventory_events_created_at", "created_at"),
         Index("ix_inventory_events_product_created", "product_id", "created_at"),
+        ForeignKeyConstraint(
+            ["organization_id", "product_id"],
+            ["products.organization_id", "products.id"],
+            name="fk_inventory_events_org_product",
+        ),
+        # MATCH SIMPLE (SQLAlchemy's default when `match` is unset) —
+        # required, not incidental, since created_by_id is nullable. See
+        # migrations/versions/688eb809961b for the full reasoning.
+        ForeignKeyConstraint(
+            ["organization_id", "created_by_id"],
+            ["users.organization_id", "users.id"],
+            name="fk_inventory_events_org_created_by",
+        ),
     )
 
     id = Column(Integer, primary_key=True)
 
     event_id = Column(String, unique=True, nullable=False)
+
+    # Backfilled via products.organization_id (see 688eb809961b) — kept
+    # permanently, not dropped, until inventory_service.py threads
+    # organization_id through explicitly in a later Epoch 10 PR.
+    organization_id = Column(
+        Integer, ForeignKey("organizations.id"), nullable=False, server_default="1", index=True
+    )
 
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
 

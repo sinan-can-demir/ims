@@ -1,10 +1,17 @@
 # tests/test_purchase_orders.py
 
+import uuid
 from unittest.mock import patch
 
 import pandas as pd
+import pytest
+from sqlalchemy.exc import DBAPIError
 
 from app.core.exceptions import ProductNotFoundError
+from app.core.security import hash_password
+from app.models.purchase_order import PurchaseOrder
+from app.models.supplier import Supplier
+from app.models.user import User
 from app.services import purchase_order_service
 
 from .utils import create_product
@@ -315,3 +322,34 @@ def test_receive_is_retry_safe_after_partial_failure(client, db):
 
     assert _quantity(client, flour["id"]) == 50  # not double-counted
     assert _quantity(client, sugar["id"]) == 20
+
+
+@pytest.mark.postgres
+def test_purchase_order_composite_fk_rejects_cross_org_supplier(db, second_org):
+    """
+    DB-enforced, not just application-checked: a hand-inserted
+    purchase_orders row can't point at a supplier belonging to a
+    different org. See migrations/versions/688eb809961b.
+    """
+    org1_user = User(
+        email=f"po-fk-test-{uuid.uuid4()}@example.com",
+        password_hash=hash_password("po-fk-test-password"),
+        display_name="PO FK Test",
+        organization_id=1,
+    )
+    org2_supplier = Supplier(organization_id=second_org.id, name="Org2 Supplier")
+    db.add_all([org1_user, org2_supplier])
+    db.commit()
+    db.refresh(org1_user)
+    db.refresh(org2_supplier)
+
+    db.add(
+        PurchaseOrder(
+            organization_id=1,
+            supplier_id=org2_supplier.id,
+            created_by_id=org1_user.id,
+        )
+    )
+    with pytest.raises(DBAPIError):
+        db.commit()
+    db.rollback()

@@ -2,6 +2,12 @@
 
 import uuid
 
+import pytest
+from sqlalchemy.exc import DBAPIError
+
+from app.models.product import Product
+from app.models.recipe_item import RecipeItem
+
 from .utils import create_product, purchase
 
 
@@ -191,3 +197,57 @@ def test_idempotent_dish_sale_does_not_double_cascade(client):
 
     assert _quantity(client, dish["id"]) == 8
     assert _quantity(client, bun["id"]) == 8  # decremented once, not twice
+
+
+@pytest.mark.postgres
+def test_recipe_item_composite_fk_rejects_cross_org_component_product(db, second_org):
+    """
+    Each of recipe_items' two composite FKs independently forces its
+    product to share the recipe_item row's org — this covers
+    component_product_id, the sibling test covers finished_product_id.
+    See migrations/versions/688eb809961b.
+    """
+    finished = Product(organization_id=1, name="Dish", sku=f"sku-{uuid.uuid4()}")
+    org2_component = Product(
+        organization_id=second_org.id, name="Org2 Ingredient", sku=f"sku-{uuid.uuid4()}"
+    )
+    db.add_all([finished, org2_component])
+    db.commit()
+    db.refresh(finished)
+    db.refresh(org2_component)
+
+    db.add(
+        RecipeItem(
+            organization_id=1,
+            finished_product_id=finished.id,
+            component_product_id=org2_component.id,
+            quantity=1,
+        )
+    )
+    with pytest.raises(DBAPIError):
+        db.commit()
+    db.rollback()
+
+
+@pytest.mark.postgres
+def test_recipe_item_composite_fk_rejects_cross_org_finished_product(db, second_org):
+    org2_finished = Product(
+        organization_id=second_org.id, name="Org2 Dish", sku=f"sku-{uuid.uuid4()}"
+    )
+    component = Product(organization_id=1, name="Ingredient", sku=f"sku-{uuid.uuid4()}")
+    db.add_all([org2_finished, component])
+    db.commit()
+    db.refresh(org2_finished)
+    db.refresh(component)
+
+    db.add(
+        RecipeItem(
+            organization_id=1,
+            finished_product_id=org2_finished.id,
+            component_product_id=component.id,
+            quantity=1,
+        )
+    )
+    with pytest.raises(DBAPIError):
+        db.commit()
+    db.rollback()

@@ -1,4 +1,12 @@
-from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, Integer, UniqueConstraint
+from sqlalchemy import (
+    CheckConstraint,
+    Column,
+    DateTime,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Integer,
+    UniqueConstraint,
+)
 from sqlalchemy.sql import func
 
 from app.database import Base
@@ -21,9 +29,29 @@ class RecipeItem(Base):
         CheckConstraint(
             "finished_product_id != component_product_id", name="ck_recipe_item_no_self_reference"
         ),
+        # Two independent composite FKs — each alone already forces its
+        # column to share the recipe_item row's org, so together they
+        # guarantee a recipe can never link two products from different
+        # orgs. No extra CHECK needed on top of these. See 688eb809961b.
+        ForeignKeyConstraint(
+            ["organization_id", "finished_product_id"],
+            ["products.organization_id", "products.id"],
+            name="fk_recipe_items_org_finished_product",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "component_product_id"],
+            ["products.organization_id", "products.id"],
+            name="fk_recipe_items_org_component_product",
+        ),
     )
 
     id = Column(Integer, primary_key=True, index=True)
+
+    # Backfilled via finished_product_id's products.organization_id (see
+    # 688eb809961b).
+    organization_id = Column(
+        Integer, ForeignKey("organizations.id"), nullable=False, server_default="1", index=True
+    )
 
     finished_product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
 
