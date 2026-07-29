@@ -208,7 +208,9 @@ def test_recipe_item_composite_fk_rejects_cross_org_component_product(db, second
     See migrations/versions/688eb809961b.
     """
     finished = Product(organization_id=1, name="Dish", sku=f"sku-{uuid.uuid4()}")
-    org2_component = Product(organization_id=second_org.id, name="Org2 Ingredient", sku=f"sku-{uuid.uuid4()}")
+    org2_component = Product(
+        organization_id=second_org.id, name="Org2 Ingredient", sku=f"sku-{uuid.uuid4()}"
+    )
     db.add_all([finished, org2_component])
     db.commit()
     db.refresh(finished)
@@ -229,7 +231,9 @@ def test_recipe_item_composite_fk_rejects_cross_org_component_product(db, second
 
 @pytest.mark.postgres
 def test_recipe_item_composite_fk_rejects_cross_org_finished_product(db, second_org):
-    org2_finished = Product(organization_id=second_org.id, name="Org2 Dish", sku=f"sku-{uuid.uuid4()}")
+    org2_finished = Product(
+        organization_id=second_org.id, name="Org2 Dish", sku=f"sku-{uuid.uuid4()}"
+    )
     component = Product(organization_id=1, name="Ingredient", sku=f"sku-{uuid.uuid4()}")
     db.add_all([org2_finished, component])
     db.commit()

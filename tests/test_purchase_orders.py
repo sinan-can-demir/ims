@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy.exc import DBAPIError
 
 from app.core.exceptions import ProductNotFoundError
+from app.core.security import hash_password
 from app.models.purchase_order import PurchaseOrder
 from app.models.supplier import Supplier
 from app.models.user import User
@@ -332,7 +333,7 @@ def test_purchase_order_composite_fk_rejects_cross_org_supplier(db, second_org):
     """
     org1_user = User(
         email=f"po-fk-test-{uuid.uuid4()}@example.com",
-        password_hash="x",
+        password_hash=hash_password("po-fk-test-password"),
         display_name="PO FK Test",
         organization_id=1,
     )

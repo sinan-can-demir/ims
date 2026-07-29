@@ -107,7 +107,9 @@ def test_inventory_event_composite_fk_rejects_cross_org_product(db, second_org):
     organization_id yet (Epoch 10 PR 4/16, see migrations/versions/
     688eb809961b).
     """
-    org2_product = Product(organization_id=second_org.id, name="Org2 Widget", sku=f"sku-{uuid.uuid4()}")
+    org2_product = Product(
+        organization_id=second_org.id, name="Org2 Widget", sku=f"sku-{uuid.uuid4()}"
+    )
     db.add(org2_product)
     db.commit()
     db.refresh(org2_product)
@@ -128,7 +130,9 @@ def test_inventory_event_composite_fk_rejects_cross_org_product(db, second_org):
 
 @pytest.mark.postgres
 def test_inventory_state_composite_fk_rejects_cross_org_product(db, second_org):
-    org2_product = Product(organization_id=second_org.id, name="Org2 Widget", sku=f"sku-{uuid.uuid4()}")
+    org2_product = Product(
+        organization_id=second_org.id, name="Org2 Widget", sku=f"sku-{uuid.uuid4()}"
+    )
     db.add(org2_product)
     db.commit()
     db.refresh(org2_product)
