@@ -9,7 +9,9 @@ from sqlalchemy.exc import DBAPIError
 
 from app.core.exceptions import ProductNotFoundError
 from app.core.security import hash_password
+from app.models.product import Product
 from app.models.purchase_order import PurchaseOrder
+from app.models.purchase_order_line import PurchaseOrderLine
 from app.models.supplier import Supplier
 from app.models.user import User
 from app.services import purchase_order_service
@@ -348,6 +350,52 @@ def test_purchase_order_composite_fk_rejects_cross_org_supplier(db, second_org):
             organization_id=1,
             supplier_id=org2_supplier.id,
             created_by_id=org1_user.id,
+        )
+    )
+    with pytest.raises(DBAPIError):
+        db.commit()
+    db.rollback()
+
+
+@pytest.mark.postgres
+def test_purchase_order_line_composite_fk_rejects_product_from_different_org_than_po(
+    db, second_org
+):
+    """
+    The two-parent cross-check (Epoch 10 PR 5, see migrations/versions/
+    48acda15ea39): a purchase_order_line's product and its purchase_order
+    must agree on org. Constructed directly at the DB layer, not through
+    purchase_order_service, to prove it's DB-enforced.
+    """
+    org1_supplier = Supplier(organization_id=1, name="Org1 Supplier")
+    org1_user = User(
+        email=f"po-line-fk-test-{uuid.uuid4()}@example.com",
+        password_hash=hash_password("po-line-fk-test-password"),
+        display_name="PO Line FK Test",
+        organization_id=1,
+    )
+    org2_product = Product(
+        organization_id=second_org.id, name="Org2 Widget", sku=f"sku-{uuid.uuid4()}"
+    )
+    db.add_all([org1_supplier, org1_user, org2_product])
+    db.commit()
+    db.refresh(org1_supplier)
+    db.refresh(org1_user)
+    db.refresh(org2_product)
+
+    org1_po = PurchaseOrder(
+        organization_id=1, supplier_id=org1_supplier.id, created_by_id=org1_user.id
+    )
+    db.add(org1_po)
+    db.commit()
+    db.refresh(org1_po)
+
+    db.add(
+        PurchaseOrderLine(
+            organization_id=1,
+            purchase_order_id=org1_po.id,
+            product_id=org2_product.id,
+            quantity=1,
         )
     )
     with pytest.raises(DBAPIError):
