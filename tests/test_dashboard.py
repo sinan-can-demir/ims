@@ -50,6 +50,7 @@ def _signed_in(at: AppTest, user: User) -> None:
         "email": user.email,
         "display_name": user.display_name,
         "role": user.role.value,
+        "organization_id": user.organization_id,
     }
 
 
@@ -144,6 +145,7 @@ def test_dashboard_login_success_unlocks_content(client, dashboard_db, monkeypat
     assert not at.exception
     assert at.session_state["user"]["email"] == "login-flow@example.com"
     assert at.session_state["user"]["role"] == "member"
+    assert at.session_state["user"]["organization_id"] == 1
     metric_labels = [m.label for m in at.metric]
     assert "Current Inventory" in metric_labels
 

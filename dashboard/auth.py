@@ -40,17 +40,20 @@ def login_form() -> None:
     finally:
         db.close()
 
-    # id/email/display_name/role only — never a password or token. There's
-    # no token to hold: this session lives entirely server-side in
-    # Streamlit's own session state, not in anything sent back to the
-    # browser. role is included so a future admin-only page (issue #72)
-    # can gate on st.session_state["user"]["role"] without touching this
-    # file again.
+    # id/email/display_name/role/organization_id only — never a password or
+    # token. There's no token to hold: this session lives entirely
+    # server-side in Streamlit's own session state, not in anything sent
+    # back to the browser. role was included so a future admin-only page
+    # (issue #72) could gate on st.session_state["user"]["role"] without
+    # touching this file again — organization_id is here for the same
+    # reason, so later Epoch 10 PRs' dashboard call sites can read it
+    # without another change here.
     st.session_state["user"] = {
         "id": user.id,
         "email": user.email,
         "display_name": user.display_name,
         "role": user.role.value,
+        "organization_id": user.organization_id,
     }
     st.rerun()
 
