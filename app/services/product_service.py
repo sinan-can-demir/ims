@@ -7,8 +7,10 @@ from app.models.product import Product
 from app.schemas.product import ProductCreate
 
 
-def create_product(db: Session, product: ProductCreate) -> Product:
-    new_product = Product(name=product.name, sku=product.sku, unit=product.unit)
+def create_product(db: Session, product: ProductCreate, organization_id: int = 1) -> Product:
+    new_product = Product(
+        name=product.name, sku=product.sku, unit=product.unit, organization_id=organization_id
+    )
 
     try:
         db.add(new_product)
@@ -24,12 +26,21 @@ def create_product(db: Session, product: ProductCreate) -> Product:
         raise DuplicateSKUError(product.sku)
 
 
-def get_product_by_sku(db: Session, sku: str) -> Product:
-    product = db.query(Product).filter(Product.sku == sku).first()
+def get_product_by_sku(db: Session, sku: str, organization_id: int = 1) -> Product:
+    product = (
+        db.query(Product)
+        .filter(Product.sku == sku, Product.organization_id == organization_id)
+        .first()
+    )
     if not product:
         raise ProductSkuNotFoundError(sku)
     return product
 
 
-def list_products(db: Session) -> list[Product]:
-    return db.query(Product).order_by(Product.name.asc()).all()
+def list_products(db: Session, organization_id: int = 1) -> list[Product]:
+    return (
+        db.query(Product)
+        .filter(Product.organization_id == organization_id)
+        .order_by(Product.name.asc())
+        .all()
+    )

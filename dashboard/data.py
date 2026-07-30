@@ -94,11 +94,12 @@ def _get_events(
         db.close()
 
 
-def _list_products() -> list[dict]:
+def _list_products(organization_id: int) -> list[dict]:
     db = SessionLocal()
     try:
         return [
-            {"id": p.id, "name": p.name, "sku": p.sku, "unit": p.unit} for p in list_products(db)
+            {"id": p.id, "name": p.name, "sku": p.sku, "unit": p.unit}
+            for p in list_products(db, organization_id)
         ]
     finally:
         db.close()
@@ -195,8 +196,8 @@ def load_events(
 
 
 @st.cache_data(ttl=CACHE_TTL)
-def load_products() -> list[dict]:
-    return _list_products()
+def load_products(organization_id: int) -> list[dict]:
+    return _list_products(organization_id)
 
 
 @st.cache_data(ttl=CACHE_TTL)

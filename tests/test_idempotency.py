@@ -44,12 +44,14 @@ def test_same_event_id_different_orgs_both_succeed(client, client_org2, db, seco
     uniqueness is now UNIQUE(organization_id, event_id), not global — two
     orgs recording the literal same event_id string must not collide.
 
-    org2_product is built directly via the ORM, not via
-    create_product(client_org2) — product_service.create_product() isn't
-    org-threaded until a later Epoch 10 PR (#143), so every product
-    created through the API lands in org 1 regardless of which org's
-    client makes the request; a real org-2 product doesn't exist through
-    the API yet.
+    org2_product is built directly via the ORM rather than via
+    create_product(client_org2) — written before product_service.py was
+    org-threaded (Epoch 10 PR 7, #143; at the time every product created
+    through the API landed in org 1 regardless of which org's client made
+    the request). Left as direct ORM construction since it still works
+    and matches every other cross-org test in this arc; see
+    tests/test_multi_tenancy.py for a test going through the now-working
+    create_product(client_org2) path instead.
     """
     org1_product = create_product(client)
 

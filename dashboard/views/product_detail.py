@@ -35,7 +35,7 @@ current_user = require_login()
 st.title("🏭 Inventory Management Dashboard")
 st.sidebar.header("Controls")
 
-products = load_products()
+products = load_products(current_user["organization_id"])
 if not products:
     st.info("No products yet — create some via the API first.")
     st.stop()

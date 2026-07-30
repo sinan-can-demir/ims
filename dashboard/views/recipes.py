@@ -19,7 +19,7 @@ from dashboard.auth import require_login
 from dashboard.data import load_products, load_recipe_items
 from dashboard.recipe_actions import add_recipe_item, remove_recipe_item, update_recipe_item
 
-require_login()
+current_user = require_login()
 
 st.title("🍳 Recipes / BOM")
 st.caption(
@@ -28,7 +28,7 @@ st.caption(
     "the sale itself."
 )
 
-products = load_products()
+products = load_products(current_user["organization_id"])
 if not products:
     st.info("No products yet — create some via the API first.")
     st.stop()

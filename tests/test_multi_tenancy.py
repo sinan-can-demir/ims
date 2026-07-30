@@ -5,6 +5,11 @@
 # route/service adds its own isolation tests here rather than scattering
 # them across the feature-specific test files.
 
+import pytest
+
+from app.core.exceptions import ProductSkuNotFoundError
+from app.services.product_service import get_product_by_sku
+
 from .utils import create_product
 
 
@@ -61,3 +66,48 @@ def test_cross_org_get_events_returns_empty(client, client_org2):
 
     assert response.status_code == 200
     assert response.json() == []
+
+
+def test_create_product_same_sku_different_orgs_both_succeed(client, client_org2):
+    """
+    Epoch 10 PR 7 (product_service.py org threading, #143): products.sku
+    became UNIQUE(organization_id, sku) back in PR 6 (#142), but
+    create_product() didn't thread organization_id through until now —
+    every product created via the API landed in org 1 regardless of which
+    org's client made the request (see test_idempotency.py's
+    test_same_event_id_different_orgs_both_succeed, which had to build its
+    org-2 product directly via the ORM for exactly this reason). This
+    proves the service layer now actually honors the caller's org.
+    """
+    payload = {"name": "Widget", "sku": "shared-sku-both-orgs"}
+
+    r1 = client.post("/api/products", json=payload)
+    assert r1.status_code == 201
+
+    r2 = client_org2.post("/api/products", json=payload)
+    assert r2.status_code == 201
+
+    assert r1.json()["id"] != r2.json()["id"]
+
+
+def test_get_product_by_sku_is_org_scoped(client, client_org2, db, second_org):
+    """
+    Epoch 10 PR 7 (#143): get_product_by_sku() now requires the caller's
+    organization_id — org 1 querying a sku that only exists in org 2
+    (even the identical sku string) must not find it, and vice versa.
+    Not exposed over HTTP (only used internally by ingestion_service.py,
+    which isn't org-threaded until #144), so this calls the service
+    function directly against the shared `db` fixture session.
+    """
+    client.post("/api/products", json={"name": "Org1 Widget", "sku": "shared-sku"})
+    client_org2.post("/api/products", json={"name": "Org2 Widget", "sku": "shared-sku"})
+
+    org1_product = get_product_by_sku(db, "shared-sku", organization_id=1)
+    org2_product = get_product_by_sku(db, "shared-sku", organization_id=second_org.id)
+
+    assert org1_product.id != org2_product.id
+    assert org1_product.organization_id == 1
+    assert org2_product.organization_id == second_org.id
+
+    with pytest.raises(ProductSkuNotFoundError):
+        get_product_by_sku(db, "shared-sku", organization_id=second_org.id + 999)
