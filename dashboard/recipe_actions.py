@@ -20,7 +20,9 @@ from app.services.recipe_service import (
 )
 
 
-def add_recipe_item(finished_product_id: int, component_product_id: int, quantity: int) -> None:
+def add_recipe_item(
+    finished_product_id: int, component_product_id: int, quantity: int, organization_id: int
+) -> None:
     db = SessionLocal()
     try:
         create_recipe_item(
@@ -30,22 +32,23 @@ def add_recipe_item(finished_product_id: int, component_product_id: int, quantit
                 component_product_id=component_product_id,
                 quantity=quantity,
             ),
+            organization_id,
         )
     finally:
         db.close()
 
 
-def update_recipe_item(recipe_item_id: int, quantity: int) -> None:
+def update_recipe_item(recipe_item_id: int, quantity: int, organization_id: int) -> None:
     db = SessionLocal()
     try:
-        update_recipe_item_quantity(db, recipe_item_id, quantity)
+        update_recipe_item_quantity(db, recipe_item_id, quantity, organization_id)
     finally:
         db.close()
 
 
-def remove_recipe_item(recipe_item_id: int) -> None:
+def remove_recipe_item(recipe_item_id: int, organization_id: int) -> None:
     db = SessionLocal()
     try:
-        delete_recipe_item(db, recipe_item_id)
+        delete_recipe_item(db, recipe_item_id, organization_id)
     finally:
         db.close()

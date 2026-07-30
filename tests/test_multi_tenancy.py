@@ -16,6 +16,17 @@ from app.services.product_service import get_product_by_sku
 from .utils import create_product
 
 
+def _recipe_item(client, finished_product_id, component_product_id, quantity):
+    return client.post(
+        "/api/recipes",
+        json={
+            "finished_product_id": finished_product_id,
+            "component_product_id": component_product_id,
+            "quantity": quantity,
+        },
+    )
+
+
 def test_cross_org_inventory_level_returns_404(client, client_org2):
     """
     Epoch 10 PR 6 (inventory_service.py org threading): a user in org 2
@@ -141,3 +152,35 @@ def test_bulk_import_cross_org_sku_fails_cleanly(client, client_org2):
     assert body["rows_failed"] == 1
     assert body["results"][1]["status"] == "failed"
     assert org2_product["sku"] in body["results"][1]["error"]
+
+
+def test_cross_org_update_recipe_item_returns_404(client, client_org2):
+    """
+    Epoch 10 PR 9 (recipe_service.py org threading + IDOR fix, #145):
+    update_recipe_item_quantity() previously did a bare
+    RecipeItem.id == id lookup with zero ownership check — a user in org
+    2 who knows (or guesses) org 1's recipe_item_id must get a plain 404,
+    not a 403 or a success, and org 1's quantity must be unchanged.
+    """
+    dish = create_product(client, "Burger")
+    bun = create_product(client, "Bun")
+    org1_item = _recipe_item(client, dish["id"], bun["id"], 1).json()
+
+    response = client_org2.patch(f"/api/recipes/{org1_item['id']}", json={"quantity": 99})
+
+    assert response.status_code == 404
+    unchanged = client.get(f"/api/recipes/{dish['id']}").json()
+    assert unchanged[0]["quantity"] == 1
+
+
+def test_cross_org_delete_recipe_item_returns_404(client, client_org2):
+    """Sibling to the update case above, for delete_recipe_item()."""
+    dish = create_product(client, "Burger")
+    bun = create_product(client, "Bun")
+    org1_item = _recipe_item(client, dish["id"], bun["id"], 1).json()
+
+    response = client_org2.delete(f"/api/recipes/{org1_item['id']}")
+
+    assert response.status_code == 404
+    still_there = client.get(f"/api/recipes/{dish['id']}").json()
+    assert len(still_there) == 1

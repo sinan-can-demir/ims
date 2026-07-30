@@ -105,12 +105,15 @@ def _list_products(organization_id: int) -> list[dict]:
         db.close()
 
 
-def _list_recipe_items(finished_product_id: int) -> list[dict]:
+def _list_recipe_items(finished_product_id: int, organization_id: int) -> list[dict]:
     db = SessionLocal()
     try:
         items = (
             db.query(RecipeItem)
-            .filter(RecipeItem.finished_product_id == finished_product_id)
+            .filter(
+                RecipeItem.finished_product_id == finished_product_id,
+                RecipeItem.organization_id == organization_id,
+            )
             .order_by(RecipeItem.id.asc())
             .all()
         )
@@ -201,8 +204,8 @@ def load_products(organization_id: int) -> list[dict]:
 
 
 @st.cache_data(ttl=CACHE_TTL)
-def load_recipe_items(finished_product_id: int) -> list[dict]:
-    return _list_recipe_items(finished_product_id)
+def load_recipe_items(finished_product_id: int, organization_id: int) -> list[dict]:
+    return _list_recipe_items(finished_product_id, organization_id)
 
 
 @st.cache_data(ttl=CACHE_TTL)

@@ -49,7 +49,7 @@ with col_refresh:
 st.divider()
 st.subheader("Current recipe")
 
-recipe_items = load_recipe_items(selected_dish_id)
+recipe_items = load_recipe_items(selected_dish_id, current_user["organization_id"])
 
 if recipe_items:
     header_name, header_qty, header_update, header_delete = st.columns([3, 2, 2, 1])
@@ -75,7 +75,7 @@ if recipe_items:
         with col_update:
             if st.button("Update", key=f"update-{item['id']}"):
                 try:
-                    update_recipe_item(item["id"], int(new_qty))
+                    update_recipe_item(item["id"], int(new_qty), current_user["organization_id"])
                 except DomainError as e:
                     st.error(str(e))
                 else:
@@ -85,7 +85,7 @@ if recipe_items:
         with col_delete:
             if st.button("🗑️", key=f"delete-{item['id']}"):
                 try:
-                    remove_recipe_item(item["id"])
+                    remove_recipe_item(item["id"], current_user["organization_id"])
                 except DomainError as e:
                     st.error(str(e))
                 else:
@@ -113,7 +113,9 @@ else:
 
     if submitted:
         try:
-            add_recipe_item(selected_dish_id, component_id, int(quantity))
+            add_recipe_item(
+                selected_dish_id, component_id, int(quantity), current_user["organization_id"]
+            )
         except DomainError as e:
             st.error(str(e))
         else:
