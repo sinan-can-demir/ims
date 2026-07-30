@@ -5,6 +5,9 @@
 # route/service adds its own isolation tests here rather than scattering
 # them across the feature-specific test files.
 
+import io
+import uuid
+
 import pytest
 
 from app.core.exceptions import ProductSkuNotFoundError
@@ -111,3 +114,30 @@ def test_get_product_by_sku_is_org_scoped(client, client_org2, db, second_org):
 
     with pytest.raises(ProductSkuNotFoundError):
         get_product_by_sku(db, "shared-sku", organization_id=second_org.id + 999)
+
+
+def test_bulk_import_cross_org_sku_fails_cleanly(client, client_org2):
+    """
+    Epoch 10 PR 8 (ingestion_service.py org threading, #144): a CSV
+    uploaded by org 1 that references org 2's sku by string alone must
+    fail that row cleanly (product not found), not resolve cross-org —
+    even though the sku string is real and exists, just in the wrong org.
+    """
+    org1_product = create_product(client, "Org1 Widget")
+    org2_product = create_product(client_org2, "Org2 Widget")
+
+    csv_content = (
+        "sku,event_type,quantity,event_id\n"
+        f"{org1_product['sku']},PURCHASE,10,evt-{uuid.uuid4()}\n"
+        f"{org2_product['sku']},PURCHASE,10,evt-{uuid.uuid4()}\n"
+    )
+    files = {"file": ("events.csv", io.BytesIO(csv_content.encode()), "text/csv")}
+
+    response = client.post("/api/inventory/events/bulk", files=files)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["rows_succeeded"] == 1
+    assert body["rows_failed"] == 1
+    assert body["results"][1]["status"] == "failed"
+    assert org2_product["sku"] in body["results"][1]["error"]
