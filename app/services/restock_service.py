@@ -6,13 +6,17 @@ from app.services.forecast_service import forecast
 from app.services.inventory_service import get_inventory
 
 
-def get_restock_recommendation(db: Session, product_id: int) -> dict:
+def get_restock_recommendation(db: Session, product_id: int, organization_id: int = 1) -> dict:
     """
     Combine current inventory with demand forecast to produce
     an actionable restock recommendation.
+
+    forecast() itself isn't org-scoped yet — model files aren't
+    per-org-partitioned until Epoch 10 PR 15 (#151) — only the inventory
+    lookup above is scoped here.
     """
     # 1. Get current inventory level
-    current_qty = get_inventory(db, product_id)
+    current_qty = get_inventory(db, product_id, organization_id)
 
     # 2. Get 7-day demand forecast
     forecast_df = forecast(product_id, days=7)

@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from dashboard.auth import require_login
 from dashboard.data import load_fleet_status
 
-require_login()
+current_user = require_login()
 
 st.title("🚦 Fleet Overview")
 
@@ -24,7 +24,7 @@ if st.button("🔄 Refresh"):
     st.cache_data.clear()
     st.rerun()
 
-fleet = load_fleet_status()
+fleet = load_fleet_status(current_user["organization_id"])
 
 if not fleet:
     st.info("No products yet — create some via the API first.")
