@@ -32,9 +32,11 @@ def ingest_events(
     the webhook receiver (no human actor) — same attribution rule as
     record_event(), just applied uniformly across the whole batch.
 
-    organization_id: defaults to 1 so the webhook receiver (app/api/
-    webhooks.py) keeps working unchanged — it has no per-org identity yet,
-    that's the webhook redesign in a later Epoch 10 PR (#148).
+    organization_id: defaults to 1 only for callers that don't pass it
+    explicitly (e.g. direct test/script use) — both real call sites
+    (the CSV bulk-import route and, as of Epoch 10 PR 12/#148, the
+    webhook receiver's resolved {organization_id} path param) already
+    pass it explicitly.
     """
     results = []
     succeeded = 0

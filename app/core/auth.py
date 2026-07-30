@@ -8,11 +8,11 @@ from fastapi import Depends, HTTPException, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
+from app.core.logging import logger
 from app.database import get_db
 from app.models.enums import UserRole
+from app.models.organization import Organization
 from app.models.user import User
-
-_WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
 
 # Falls back to a fixed dev-only value so login works out of the box
 # locally, same convenience as WEBHOOK_SECRET being unset — but unlike
@@ -27,26 +27,47 @@ _JWT_EXPIRY = timedelta(hours=12)
 _bearer_scheme = HTTPBearer(auto_error=False)
 
 
-async def require_webhook_signature(request: Request) -> None:
+async def require_webhook_signature(
+    organization_id: int, request: Request, db: Session = Depends(get_db)
+) -> None:
     """
     Verifies the X-Webhook-Signature header against an HMAC-SHA256 digest
-    of the raw request body, keyed by the WEBHOOK_SECRET env var — same
+    of the raw request body, keyed by the target org's own
+    organizations.webhook_secret (Epoch 10 PR 12, #148) — no longer a
+    single global WEBHOOK_SECRET env var, since a shared secret across
+    every org would let any one org's webhook credential post events
+    into any other org. organization_id here is resolved from the same
+    path param as the route it's attached to (POST
+    /webhooks/{organization_id}/ingest), not a query/body field — same
     constant-time-comparison idiom (hmac.compare_digest) used for the old
     API_KEY check, applied to a computed digest instead of a shared
-    string. Signature check is a no-op when WEBHOOK_SECRET is unset
-    (local dev) — unlike JWT_SECRET, this one still has a genuine "disabled"
-    mode.
+    string.
+
+    Signature check is a no-op when the org's webhook_secret is NULL —
+    same "unset = disabled" shape the old env var had, now per-org
+    instead of per-deployment. Logged loudly on every such request
+    (rather than a boot-time env-var scan, which can't see per-org state
+    and would've meant scanning every org on every startup) so an
+    operator running with it off doesn't lose visibility into that fact.
 
     Reads the raw body via request.body() before the route handler parses
     it as JSON — Starlette caches the body after the first read, so the
     route's Pydantic body model still parses correctly afterward.
     """
-    if _WEBHOOK_SECRET is None:
+    org = db.query(Organization).filter(Organization.id == organization_id).first()
+    if org is None:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    if org.webhook_secret is None:
+        logger.warning(
+            "webhook_auth_disabled",
+            extra={"organization_id": organization_id},
+        )
         return
 
     signature = request.headers.get("X-Webhook-Signature")
     body = await request.body()
-    expected = hmac.new(_WEBHOOK_SECRET.encode(), body, hashlib.sha256).hexdigest()
+    expected = hmac.new(org.webhook_secret.encode(), body, hashlib.sha256).hexdigest()
 
     if signature is None or not hmac.compare_digest(signature, expected):
         raise HTTPException(status_code=401, detail="Invalid or missing webhook signature")

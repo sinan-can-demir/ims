@@ -5,16 +5,39 @@
 # route/service adds its own isolation tests here rather than scattering
 # them across the feature-specific test files.
 
+import hashlib
+import hmac
 import io
+import json
 import uuid
 
 import pytest
 
 from app.core.exceptions import ProductSkuNotFoundError
+from app.models.organization import Organization
 from app.services.fleet_service import get_fleet_status
 from app.services.product_service import get_product_by_sku
 
 from .utils import create_product, purchase
+
+_ORG1_WEBHOOK_SECRET = "org1-webhook-secret"  # noqa: S105 -- test fixture value, not a real credential
+_ORG2_WEBHOOK_SECRET = "org2-webhook-secret"  # noqa: S105 -- test fixture value, not a real credential
+
+
+def _set_webhook_secret(db, organization_id, secret):
+    org = db.query(Organization).filter(Organization.id == organization_id).first()
+    org.webhook_secret = secret
+    db.commit()
+
+
+def _signed_webhook_request(client, organization_id, payload, secret):
+    body = json.dumps(payload).encode()
+    signature = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    return client.post(
+        f"/api/webhooks/{organization_id}/ingest",
+        content=body,
+        headers={"Content-Type": "application/json", "X-Webhook-Signature": signature},
+    )
 
 
 def _create_supplier(client, name="Acme Foods"):
@@ -324,3 +347,53 @@ def test_fleet_status_scoped_per_org(client, client_org2, db, second_org):
     assert org2_product["sku"] not in org1_skus
     assert org2_product["sku"] in org2_skus
     assert org1_product["sku"] not in org2_skus
+
+
+def test_cross_org_webhook_signature_does_not_authenticate(client, db, second_org):
+    """
+    Epoch 10 PR 12 (webhook redesign, #148): org 2's webhook secret must
+    not authenticate a payload against org 1's route — each org's
+    signature is only valid against its own org's endpoint, not a
+    shared/global one like the old single WEBHOOK_SECRET env var was.
+    """
+    _set_webhook_secret(db, 1, _ORG1_WEBHOOK_SECRET)
+    _set_webhook_secret(db, second_org.id, _ORG2_WEBHOOK_SECRET)
+    payload = {
+        "source": "generic",
+        "events": [
+            {"sku": "WGT-001", "event_type": "PURCHASE", "quantity": 1, "external_id": "txn-1"}
+        ],
+    }
+
+    response = _signed_webhook_request(client, 1, payload, secret=_ORG2_WEBHOOK_SECRET)
+
+    assert response.status_code == 401
+
+
+def test_webhook_secret_state_is_independent_per_org(client, client_org2, db, second_org):
+    """
+    Epoch 10 PR 12 (#148): org 1 requiring a signature and org 2 having
+    none configured must be two genuinely independent per-org states,
+    not one global toggle — proves both directions in the same test.
+    """
+    _set_webhook_secret(db, 1, _ORG1_WEBHOOK_SECRET)
+    # second_org's webhook_secret is left NULL (unset) on purpose.
+
+    org1_product = create_product(client, "Org1 Widget")
+    org2_product = create_product(client_org2, "Org2 Widget")
+
+    def _payload(sku):
+        return {
+            "source": "generic",
+            "events": [
+                {"sku": sku, "event_type": "PURCHASE", "quantity": 1, "external_id": "txn-1"}
+            ],
+        }
+
+    unsigned_to_org1 = client.post("/api/webhooks/1/ingest", json=_payload(org1_product["sku"]))
+    assert unsigned_to_org1.status_code == 401
+
+    unsigned_to_org2 = client_org2.post(
+        f"/api/webhooks/{second_org.id}/ingest", json=_payload(org2_product["sku"])
+    )
+    assert unsigned_to_org2.status_code == 200

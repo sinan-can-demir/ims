@@ -4,18 +4,25 @@ import hashlib
 import hmac
 import json
 import uuid
-from unittest.mock import patch
+
+from app.models.organization import Organization
 
 from .utils import create_product
 
 _SECRET = "test-webhook-secret"  # noqa: S105 -- test fixture value, not a real credential
 
 
-def _signed_request(client, payload: dict, secret: str = _SECRET):
+def _set_webhook_secret(db, organization_id: int, secret: str | None) -> None:
+    org = db.query(Organization).filter(Organization.id == organization_id).first()
+    org.webhook_secret = secret
+    db.commit()
+
+
+def _signed_request(client, organization_id: int, payload: dict, secret: str = _SECRET):
     body = json.dumps(payload).encode()
     signature = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
     return client.post(
-        "/api/webhooks/ingest",
+        f"/api/webhooks/{organization_id}/ingest",
         content=body,
         headers={"Content-Type": "application/json", "X-Webhook-Signature": signature},
     )
@@ -35,12 +42,12 @@ def _payload(sku, event_type="PURCHASE", quantity=10, external_id=None):
     }
 
 
-def test_webhook_valid_signature_creates_event(client):
+def test_webhook_valid_signature_creates_event(client, db):
+    _set_webhook_secret(db, 1, _SECRET)
     product = create_product(client)
     payload = _payload(product["sku"], quantity=15)
 
-    with patch("app.core.auth._WEBHOOK_SECRET", _SECRET):
-        response = _signed_request(client, payload)
+    response = _signed_request(client, 1, payload)
 
     assert response.status_code == 200, response.json()
     body = response.json()
@@ -51,46 +58,47 @@ def test_webhook_valid_signature_creates_event(client):
     assert inventory.json()["quantity"] == 15
 
 
-def test_webhook_missing_signature_returns_401(client):
+def test_webhook_missing_signature_returns_401(client, db):
+    _set_webhook_secret(db, 1, _SECRET)
     payload = _payload("WGT-001")
 
-    with patch("app.core.auth._WEBHOOK_SECRET", _SECRET):
-        response = client.post("/api/webhooks/ingest", json=payload)
+    response = client.post("/api/webhooks/1/ingest", json=payload)
 
     assert response.status_code == 401
 
 
-def test_webhook_wrong_signature_returns_401(client):
+def test_webhook_wrong_signature_returns_401(client, db):
+    _set_webhook_secret(db, 1, _SECRET)
     payload = _payload("WGT-001")
     body = json.dumps(payload).encode()
 
-    with patch("app.core.auth._WEBHOOK_SECRET", _SECRET):
-        response = client.post(
-            "/api/webhooks/ingest",
-            content=body,
-            headers={"Content-Type": "application/json", "X-Webhook-Signature": "wrong-signature"},
-        )
+    response = client.post(
+        "/api/webhooks/1/ingest",
+        content=body,
+        headers={"Content-Type": "application/json", "X-Webhook-Signature": "wrong-signature"},
+    )
 
     assert response.status_code == 401
 
 
-def test_webhook_no_secret_configured_allows_unsigned_requests(client):
+def test_webhook_no_secret_configured_allows_unsigned_requests(client, db):
+    # Org 1's webhook_secret is NULL by default (the `db` fixture's
+    # bootstrap row) — no _set_webhook_secret call needed here.
     product = create_product(client)
     payload = _payload(product["sku"])
 
-    with patch("app.core.auth._WEBHOOK_SECRET", None):
-        response = client.post("/api/webhooks/ingest", json=payload)
+    response = client.post("/api/webhooks/1/ingest", json=payload)
 
     assert response.status_code == 200
 
 
 def test_webhook_event_id_namespaced_by_source(client, db):
+    _set_webhook_secret(db, 1, _SECRET)
     product = create_product(client)
     external_id = f"txn-{uuid.uuid4()}"
     payload = _payload(product["sku"], quantity=5, external_id=external_id)
 
-    with patch("app.core.auth._WEBHOOK_SECRET", _SECRET):
-        response = _signed_request(client, payload)
+    response = _signed_request(client, 1, payload)
 
     assert response.status_code == 200
 
@@ -105,12 +113,13 @@ def test_webhook_event_id_namespaced_by_source(client, db):
     assert event.created_by_id is None
 
 
-def test_webhook_too_many_events_returns_422(client):
+def test_webhook_too_many_events_returns_422(client, db):
     """
     events has a max_length=1000 (app/schemas/webhook.py) — this route is
     explicitly rate-limit-exempt, so schema validation is the only thing
     bounding how much a single call can force ingest_events() to process.
     """
+    _set_webhook_secret(db, 1, _SECRET)
     payload = {
         "source": "generic",
         "events": [
@@ -124,13 +133,13 @@ def test_webhook_too_many_events_returns_422(client):
         ],
     }
 
-    with patch("app.core.auth._WEBHOOK_SECRET", _SECRET):
-        response = _signed_request(client, payload)
+    response = _signed_request(client, 1, payload)
 
     assert response.status_code == 422
 
 
-def test_webhook_partial_failure_reported_per_row(client):
+def test_webhook_partial_failure_reported_per_row(client, db):
+    _set_webhook_secret(db, 1, _SECRET)
     product = create_product(client)
     payload = {
         "source": "generic",
@@ -150,10 +159,17 @@ def test_webhook_partial_failure_reported_per_row(client):
         ],
     }
 
-    with patch("app.core.auth._WEBHOOK_SECRET", _SECRET):
-        response = _signed_request(client, payload)
+    response = _signed_request(client, 1, payload)
 
     assert response.status_code == 200
     body = response.json()
     assert body["rows_succeeded"] == 1
     assert body["rows_failed"] == 1
+
+
+def test_webhook_unknown_organization_returns_404(client, db):
+    payload = _payload("WGT-001")
+
+    response = client.post("/api/webhooks/999999/ingest", json=payload)
+
+    assert response.status_code == 404
