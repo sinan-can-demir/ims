@@ -56,6 +56,7 @@ def bulk_import_events(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_current_user),
+    organization_id: int = Depends(get_current_org_id),
 ):
     """
     Generic CSV bulk import for inventory events. Columns:
@@ -91,7 +92,7 @@ def bulk_import_events(
         )
 
     rows = df[_BULK_IMPORT_COLUMNS].to_dict(orient="records")
-    return ingest_events(db, rows, current_user.id)
+    return ingest_events(db, rows, current_user.id, organization_id)
 
 
 @router.post("/replay")
