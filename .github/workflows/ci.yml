@@ -189,8 +189,12 @@ jobs:
         with:
           inputs: requirements.txt
 
+      # --provenance=false --sbom=false: forces a single-manifest image
+      # instead of buildx's default manifest-list (real manifest + a
+      # separate attestation/SBOM manifest) under the same tag — simpler,
+      # more deterministic image for a downstream scanner to resolve.
       - name: Build image for scanning
-        run: docker build -f docker/Dockerfile -t ims-api:scan .
+        run: docker build -f docker/Dockerfile --provenance=false --sbom=false -t ims-api:scan .
 
       # HIGH/CRITICAL only, matching the severity trivy-action defaults to
       # failing CI on elsewhere — keeps this from blocking on low-severity
