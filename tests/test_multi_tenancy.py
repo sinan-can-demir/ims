@@ -16,6 +16,24 @@ from app.services.product_service import get_product_by_sku
 from .utils import create_product
 
 
+def _create_supplier(client, name="Acme Foods"):
+    response = client.post("/api/suppliers", json={"name": name})
+    assert response.status_code == 201, response.json()
+    return response.json()
+
+
+def _create_draft_po(client, supplier_id, product_id, quantity=10):
+    response = client.post(
+        "/api/purchase-orders",
+        json={
+            "supplier_id": supplier_id,
+            "lines": [{"product_id": product_id, "quantity": quantity}],
+        },
+    )
+    assert response.status_code == 201, response.json()
+    return response.json()
+
+
 def _recipe_item(client, finished_product_id, component_product_id, quantity):
     return client.post(
         "/api/recipes",
@@ -184,3 +202,64 @@ def test_cross_org_delete_recipe_item_returns_404(client, client_org2):
     assert response.status_code == 404
     still_there = client.get(f"/api/recipes/{dish['id']}").json()
     assert len(still_there) == 1
+
+
+def test_supplier_list_and_create_scoped_per_org(client, client_org2):
+    """
+    Epoch 10 PR 10 (supplier_service.py org threading, #146): creating a
+    supplier as org 2 must not land in org 1, and each org's list only
+    ever shows its own suppliers.
+    """
+    org1_supplier = _create_supplier(client, "Org1 Supplier")
+    org2_supplier = _create_supplier(client_org2, "Org2 Supplier")
+
+    org1_names = {s["name"] for s in client.get("/api/suppliers").json()}
+    org2_names = {s["name"] for s in client_org2.get("/api/suppliers").json()}
+
+    assert org1_supplier["name"] in org1_names
+    assert org2_supplier["name"] not in org1_names
+    assert org2_supplier["name"] in org2_names
+    assert org1_supplier["name"] not in org2_names
+
+
+def test_cross_org_get_purchase_order_returns_404(client, client_org2):
+    """
+    Epoch 10 PR 10 (purchase_order_service.py org threading + IDOR fix,
+    #146): get_purchase_order() previously did a bare
+    PurchaseOrder.id == id lookup with zero ownership check — org 2
+    guessing org 1's known purchase_order_id must get a plain 404.
+    """
+    org1_supplier = _create_supplier(client, "Org1 Supplier")
+    org1_product = create_product(client, "Org1 Widget")
+    org1_po = _create_draft_po(client, org1_supplier["id"], org1_product["id"])
+
+    response = client_org2.get(f"/api/purchase-orders/{org1_po['id']}")
+
+    assert response.status_code == 404
+
+
+def test_cross_org_remove_purchase_order_line_returns_404(client, client_org2):
+    """Sibling IDOR case for remove_purchase_order_line()."""
+    org1_supplier = _create_supplier(client, "Org1 Supplier")
+    org1_product = create_product(client, "Org1 Widget")
+    org1_po = _create_draft_po(client, org1_supplier["id"], org1_product["id"])
+    line_id = org1_po["lines"][0]["id"]
+
+    response = client_org2.delete(f"/api/purchase-orders/lines/{line_id}")
+
+    assert response.status_code == 404
+    still_there = client.get(f"/api/purchase-orders/{org1_po['id']}").json()
+    assert len(still_there["lines"]) == 1
+
+
+def test_cross_org_submit_purchase_order_returns_404(client, client_org2):
+    """Sibling IDOR case for submit_purchase_order()."""
+    org1_supplier = _create_supplier(client, "Org1 Supplier")
+    org1_product = create_product(client, "Org1 Widget")
+    org1_po = _create_draft_po(client, org1_supplier["id"], org1_product["id"])
+
+    response = client_org2.post(f"/api/purchase-orders/{org1_po['id']}/submit")
+
+    assert response.status_code == 404
+    unchanged = client.get(f"/api/purchase-orders/{org1_po['id']}").json()
+    assert unchanged["status"] == "DRAFT"

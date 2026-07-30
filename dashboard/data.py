@@ -129,22 +129,22 @@ def _list_recipe_items(finished_product_id: int, organization_id: int) -> list[d
         db.close()
 
 
-def _list_suppliers() -> list[dict]:
+def _list_suppliers(organization_id: int) -> list[dict]:
     db = SessionLocal()
     try:
-        return [{"id": s.id, "name": s.name} for s in list_suppliers(db)]
+        return [{"id": s.id, "name": s.name} for s in list_suppliers(db, organization_id)]
     finally:
         db.close()
 
 
-def _list_purchase_orders(status: str | None) -> list[dict]:
+def _list_purchase_orders(status: str | None, organization_id: int) -> list[dict]:
     db = SessionLocal()
     try:
         status_enum = PurchaseOrderStatus(status) if status else None
-        orders = list_purchase_orders(db, status_enum)
+        orders = list_purchase_orders(db, status_enum, organization_id)
         result = []
         for po in orders:
-            lines = list_purchase_order_lines(db, po.id)
+            lines = list_purchase_order_lines(db, po.id, organization_id)
             result.append(
                 {
                     "id": po.id,
@@ -209,10 +209,10 @@ def load_recipe_items(finished_product_id: int, organization_id: int) -> list[di
 
 
 @st.cache_data(ttl=CACHE_TTL)
-def load_suppliers() -> list[dict]:
-    return _list_suppliers()
+def load_suppliers(organization_id: int) -> list[dict]:
+    return _list_suppliers(organization_id)
 
 
 @st.cache_data(ttl=CACHE_TTL)
-def load_purchase_orders(status: str | None = None) -> list[dict]:
-    return _list_purchase_orders(status)
+def load_purchase_orders(status: str | None, organization_id: int) -> list[dict]:
+    return _list_purchase_orders(status, organization_id)

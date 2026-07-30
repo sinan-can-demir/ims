@@ -297,11 +297,15 @@ def test_receive_is_retry_safe_after_partial_failure(client, db):
     real_record_event = purchase_order_service.record_event
     call_count = {"n": 0}
 
-    def _fail_on_second_line(db_, product_id, event_type, quantity, event_id, actor_id):
+    def _fail_on_second_line(
+        db_, product_id, event_type, quantity, event_id, actor_id, organization_id
+    ):
         call_count["n"] += 1
         if call_count["n"] == 2:
             raise ProductNotFoundError(product_id)
-        return real_record_event(db_, product_id, event_type, quantity, event_id, actor_id)
+        return real_record_event(
+            db_, product_id, event_type, quantity, event_id, actor_id, organization_id
+        )
 
     with patch.object(purchase_order_service, "record_event", side_effect=_fail_on_second_line):
         response = client.post(f"/api/purchase-orders/{po['id']}/receive")
