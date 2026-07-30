@@ -12,6 +12,8 @@ models:
         description: "Stock keeping unit — unique identifier"
       - name: created_at
         description: "When the product was created"
+      - name: organization_id
+        description: "Owning org"
 
   - name: dim_dates
     description: "Date dimension table — one row per calendar date, pre-generated"
@@ -57,3 +59,8 @@ models:
           - not_null
       - name: created_at
         description: "Original event timestamp"
+      - name: organization_id
+        description: >
+          Owning org — must always agree with the joined product's own
+          organization_id (see tests/join_boundary_fact_inventory_events.sql,
+          the actual regression test for this).
