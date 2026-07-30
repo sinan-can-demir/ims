@@ -16,9 +16,7 @@ class Product(Base):
     # uq_products_org_sku (Epoch 10 PR 6, see migrations/versions/
     # ffdda217be31): sku moved from globally-unique to
     # UNIQUE(organization_id, sku) — two orgs can now share a sku string.
-    # get_product_by_sku() still queries by sku alone, unscoped, until
-    # product_service.py is org-threaded in a later PR (#143); safe until
-    # then since nothing can create a product outside org 1 yet.
+    # get_product_by_sku() is org-scoped as of Epoch 10 PR 7 (#143).
     __table_args__ = (
         UniqueConstraint("organization_id", "id", name="uq_products_org_id"),
         UniqueConstraint("organization_id", "sku", name="uq_products_org_sku"),
@@ -28,16 +26,13 @@ class Product(Base):
 
     # Backfilled to the bootstrap org (id=1) for every pre-Epoch-10 row —
     # see migrations/versions/49570bffe51e. server_default="1" kept
-    # permanently (not dropped after backfill) since product_service.py
-    # doesn't thread organization_id through create_product() until a
-    # later Epoch 10 PR — every write path relies on this default until
-    # then, same idiom as role/is_active in app/models/user.py. Also
-    # needed at this Python level (not just in the migration) so
-    # Base.metadata.create_all() — the SQLite test path — creates the
-    # same default a real Postgres migration would. sku's uniqueness
-    # stays global here; it becomes UNIQUE(organization_id, sku) in a
-    # later Epoch 10 PR alongside the service/route layer that depends on
-    # it, not in this purely-additive schema PR.
+    # permanently (not dropped after backfill): create_product() now
+    # threads a real organization_id (Epoch 10 PR 7, #143), but direct-ORM
+    # write paths outside the service layer (e.g. scripts/seed_data.py)
+    # still rely on this default, same idiom as role/is_active in
+    # app/models/user.py. Also needed at this Python level (not just in
+    # the migration) so Base.metadata.create_all() — the SQLite test path
+    # — creates the same default a real Postgres migration would.
     organization_id = Column(
         Integer, ForeignKey("organizations.id"), nullable=False, server_default="1", index=True
     )

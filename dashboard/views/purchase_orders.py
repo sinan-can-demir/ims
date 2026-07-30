@@ -36,7 +36,7 @@ if st.button("🔄 Refresh"):
     st.cache_data.clear()
     st.rerun()
 
-products = load_products()
+products = load_products(current_user["organization_id"])
 suppliers = load_suppliers()
 
 if not products:
