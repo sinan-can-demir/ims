@@ -208,10 +208,15 @@ jobs:
       # the correct fixed versions (msgpack-1.2.1, setuptools-83.0.0) at 0
       # findings. Dumping JSON output here to get the exact PkgPath/Layer
       # this aggregate finding actually points at. Remove once diagnosed.
+      - name: Debug - install trivy CLI directly (docker.io image pull was denied)
+        uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514
+        with:
+          version: v0.70.0
+          cache: true
+
       - name: Debug - dump full trivy JSON findings
         run: |
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-            aquasecurity/trivy:0.70.0 image --severity CRITICAL,HIGH --ignore-unfixed \
+          trivy image --severity CRITICAL,HIGH --ignore-unfixed \
             --pkg-types os,library --format json ims-api:scan > /tmp/trivy-debug.json
           jq '[.Results[]? | select(.Vulnerabilities) | .Vulnerabilities[]? | select(.PkgName == "msgpack" or .PkgName == "setuptools")] | .[:10]' /tmp/trivy-debug.json
           echo "--- all Target/Class/Type entries with any Vulnerabilities ---"
