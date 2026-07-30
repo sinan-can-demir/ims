@@ -30,6 +30,14 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
+# This stage is FROM the base image directly (not the builder), so it still
+# carries the base image's own system-wide setuptools, unaffected by the
+# builder's venv-scoped upgrade above — runtime never imports it (the app
+# runs out of /opt/venv only), but it's still present in the image and
+# scanned. Upgrade it here too to close CVE-2025-47273 (path traversal in
+# setuptools' PackageIndex).
+RUN pip install --no-cache-dir --upgrade setuptools
+
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
