@@ -11,3 +11,27 @@ CVE-2026-23949
 
 # setuptools' vendored wheel — code execution via malicious wheel file
 CVE-2026-24049
+
+# Both findings below come from pip's own internal `pip/_vendor/vendor.txt`
+# manifest (present in both /opt/venv and the system Python's site-packages
+# — every pip install ships this), which trivy's python-pkg analyzer parses
+# as if it were a real installed-package lockfile. Confirmed by inspecting
+# the built image directly, not just trusting the report:
+#
+# - GHSA-6v7p-g79w-8964 (msgpack 1.1.2): real, but it's pip's own private
+#   vendored copy at pip/_vendor/msgpack/, used only by pip's internal
+#   CacheControl HTTP-response caching during `pip install`/`pip download`
+#   — never imported by this app (which uses the real top-level `msgpack`
+#   package, separately installed and pinned to 1.2.1 in requirements.txt).
+#   Not fixable from here: checked pip's latest release directly against
+#   its GitHub source (pypa/pip@26.2, the newest available on PyPI as of
+#   this check) and it still vendors msgpack 1.1.2 — no pip release exists
+#   yet with a fixed vendored copy.
+# - CVE-2025-47273 (setuptools 70.3.0): a straight false positive, not a
+#   real risk being accepted. vendor.txt lists this as a reference/pinned
+#   version note; pip does not actually vendor a setuptools package_index.py
+#   (the vulnerable module) anywhere — verified no such file exists in the
+#   image. The real, fully separate setuptools installs (venv and system)
+#   are both upgraded to 83.0.0 in docker/Dockerfile.
+GHSA-6v7p-g79w-8964
+CVE-2025-47273
