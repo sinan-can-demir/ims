@@ -18,11 +18,17 @@ from app.services.export_service import export_inventory_events
 from app.services.replay_service import rebuild_inventory_state
 
 
-def run_replay(actor_id: int) -> dict:
+def run_replay(actor_id: int, organization_id: int) -> dict:
     db = SessionLocal()
     try:
-        summary = rebuild_inventory_state(db)
-        log_action(db, actor_id, "replay", detail=f"events_processed={summary['events_processed']}")
+        summary = rebuild_inventory_state(db, organization_id)
+        log_action(
+            db,
+            actor_id,
+            "replay",
+            detail=f"events_processed={summary['events_processed']}",
+            organization_id=organization_id,
+        )
         return summary
     finally:
         db.close()

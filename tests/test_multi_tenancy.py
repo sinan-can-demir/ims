@@ -11,9 +11,10 @@ import uuid
 import pytest
 
 from app.core.exceptions import ProductSkuNotFoundError
+from app.services.fleet_service import get_fleet_status
 from app.services.product_service import get_product_by_sku
 
-from .utils import create_product
+from .utils import create_product, purchase
 
 
 def _create_supplier(client, name="Acme Foods"):
@@ -263,3 +264,63 @@ def test_cross_org_submit_purchase_order_returns_404(client, client_org2):
     assert response.status_code == 404
     unchanged = client.get(f"/api/purchase-orders/{org1_po['id']}").json()
     assert unchanged["status"] == "DRAFT"
+
+
+def test_replay_does_not_touch_other_orgs_inventory_state(admin_client, admin_client_org2):
+    """
+    Epoch 10 PR 11 (replay_service.py real bug fix, #147):
+    rebuild_inventory_state() used to do an unfiltered
+    db.query(InventoryState).delete() before rebuilding — org 1's admin
+    running replay wiped every org's projection, not just org 1's. This
+    proves org 2's inventory level survives org 1 running replay
+    untouched.
+    """
+    org2_product = create_product(admin_client_org2, "Org2 Widget")
+    purchase(admin_client_org2, org2_product["id"], 30)
+
+    before = admin_client_org2.get(f"/api/inventory/{org2_product['id']}").json()["quantity"]
+    assert before == 30
+
+    replay_response = admin_client.post("/api/inventory/replay")
+    assert replay_response.status_code == 200
+
+    after = admin_client_org2.get(f"/api/inventory/{org2_product['id']}").json()["quantity"]
+    assert after == 30
+
+
+def test_cross_org_restock_returns_404(client, client_org2):
+    """
+    Epoch 10 PR 11 (restock_service.py org threading, #147):
+    get_restock_recommendation()'s inventory lookup is now org-scoped —
+    org 1 querying org 2's product_id for a restock recommendation must
+    get a plain 404 (product not found), not a stale/wrong-org result.
+    """
+    org2_product = create_product(client_org2, "Org2 Widget")
+
+    response = client.get(f"/api/forecast/restock/{org2_product['id']}")
+
+    assert response.status_code == 404
+
+
+def test_fleet_status_scoped_per_org(client, client_org2, db, second_org):
+    """
+    Epoch 10 PR 11 (fleet_service.py org threading, #147):
+    get_fleet_status() previously queried every product across every org
+    with no filter at all — a straightforward cross-org data leak on the
+    Fleet Overview dashboard page. Not exposed over HTTP (dashboard-only),
+    so this calls the service function directly against the shared `db`
+    fixture session.
+    """
+    org1_product = create_product(client, "Org1 Widget")
+    org2_product = create_product(client_org2, "Org2 Widget")
+
+    org1_fleet = get_fleet_status(db, organization_id=1)
+    org2_fleet = get_fleet_status(db, organization_id=second_org.id)
+
+    org1_skus = {p["sku"] for p in org1_fleet}
+    org2_skus = {p["sku"] for p in org2_fleet}
+
+    assert org1_product["sku"] in org1_skus
+    assert org2_product["sku"] not in org1_skus
+    assert org2_product["sku"] in org2_skus
+    assert org1_product["sku"] not in org2_skus

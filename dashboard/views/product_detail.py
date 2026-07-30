@@ -64,7 +64,7 @@ if st.sidebar.button("🔄 Refresh"):
 # Section 1 — Inventory metrics
 # ---------------------------------------------------------------
 current_qty = load_inventory(selected_product, current_user["organization_id"])
-restock = load_restock(selected_product)
+restock = load_restock(selected_product, current_user["organization_id"])
 
 col1, col2, col3 = st.columns(3)
 
@@ -236,7 +236,7 @@ if current_user["role"] == "admin":
         confirm_replay = st.checkbox("I understand this rebuilds inventory state for all products")
         if st.button("Rebuild inventory projection", disabled=not confirm_replay):
             with st.spinner("Replaying events..."):
-                summary = run_replay(current_user["id"])
+                summary = run_replay(current_user["id"], current_user["organization_id"])
             st.cache_data.clear()
             st.success(
                 f"Rebuilt state for {summary['products_rebuilt']} products from "

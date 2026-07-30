@@ -99,10 +99,15 @@ def bulk_import_events(
 def replay_inventory_projection(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.ADMIN)),
+    organization_id: int = Depends(get_current_org_id),
 ):
-    summary = rebuild_inventory_state(db)
+    summary = rebuild_inventory_state(db, organization_id)
     log_action(
-        db, current_user.id, "replay", detail=f"events_processed={summary['events_processed']}"
+        db,
+        current_user.id,
+        "replay",
+        detail=f"events_processed={summary['events_processed']}",
+        organization_id=organization_id,
     )
     return summary
 

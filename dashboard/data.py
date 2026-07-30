@@ -40,18 +40,18 @@ def _get_inventory(product_id: int, organization_id: int) -> int:
         db.close()
 
 
-def _get_restock(product_id: int) -> dict:
+def _get_restock(product_id: int, organization_id: int) -> dict:
     db = SessionLocal()
     try:
-        return get_restock_recommendation(db, product_id)
+        return get_restock_recommendation(db, product_id, organization_id)
     finally:
         db.close()
 
 
-def _get_fleet_status() -> list[dict]:
+def _get_fleet_status(organization_id: int) -> list[dict]:
     db = SessionLocal()
     try:
-        return get_fleet_status(db)
+        return get_fleet_status(db, organization_id)
     finally:
         db.close()
 
@@ -173,13 +173,13 @@ def load_inventory(product_id: int, organization_id: int) -> int:
 
 
 @st.cache_data(ttl=CACHE_TTL)
-def load_restock(product_id: int) -> dict:
-    return _get_restock(product_id)
+def load_restock(product_id: int, organization_id: int) -> dict:
+    return _get_restock(product_id, organization_id)
 
 
 @st.cache_data(ttl=CACHE_TTL)
-def load_fleet_status() -> list[dict]:
-    return _get_fleet_status()
+def load_fleet_status(organization_id: int) -> list[dict]:
+    return _get_fleet_status(organization_id)
 
 
 @st.cache_data(ttl=CACHE_TTL)

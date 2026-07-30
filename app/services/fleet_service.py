@@ -7,12 +7,13 @@ from app.services.inventory_service import get_inventory
 from app.services.restock_service import get_restock_recommendation
 
 
-def get_fleet_status(db: Session) -> list[dict]:
+def get_fleet_status(db: Session, organization_id: int = 1) -> list[dict]:
     """
-    Portfolio-wide status across every product — current inventory plus
-    restock urgency, in one call. Powers fleet-wide dashboard views (the
-    product selector, the Fleet Overview page) that need every product at
-    a glance, unlike get_restock_recommendation()'s one-product view.
+    Portfolio-wide status across every product in the caller's org —
+    current inventory plus restock urgency, in one call. Powers
+    fleet-wide dashboard views (the product selector, the Fleet Overview
+    page) that need every product at a glance, unlike
+    get_restock_recommendation()'s one-product view.
 
     A product with no trained forecast model yet must not fail the whole
     fleet query — forecast() raises FileNotFoundError per product, so
@@ -20,16 +21,21 @@ def get_fleet_status(db: Session) -> list[dict]:
     real inventory still populated, instead of the caller getting nothing
     for the entire fleet because one product hasn't been trained yet.
     """
-    products = db.query(Product).order_by(Product.name.asc()).all()
+    products = (
+        db.query(Product)
+        .filter(Product.organization_id == organization_id)
+        .order_by(Product.name.asc())
+        .all()
+    )
 
     statuses = []
     for product in products:
         try:
-            status = get_restock_recommendation(db, product.id)
+            status = get_restock_recommendation(db, product.id, organization_id)
         except FileNotFoundError:
             status = {
                 "product_id": product.id,
-                "current_inventory": get_inventory(db, product.id),
+                "current_inventory": get_inventory(db, product.id, organization_id),
                 "projected_demand_7d": None,
                 "safety_stock": None,
                 "recommended_order_qty": None,

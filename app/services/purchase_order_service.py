@@ -248,12 +248,13 @@ def generate_draft_from_forecast(
     natural follow-up once that lands, not built in here to keep this
     self-contained.
 
-    get_restock_recommendation() itself isn't org-scoped yet — that's
-    restock_service.py's turn, Epoch 10 PR 11 (#147) — so this stays on
-    its current global-lookup behavior for now; only the PO this
-    recommendation feeds into is org-scoped here.
+    get_restock_recommendation() gained organization_id in Epoch 10 PR 11
+    (#147) — passed through here now, closing a real pre-existing gap:
+    before PR 11, a product lookup buried inside get_restock_recommendation
+    always defaulted to org 1, so this route 404'd for any org-2 product
+    even before purchase_order_service.py itself was org-threaded.
     """
-    recommendation = get_restock_recommendation(db, product_id)
+    recommendation = get_restock_recommendation(db, product_id, organization_id)
     qty = recommendation["recommended_order_qty"]
     if qty <= 0:
         raise RestockNotNeededError(product_id, qty)
