@@ -121,7 +121,7 @@ variable "cors_origins" {
 variable "github_repository" {
   description = "GitHub repo allowed to assume the CD deploy role, as \"owner/repo\"."
   type        = string
-  default     = "sinan-can-demir/ims-manual"
+  default     = "sinan-can-demir/ims"
 }
 
 variable "data_lake_bucket_name" {

@@ -22,7 +22,7 @@
 #   scripts/retrain_cron.sh
 #
 # Example crontab line (daily at 3am, output appended to a log file):
-#   0 3 * * * cd /path/to/ims-manual && scripts/retrain_cron.sh >> /var/log/ims-retrain.log 2>&1
+#   0 3 * * * cd /path/to/ims && scripts/retrain_cron.sh >> /var/log/ims-retrain.log 2>&1
 
 set -euo pipefail
 

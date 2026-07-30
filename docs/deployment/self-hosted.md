@@ -28,8 +28,8 @@ curl -fsSL https://get.docker.com | sh
 ## 2. Clone the repo and configure
 
 ```bash
-git clone https://github.com/sinan-can-demir/ims-manual.git
-cd ims-manual
+git clone https://github.com/sinan-can-demir/ims.git
+cd ims
 cp .env.example .env
 ```
 
@@ -293,7 +293,7 @@ unattended, scheduled retraining via a plain host cron entry:
 
 ```bash
 # Daily at 3am, output appended to a log file:
-0 3 * * * cd /path/to/ims-manual && scripts/retrain_cron.sh >> /var/log/ims-retrain.log 2>&1
+0 3 * * * cd /path/to/ims && scripts/retrain_cron.sh >> /var/log/ims-retrain.log 2>&1
 ```
 
 Requires training dependencies installed on the host (`make train-deps`)

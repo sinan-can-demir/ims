@@ -1,14 +1,14 @@
 # IMS — Inventory Management System
 
-[![CI](https://github.com/sinan-can-demir/ims-manual/actions/workflows/ci.yml/badge.svg)](https://github.com/sinan-can-demir/ims-manual/actions/workflows/ci.yml)
+[![CI](https://github.com/sinan-can-demir/ims/actions/workflows/ci.yml/badge.svg)](https://github.com/sinan-can-demir/ims/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-An event-driven inventory platform with a full analytics pipeline and ML-powered demand forecasting. Built from scratch as a learning project covering data engineering, backend systems, and machine learning.
+An event-driven inventory platform with a full analytics pipeline and ML-powered demand forecasting. Started as a learning project covering data engineering, backend systems, and machine learning — it's since grown into a portfolio-scale build with real production hardening (auth, audit logging, rate limiting, a verified self-hosted deployment) and an in-progress multi-tenancy rework.
 
 **Stack:** FastAPI · PostgreSQL · dbt · DuckDB · Prophet · Streamlit · Docker
 
-> **Project status:** actively developed learning project, not a hardened production system.
-> Auth is per-user JWT bearer tokens with two roles (admin/member) — see [SECURITY.md](SECURITY.md) for the current auth model. Path A (restaurant deployment) and the self-hosted deployment/S3 hardening work (`#74`, `#22`) are both shipped — see [ROADMAP.md](ROADMAP.md) for what's next (Path B / multi-tenancy is scoped but not started). See [Deployment](#deployment) below for how to run it yourself.
+> **Project status:** actively developed portfolio project, not a hardened production system.
+> Auth is per-user JWT bearer tokens with two roles (admin/member) — see [SECURITY.md](SECURITY.md) for the current auth model. Path A (restaurant deployment) and the self-hosted deployment/S3 hardening work (`#74`, `#22`) are both shipped; Epoch 10 (multi-tenancy, Path B) is in progress — see [ROADMAP.md](ROADMAP.md) for current status. See [Deployment](#deployment) below for how to run it yourself.
 
 ---
 
@@ -96,19 +96,31 @@ store, trained models) migrated to a pluggable local-or-S3 storage layer,
 with MinIO as the zero-cost self-hosted default; local disk stays the
 out-of-the-box default either way.
 
-## Deferred (Path B)
+## In Progress
 
-Deferred until Path A has real signal that more than one business wants
+**Multi-tenancy (Epoch 10, Path B):** started 2026-07-28, deliberately
+ahead of any real multi-tenant demand signal — for portfolio/learning
+value, sequenced as 16 PRs (GitHub milestone "Epoch 10 —
+Multi-Tenancy"). `organization_id` threading is roughly halfway through
+the service layer (product/inventory/purchase-order/ingestion services
+done); schema, dashboard, and cross-org isolation tests are still
+ahead. See [ROADMAP.md](ROADMAP.md)'s Epoch 10 section for full scope
+and progress.
+
+## Deferred
+
+Deferred until there's real signal that more than one business wants
 this (general small/mid-business audience — see
-[ROADMAP.md](ROADMAP.md) Epochs 10-15):
+[ROADMAP.md](ROADMAP.md) Epochs 11-15, and Epoch 10 above for the
+multi-tenancy work already underway):
 
 - [ ] Real S3 + Terraform/IAM for the AWS deployment path, and a CI test
       matrix covering both local and S3 storage (`#130` — split off `#22`,
       since the AWS path isn't in active use)
 - [ ] Deploy the dashboard on AWS (ECS, reading the feature store from S3)
 - [ ] Apply the AWS Terraform — ECS/RDS/ALB infra is written, not yet running
-- [ ] Multi-tenancy, real integrations (Shopify/QuickBooks/etc.), order
-      management, front-office features
+- [ ] Real integrations (Shopify/QuickBooks/etc.), order management,
+      front-office features
 
 See [ROADMAP.md](ROADMAP.md) for the full backlog.
 
@@ -183,7 +195,7 @@ See [ROADMAP.md](ROADMAP.md) for the full backlog.
 ## Project Structure
 
 ```
-ims-manual/
+ims/
 ├── app/                    # FastAPI application
 │   ├── api/                # Route handlers (products, inventory)
 │   ├── core/               # storage.py (local/S3 abstraction), auth, logging
@@ -567,7 +579,8 @@ Copy `.env.example` to `.env` and adjust as needed.
 | 7 | Production Hardening + Deployment (self-hosted + AWS) | ✅ Complete for self-hosted — `#74` (deploy verified) and `#22` (S3 storage) both shipped. AWS-path S3/Terraform tracked separately in `#130` |
 | 7.1 | Dashboard UX Overhaul — multi-page nav, Fleet Overview, Product Detail enhancements, theming | ✅ Complete |
 | Path A | Restaurant deployment — recipes/BOM, `WASTE` events, real POs, forecasting tuning, CLI wrapper, backups | ✅ Complete |
-| 10-15 | General small/mid-business platform (Path B) | Scoped in detail (multi-tenancy alone: ~2-2.5mo), not started — whether to start at all is an open decision, not just a matter of time |
+| 10 | Multi-Tenancy (Path B) | 🚧 In progress — started 2026-07-28, ~halfway through the 16-PR sequence |
+| 11-15 | General small/mid-business platform (Path B) | Scoped in detail, sequenced after Epoch 10 |
 
 ---
 

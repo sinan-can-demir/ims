@@ -1,7 +1,8 @@
 # Contributing to IMS
 
-Thanks for your interest — this started as a learning project, so contributions,
-questions, and issue reports are all welcome. A few practical notes before you dive in.
+Thanks for your interest — this started as a learning project and has grown into
+an actively developed portfolio project, so contributions, questions, and issue
+reports are all welcome. A few practical notes before you dive in.
 
 ## Getting set up
 
