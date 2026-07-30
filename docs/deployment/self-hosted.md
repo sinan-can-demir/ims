@@ -306,3 +306,26 @@ If a bad retrain needs undoing:
 ```bash
 python -m app.scripts.rollback_model --product-id 1 --version 2
 ```
+
+## Automated data export
+
+`make export` (`python -m app.scripts.export_events`) exports inventory
+events to the Parquet data lake, incrementally — only events since the
+last checkpoint, across every org in one run (see
+`app/services/export_service.py` — the checkpoint is deliberately global,
+not per-org). This used to also be reachable from the per-org admin
+dashboard; that button was removed in Epoch 10 PR 13 (#149), since a
+single org's admin triggering a whole-deployment operation was never the
+right shape once real multi-tenancy existed. It's ops-only now, same
+precedent as retraining above — a plain host cron entry:
+
+```bash
+# Every 15 minutes, output appended to a log file:
+*/15 * * * * cd /path/to/ims && make export >> /var/log/ims-export.log 2>&1
+```
+
+Requires a real Postgres reachable at `DATABASE_URL`, same as running
+`make export` by hand. Exported files land under
+`org_id={id}/year=.../month=.../day=...` — org is the outermost
+partition level, so an org-specific export/analytics job can point at
+just its own subtree without reading the whole data lake.

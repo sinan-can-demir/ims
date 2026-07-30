@@ -80,7 +80,13 @@ def build_dim_products(db: Session) -> int:
     # 2. Convert to DataFrame
     df = pd.DataFrame(
         [
-            {"product_id": p.id, "name": p.name, "sku": p.sku, "created_at": p.created_at}
+            {
+                "product_id": p.id,
+                "name": p.name,
+                "sku": p.sku,
+                "created_at": p.created_at,
+                "organization_id": p.organization_id,
+            }
             for p in products
         ]
     )
@@ -153,6 +159,18 @@ def build_fact_table() -> int:
     # not attacker-controlled input, so this isn't an injectable query despite
     # the f-string shape. DuckDB's read_parquet() also has no bind-parameter
     # form for the file path argument, so parameterizing isn't an option here.
+    #
+    # AND e.organization_id = p.organization_id (Epoch 10 PR 13, #149) is a
+    # join-boundary invariant check, not a correctness fix by itself —
+    # product_id alone is already globally unique across orgs (see
+    # ROADMAP.md's Epoch 10 section), so this join was never actually
+    # capable of matching the wrong product. It's the same "verify the
+    # invariant explicitly, don't just assume it" discipline already
+    # applied at the DB layer (composite FKs, the audit_log trigger): if
+    # an event and its joined product ever disagreed on org — a bug
+    # elsewhere, not something possible via normal writes today — this
+    # excludes that row from the fact table instead of silently including
+    # it un-flagged.
     result = conn.execute(f"""
     SELECT
         e.event_id,
@@ -160,10 +178,12 @@ def build_fact_table() -> int:
         strftime(e.created_at, '%Y-%m-%d') AS date_id,
         e.event_type,
         e.quantity,
-        e.created_at
+        e.created_at,
+        e.organization_id
     FROM read_parquet('{events_path}/**/*.parquet') e
     JOIN read_parquet('{products_path}') p
         ON e.product_id = p.product_id
+        AND e.organization_id = p.organization_id
     """).df()  # noqa: S608 -- .df() converts directly to pandas DataFrame
 
     # 4. write to warehouse/fact_inventory_events.parquet

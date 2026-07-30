@@ -44,7 +44,8 @@ def test_full_export_creates_files(client, db, export_paths):
 
 def test_partition_structure(client, db, export_paths):
     """
-    Exported files must sit inside year=.../month=.../day=... directories.
+    Exported files must sit inside org_id=.../year=.../month=.../day=...
+    directories, org_id as the outermost level (Epoch 10 PR 13, #149).
     """
     events_root, _ = export_paths
 
@@ -59,9 +60,13 @@ def test_partition_structure(client, db, export_paths):
 
     for f in parquet_files:
         parts = f.parts
+        assert any(p.startswith("org_id=") for p in parts), f"Missing org_id= in path: {f}"
         assert any(p.startswith("year=") for p in parts), f"Missing year= in path: {f}"
         assert any(p.startswith("month=") for p in parts), f"Missing month= in path: {f}"
         assert any(p.startswith("day=") for p in parts), f"Missing day= in path: {f}"
+        org_idx = next(i for i, p in enumerate(parts) if p.startswith("org_id="))
+        year_idx = next(i for i, p in enumerate(parts) if p.startswith("year="))
+        assert org_idx < year_idx, "org_id= must be the outermost partition level"
 
 
 # ---------------------------------------------------------------------------
@@ -87,7 +92,15 @@ def test_export_schema_columns(client, db, export_paths):
 
     df = pd.read_parquet(parquet_files[0])
 
-    expected_columns = {"id", "event_id", "product_id", "event_type", "quantity", "created_at"}
+    expected_columns = {
+        "id",
+        "event_id",
+        "product_id",
+        "event_type",
+        "quantity",
+        "created_at",
+        "organization_id",
+    }
     assert set(df.columns) == expected_columns, (
         f"Column mismatch.\n  Expected: {expected_columns}\n  Got: {set(df.columns)}"
     )

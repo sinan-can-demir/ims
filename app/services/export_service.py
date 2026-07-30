@@ -53,6 +53,13 @@ def _update_checkpoint(last_id: int) -> None:
 
 
 def _build_base_query(db: Session):
+    """
+    Deliberately not organization_id-filtered — this stays a single,
+    whole-deployment export spanning every org in one run (Epoch 10 PR 13,
+    #149), same as the checkpoint below staying global. organization_id
+    is still selected as a real column so the write step can partition by
+    it; see _write_partitioned_parquet().
+    """
     return db.query(
         InventoryEvent.id,
         InventoryEvent.event_id,
@@ -60,6 +67,7 @@ def _build_base_query(db: Session):
         InventoryEvent.event_type,
         InventoryEvent.quantity,
         InventoryEvent.created_at,
+        InventoryEvent.organization_id,
     ).order_by(InventoryEvent.created_at.asc(), InventoryEvent.id.asc())
 
 
@@ -81,6 +89,7 @@ def _rows_to_dataframe(rows: list[tuple]) -> pd.DataFrame:
             "event_type",
             "quantity",
             "created_at",
+            "organization_id",
         ],
     )
 
@@ -98,17 +107,30 @@ def _rows_to_dataframe(rows: list[tuple]) -> pd.DataFrame:
 
 
 def _write_partitioned_parquet(df: pd.DataFrame) -> tuple[int, int]:
+    """
+    org_id= is the outermost partition level, ahead of year/month/day
+    (Epoch 10 PR 13, #149) — e.g.
+    INVENTORY_EVENTS_ROOT/org_id=5/year=2026/month=07/day=28/... — and,
+    unlike year/month/day (partition-path-only, never written into the
+    file itself), organization_id is also kept as a real column in each
+    written parquet file, since downstream consumers (warehouse build,
+    dbt) read it directly rather than parsing it back out of the path.
+    """
     if df.empty:
         return 0, 0
 
     partitions_written = 0
     files_written = 0
 
-    grouped = df.groupby(["year", "month", "day"], sort=True)
+    grouped = df.groupby(["organization_id", "year", "month", "day"], sort=True)
 
-    for (year, month, day), partition_df in grouped:
+    for (org_id, year, month, day), partition_df in grouped:
         partition_path = storage.join(
-            INVENTORY_EVENTS_ROOT, f"year={year}", f"month={month}", f"day={day}"
+            INVENTORY_EVENTS_ROOT,
+            f"org_id={org_id}",
+            f"year={year}",
+            f"month={month}",
+            f"day={day}",
         )
         storage.mkdir(partition_path)
 
@@ -120,7 +142,17 @@ def _write_partitioned_parquet(df: pd.DataFrame) -> tuple[int, int]:
         )
 
         write_df = (
-            partition_df[["id", "event_id", "product_id", "event_type", "quantity", "created_at"]]
+            partition_df[
+                [
+                    "id",
+                    "event_id",
+                    "product_id",
+                    "event_type",
+                    "quantity",
+                    "created_at",
+                    "organization_id",
+                ]
+            ]
             .sort_values(["created_at", "id"])
             .reset_index(drop=True)
         )

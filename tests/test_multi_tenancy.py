@@ -11,12 +11,15 @@ import io
 import json
 import uuid
 
+import pandas as pd
 import pytest
 
 from app.core.exceptions import ProductSkuNotFoundError
 from app.models.organization import Organization
+from app.services.export_service import export_inventory_events
 from app.services.fleet_service import get_fleet_status
 from app.services.product_service import get_product_by_sku
+from app.services.warehouse_service import build_dim_products, build_fact_table
 
 from .utils import create_product, purchase
 
@@ -397,3 +400,63 @@ def test_webhook_secret_state_is_independent_per_org(client, client_org2, db, se
         f"/api/webhooks/{second_org.id}/ingest", json=_payload(org2_product["sku"])
     )
     assert unsigned_to_org2.status_code == 200
+
+
+def test_export_partitions_by_org_from_single_checkpoint_run(
+    client, client_org2, db, second_org, export_paths
+):
+    """
+    Epoch 10 PR 13 (export_service.py org_id= partitioning, #149): the
+    export checkpoint is deliberately global (InventoryEvent.id is one
+    sequence shared by every org), so a single export run must still
+    correctly split both orgs' events into their own org_id= partition
+    trees, not lump them into one.
+    """
+    events_root, _ = export_paths
+    org1_product = create_product(client, "Org1 Widget")
+    org2_product = create_product(client_org2, "Org2 Widget")
+    purchase(client, org1_product["id"], 10)
+    purchase(client_org2, org2_product["id"], 20)
+
+    db.expire_all()
+    result = export_inventory_events(db, incremental=False)
+
+    assert result["rows_exported"] == 2
+
+    org_dirs = {p.name for p in events_root.glob("org_id=*")}
+    assert org_dirs == {"org_id=1", f"org_id={second_org.id}"}
+
+    org1_files = list((events_root / "org_id=1").rglob("*.parquet"))
+    org2_files = list((events_root / f"org_id={second_org.id}").rglob("*.parquet"))
+    assert pd.read_parquet(org1_files[0])["organization_id"].iloc[0] == 1
+    assert pd.read_parquet(org2_files[0])["organization_id"].iloc[0] == second_org.id
+
+
+def test_fact_table_organization_id_matches_joined_product(
+    client, client_org2, db, second_org, warehouse_paths, export_paths
+):
+    """
+    Epoch 10 PR 13 (warehouse_service.py join-boundary fix, #149):
+    build_fact_table()'s join now carries organization_id through and
+    enforces e.organization_id = p.organization_id — every row in the
+    fact table must agree with its own joined product on org, across a
+    run covering two real orgs' data at once.
+    """
+    org1_product = create_product(client, "Org1 Widget")
+    org2_product = create_product(client_org2, "Org2 Widget")
+    purchase(client, org1_product["id"], 10)
+    purchase(client_org2, org2_product["id"], 20)
+
+    db.expire_all()
+    export_inventory_events(db, incremental=False)
+    db.expire_all()
+    build_dim_products(db)
+    build_fact_table()
+
+    fact = pd.read_parquet(warehouse_paths / "fact_inventory_events.parquet")
+    products = pd.read_parquet(warehouse_paths / "dim_products.parquet")
+
+    merged = fact.merge(products, on="product_id", suffixes=("_event", "_product"))
+    assert len(merged) == len(fact)
+    assert (merged["organization_id_event"] == merged["organization_id_product"]).all()
+    assert set(fact["organization_id"]) == {1, second_org.id}

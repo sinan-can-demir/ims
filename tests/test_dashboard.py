@@ -241,11 +241,19 @@ def test_dashboard_admin_can_trigger_replay(client, admin_actions_db, monkeypatc
         session.close()
 
 
-def test_dashboard_admin_can_trigger_export(client, admin_actions_db, export_paths, monkeypatch):
+def test_dashboard_admin_ops_has_no_export_button(client, admin_actions_db, monkeypatch):
+    """
+    The export button was removed from the per-org dashboard entirely in
+    Epoch 10 PR 13 (#149) — the export checkpoint is a whole-deployment,
+    cross-org operation, so a single org's admin triggering it from their
+    own dashboard was never the right shape. It's ops-only (cron/CLI)
+    now, see docs/deployment/self-hosted.md. Replay stays, since it's
+    genuinely org-scoped (Epoch 10 PR 11, #147).
+    """
     product = create_product(client)
     purchase(client, product["id"], 50)
     admin = _make_dashboard_user(
-        admin_actions_db, email="ops-export-admin@example.com", role=UserRole.ADMIN
+        admin_actions_db, email="ops-no-export-admin@example.com", role=UserRole.ADMIN
     )
 
     _mock_forecast(monkeypatch)
@@ -254,24 +262,9 @@ def test_dashboard_admin_can_trigger_export(client, admin_actions_db, export_pat
     _signed_in(at, admin)
     at.run()
 
-    button = next(b for b in at.button if b.label == "Export inventory events")
-    button.click().run()
-
     assert not at.exception
-    assert any("Exported" in s.value for s in at.success)
-
-    session = admin_actions_db()
-    try:
-        entry = (
-            session.query(AuditLog)
-            .filter(AuditLog.action == "export")
-            .order_by(AuditLog.id.desc())
-            .first()
-        )
-        assert entry is not None
-        assert entry.actor_id == admin.id
-    finally:
-        session.close()
+    assert not any(b.label == "Export inventory events" for b in at.button)
+    assert any(b.label == "Rebuild inventory projection" for b in at.button)
 
 
 # ---------------------------------------------------------------------------
