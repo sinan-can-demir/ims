@@ -22,3 +22,10 @@ sources:
             description: "Normalized quantity delta — negative for SALE and DAMAGE"
           - name: created_at
             description: "Timestamp of when the event was recorded"
+          - name: organization_id
+            description: >
+              Owning org (Epoch 10 PR 13, #149) — a real column in the
+              underlying Parquet files, not just an org_id= partition-path
+              segment. The source's own read_parquet() glob (**/*.parquet)
+              already recurses through that extra directory level with no
+              change needed here.

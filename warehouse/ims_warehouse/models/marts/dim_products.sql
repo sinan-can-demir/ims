@@ -5,5 +5,6 @@ SELECT
     product_id,
     name,
     sku,
-    created_at
+    created_at,
+    organization_id
 FROM read_parquet('{{ env_var("WAREHOUSE_ROOT", "..") }}/dim_products.parquet')

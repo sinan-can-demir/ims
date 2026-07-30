@@ -14,5 +14,7 @@ models:
         description: "Normalized quantity delta — negative for SALE and DAMAGE"
       - name: created_at
         description: "Original event timestamp"
+      - name: organization_id
+        description: "Owning org"
       - name: date_id
         description: "Date portion of created_at in YYYY-MM-DD format for joining to dim_dates"
