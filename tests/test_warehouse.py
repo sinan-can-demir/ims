@@ -64,7 +64,7 @@ def test_build_dim_tables(client, db, warehouse_paths):
     assert count == 2
 
     df = pd.read_parquet(warehouse_paths / "dim_products.parquet")
-    expected_columns = {"product_id", "name", "sku", "created_at"}
+    expected_columns = {"product_id", "name", "sku", "created_at", "organization_id"}
     assert set(df.columns) == expected_columns
     assert len(df) == 2
 

@@ -23,7 +23,7 @@ import streamlit as st
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from app.models.enums import EventType
-from dashboard.admin_actions import run_export, run_replay
+from dashboard.admin_actions import run_replay
 from dashboard.auth import require_login
 from dashboard.data import load_events, load_forecast, load_inventory, load_products, load_restock
 
@@ -214,47 +214,35 @@ with col_next:
         st.rerun()
 
 # ---------------------------------------------------------------
-# Section 5 — Admin / Ops (issue #72) — replay + export controls,
-# previously only reachable via API or CLI. Gated on role, not just
-# being logged in — Caddy basic_auth (see Caddyfile) is a
-# network-perimeter control and doesn't distinguish members from
-# admins, so this app-level check is what actually restricts it.
+# Section 5 — Admin / Ops (issue #72) — replay control, previously
+# only reachable via API or CLI. Gated on role, not just being logged
+# in — Caddy basic_auth (see Caddyfile) is a network-perimeter control
+# and doesn't distinguish members from admins, so this app-level check
+# is what actually restricts it.
+#
+# The export button that used to live here was removed in Epoch 10 PR
+# 13 (#149) — the export checkpoint is a whole-deployment, cross-org
+# operation, so a single org's admin triggering it from their own
+# per-org dashboard was never the right shape once real multi-tenancy
+# existed. It's an ops-only cron/CLI action now, see
+# docs/deployment/self-hosted.md.
 # ---------------------------------------------------------------
 if current_user["role"] == "admin":
     st.divider()
     st.subheader("🔧 Admin / Ops")
 
-    col_replay, col_export = st.columns(2)
-
-    with col_replay:
-        st.caption(
-            "Rebuilds the inventory_state projection from scratch by replaying every "
-            "inventory event. Safe to run — it only recomputes derived state, never "
-            "touches the event log itself — but affects every product, not just the "
-            "one selected above."
+    st.caption(
+        "Rebuilds the inventory_state projection from scratch by replaying every "
+        "inventory event. Safe to run — it only recomputes derived state, never "
+        "touches the event log itself — but affects every product, not just the "
+        "one selected above."
+    )
+    confirm_replay = st.checkbox("I understand this rebuilds inventory state for all products")
+    if st.button("Rebuild inventory projection", disabled=not confirm_replay):
+        with st.spinner("Replaying events..."):
+            summary = run_replay(current_user["id"], current_user["organization_id"])
+        st.cache_data.clear()
+        st.success(
+            f"Rebuilt state for {summary['products_rebuilt']} products from "
+            f"{summary['events_processed']} events."
         )
-        confirm_replay = st.checkbox("I understand this rebuilds inventory state for all products")
-        if st.button("Rebuild inventory projection", disabled=not confirm_replay):
-            with st.spinner("Replaying events..."):
-                summary = run_replay(current_user["id"], current_user["organization_id"])
-            st.cache_data.clear()
-            st.success(
-                f"Rebuilt state for {summary['products_rebuilt']} products from "
-                f"{summary['events_processed']} events."
-            )
-
-    with col_export:
-        st.caption(
-            "Exports inventory events to the data lake (Parquet), incrementally — "
-            "only events since the last export checkpoint."
-        )
-        if st.button("Export inventory events"):
-            with st.spinner("Exporting..."):
-                result = run_export(current_user["id"])
-            if result["rows_exported"] == 0:
-                st.info("Nothing new to export since the last checkpoint.")
-            else:
-                st.success(
-                    f"Exported {result['rows_exported']} rows across "
-                    f"{result['files_written']} file(s)."
-                )
