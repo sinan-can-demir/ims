@@ -33,11 +33,13 @@ async def lifespan(app: FastAPI):
             "secret; anyone can forge a valid-looking login. Set JWT_SECRET before "
             "exposing this app on any network you don't fully trust."
         )
-    if os.getenv("WEBHOOK_SECRET") is None:
-        logger.warning(
-            "WEBHOOK AUTH DISABLED — WEBHOOK_SECRET not set; /api/webhooks/ingest "
-            "accepts unsigned requests"
-        )
+    # Webhook signature verification is per-org (organizations.webhook_secret,
+    # Epoch 10 PR 12/#148) now, not a single global env var — a boot-time
+    # scan would mean querying every org on every startup for a fact that
+    # can change per-org at any time. require_webhook_signature logs a
+    # warning on every request it lets through unsigned instead, which
+    # covers the same "don't lose visibility into this" goal without that
+    # cost.
     yield
 
 
@@ -70,8 +72,10 @@ app.include_router(forecast_router, prefix="/api", dependencies=_auth)
 app.include_router(suppliers_router, prefix="/api", dependencies=_auth)
 app.include_router(purchase_orders_router, prefix="/api", dependencies=_auth)
 app.include_router(recipes_router, prefix="/api", dependencies=_auth)
-# Signed with WEBHOOK_SECRET (see require_webhook_signature), not the
-# bearer token used by the routers above — different trust boundary.
+# Signed with each org's own webhook_secret (see require_webhook_signature),
+# not the bearer token used by the routers above — different trust
+# boundary. No router-level dependency here: the signature check needs the
+# {organization_id} path param, which only a per-route dependency can see.
 app.include_router(webhooks_router, prefix="/api")
 # No require_current_user — this *is* the login endpoint, nothing to
 # authenticate against yet. Still rate-limited: unauthenticated and

@@ -26,7 +26,8 @@ An event-driven inventory platform with a full analytics pipeline and ML-powered
       number on the dashboard; receiving creates real `PURCHASE` events
 - [x] Bulk CSV import (`POST /api/inventory/events/bulk`) — per-row partial
       success
-- [x] Generic HMAC-signed webhook ingestion (`POST /api/webhooks/ingest`)
+- [x] Generic HMAC-signed webhook ingestion, per-org secret
+      (`POST /api/webhooks/{organization_id}/ingest`)
 - [x] Full analytics pipeline: Parquet data lake → DuckDB warehouse → dbt
       models + data quality tests
 - [x] Prophet demand forecasting per product, tracked in an MLflow model
@@ -416,8 +417,8 @@ file: events.csv   # columns: sku, event_type, quantity, event_id
 ```
 
 ```http
-POST /api/webhooks/ingest
-X-Webhook-Signature: <hex HMAC-SHA256 of the raw body, keyed by WEBHOOK_SECRET>
+POST /api/webhooks/{organization_id}/ingest
+X-Webhook-Signature: <hex HMAC-SHA256 of the raw body, keyed by that org's own webhook_secret>
 {
     "source": "generic",
     "events": [
@@ -425,6 +426,11 @@ X-Webhook-Signature: <hex HMAC-SHA256 of the raw body, keyed by WEBHOOK_SECRET>
     ]
 }
 ```
+
+The signing secret is per-org (`organizations.webhook_secret`), not a
+single global secret — a NULL secret disables signature verification for
+that org only (local dev only), same "unset = disabled" shape the old
+global `WEBHOOK_SECRET` env var had. See [SECURITY.md](SECURITY.md).
 
 Both share one ingestion core and report per-row results — one bad row
 doesn't fail the whole batch:
@@ -542,7 +548,6 @@ decisions no wizard should make silently.
 | `DB_MAX_OVERFLOW` | `10` | Extra connections allowed above pool size under load |
 | `CORS_ORIGINS` | `http://localhost:8501` | Comma-separated list of allowed CORS origins |
 | `JWT_SECRET` | unset | Signs/verifies JWTs issued by `POST /api/auth/login`; unset falls back to a fixed, publicly-known dev secret (local dev only — see [SECURITY.md](SECURITY.md)) |
-| `WEBHOOK_SECRET` | unset | Shared secret for verifying `POST /api/webhooks/ingest` signatures (`X-Webhook-Signature`); unset disables verification (local dev only) |
 | `RATE_LIMIT` | `100/minute` | Default rate limit on `/api` routes (slowapi syntax) |
 | `DATA_LAKE_ROOT` | `./data_lake` | Parquet data lake root — local path or an `s3://` URI |
 | `WAREHOUSE_ROOT` | `./warehouse` | Warehouse mart/dim Parquet output — local path or an `s3://` URI |

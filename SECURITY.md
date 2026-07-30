@@ -59,14 +59,20 @@ what's planned.
 
 ## Webhook signature verification
 
-`POST /api/webhooks/ingest` (see [`ROADMAP.md`](ROADMAP.md) Epoch 7.2) uses a
-separate mechanism from the bearer-token auth above: an
-`X-Webhook-Signature` header holding an HMAC-SHA256 digest of the raw
-request body, keyed by the `WEBHOOK_SECRET` env var (`app/core/auth.py`'s
-`require_webhook_signature`). Unlike `JWT_SECRET`, this one *can* be
-disabled — it's a no-op if `WEBHOOK_SECRET` is unset (local dev only),
-same one-shared-secret shape as the old `API_KEY`, constant-time
-comparison via `hmac.compare_digest`.
+`POST /api/webhooks/{organization_id}/ingest` (see [`ROADMAP.md`](ROADMAP.md)
+Epoch 7.2, redesigned per-org in Epoch 10 PR 12/#148) uses a separate
+mechanism from the bearer-token auth above: an `X-Webhook-Signature` header
+holding an HMAC-SHA256 digest of the raw request body, keyed by the target
+org's own `organizations.webhook_secret` column (`app/core/auth.py`'s
+`require_webhook_signature`) — not a single global env var. A shared secret
+across every org would let any one org's webhook credential post events
+into any other org, so each org's secret only ever authenticates requests
+to that org's own `{organization_id}` in the path. Like the old global
+`WEBHOOK_SECRET`, this one *can* be disabled — it's a no-op if that org's
+`webhook_secret` is NULL (local dev only; logged loudly on every unsigned
+request let through, since there's no boot-time env-var check anymore to
+surface it once at startup), same constant-time comparison via
+`hmac.compare_digest`.
 
 ## Rate limiting
 
@@ -74,7 +80,7 @@ comparison via `hmac.compare_digest`.
 `require_current_user`) are rate-limited via `slowapi`
 (`app/core/rate_limit.py`), keyed by client IP. Default limit is
 `100/minute`, configurable via the `RATE_LIMIT` env var. Limit exceeded
-returns `429`. `/health`, `/metrics`, and `/api/webhooks/ingest`
+returns `429`. `/health`, `/metrics`, and `/api/webhooks/{organization_id}/ingest`
 (signature-verified, separate trust boundary — see below) are exempt.
 
 Keying is by IP only, deliberately — not by the authenticated user. Partly
@@ -104,7 +110,7 @@ wasn't an error, rate limiting just silently stopped applying to every
 (`enforce_rate_limit`, `app/core/rate_limit.py`) attached alongside the
 auth dependency instead of a middleware — dependencies run *after*
 routing has already resolved the endpoint, so there's no route-matching to
-get wrong. `/health`, `/metrics`, and `/api/webhooks/ingest` are exempt
+get wrong. `/health`, `/metrics`, and `/api/webhooks/{organization_id}/ingest` are exempt
 structurally now (the dependency simply isn't attached to those routes)
 rather than via slowapi's `@limiter.exempt` name-based lookup.
 
@@ -134,7 +140,7 @@ now cap the size of a single request, independent of the rate limits above:
   memory before parsing. Capped at 10MB (rejected with `413` before pandas
   ever touches the body) and 50,000 rows (checked after parsing, catches a
   compact-but-huge-row-count file that's small in bytes).
-- `POST /api/webhooks/ingest` — this route is rate-limit-exempt (it has its
+- `POST /api/webhooks/{organization_id}/ingest` — this route is rate-limit-exempt (it has its
   own HMAC trust boundary, see above), so there's no secondary throttle on
   it. `WebhookIngestPayload.events` is capped at 1000 items per request —
   generous for a near-real-time delta, not a bulk history dump (that's what
