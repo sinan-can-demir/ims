@@ -30,8 +30,12 @@ def normalize_quantity(event_type: EventType, quantity: int) -> int:
     raise InvalidEventError("Unsupported event type")
 
 
-def get_inventory(db: Session, product_id: int) -> int:
-    product = db.query(Product).filter(Product.id == product_id).first()
+def get_inventory(db: Session, product_id: int, organization_id: int = 1) -> int:
+    product = (
+        db.query(Product)
+        .filter(Product.id == product_id, Product.organization_id == organization_id)
+        .first()
+    )
     if not product:
         raise ProductNotFoundError(product_id)
     state = db.query(InventoryState).filter(InventoryState.product_id == product_id).first()
@@ -45,6 +49,7 @@ def _apply_event(
     quantity: int,
     event_id: str,
     created_by_id: int | None,
+    organization_id: int,
 ) -> tuple[InventoryEvent, bool]:
     """
     Core event application — idempotency check, oversell guard, insert
@@ -57,14 +62,25 @@ def _apply_event(
     Returns (event, created) — created is False for an idempotent replay
     of an existing event_id, in which case no cascade should run either.
     """
-    existing_event = db.query(InventoryEvent).filter(InventoryEvent.event_id == event_id).first()
+    existing_event = (
+        db.query(InventoryEvent)
+        .filter(
+            InventoryEvent.event_id == event_id,
+            InventoryEvent.organization_id == organization_id,
+        )
+        .first()
+    )
     if existing_event:
         logger.info("inventory_event_duplicate", extra={"event_id": event_id})
         return existing_event, False
 
     delta = normalize_quantity(event_type, quantity)
 
-    product = db.query(Product).filter(Product.id == product_id).first()
+    product = (
+        db.query(Product)
+        .filter(Product.id == product_id, Product.organization_id == organization_id)
+        .first()
+    )
     if not product:
         raise ProductNotFoundError(product_id)
 
@@ -77,7 +93,7 @@ def _apply_event(
     )
 
     if state is None:
-        state = InventoryState(product_id=product_id, quantity=0)
+        state = InventoryState(product_id=product_id, quantity=0, organization_id=organization_id)
         db.add(state)
         db.flush()
 
@@ -101,6 +117,7 @@ def _apply_event(
         quantity=delta,
         event_id=event_id,
         created_by_id=created_by_id,
+        organization_id=organization_id,
     )
 
     db.add(event)
@@ -126,6 +143,7 @@ def _cascade_recipe_consumption(
     dishes_sold: int,
     source_event_id: str,
     created_by_id: int | None,
+    organization_id: int,
 ) -> None:
     """
     Selling a dish also consumes its recipe/BOM ingredients. Cascaded
@@ -148,6 +166,7 @@ def _cascade_recipe_consumption(
             item.quantity * dishes_sold,
             component_event_id,
             created_by_id,
+            organization_id,
         )
 
 
@@ -158,12 +177,17 @@ def record_event(
     quantity: int,
     event_id: str,
     created_by_id: int | None = None,
+    organization_id: int = 1,
 ) -> InventoryEvent:
     try:
-        event, created = _apply_event(db, product_id, event_type, quantity, event_id, created_by_id)
+        event, created = _apply_event(
+            db, product_id, event_type, quantity, event_id, created_by_id, organization_id
+        )
 
         if created and event_type == EventType.SALE:
-            _cascade_recipe_consumption(db, product_id, quantity, event_id, created_by_id)
+            _cascade_recipe_consumption(
+                db, product_id, quantity, event_id, created_by_id, organization_id
+            )
 
         db.commit()
         db.refresh(event)
@@ -177,7 +201,12 @@ def record_event(
 
         # Check if the failure was due to a duplicate event_id (idempotency)
         existing_event = (
-            db.query(InventoryEvent).filter(InventoryEvent.event_id == event_id).first()
+            db.query(InventoryEvent)
+            .filter(
+                InventoryEvent.event_id == event_id,
+                InventoryEvent.organization_id == organization_id,
+            )
+            .first()
         )
 
         # If the event already exists, return it instead of raising an error

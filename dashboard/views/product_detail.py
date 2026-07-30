@@ -63,7 +63,7 @@ if st.sidebar.button("🔄 Refresh"):
 # ---------------------------------------------------------------
 # Section 1 — Inventory metrics
 # ---------------------------------------------------------------
-current_qty = load_inventory(selected_product)
+current_qty = load_inventory(selected_product, current_user["organization_id"])
 restock = load_restock(selected_product)
 
 col1, col2, col3 = st.columns(3)
@@ -189,7 +189,9 @@ page = st.session_state.setdefault("events_page", 1)
 offset = (page - 1) * EVENTS_PAGE_SIZE
 event_type_arg = None if event_type_filter == "All" else event_type_filter
 
-events_result = load_events(selected_product, event_type_arg, EVENTS_PAGE_SIZE, offset)
+events_result = load_events(
+    selected_product, current_user["organization_id"], event_type_arg, EVENTS_PAGE_SIZE, offset
+)
 events = events_result["events"]
 total_events = events_result["total"]
 

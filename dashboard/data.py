@@ -32,10 +32,10 @@ CACHE_TTL = 300
 # ---------------------------------------------------------------
 
 
-def _get_inventory(product_id: int) -> int:
+def _get_inventory(product_id: int, organization_id: int) -> int:
     db = SessionLocal()
     try:
-        return get_inventory(db, product_id)
+        return get_inventory(db, product_id, organization_id)
     finally:
         db.close()
 
@@ -56,10 +56,15 @@ def _get_fleet_status() -> list[dict]:
         db.close()
 
 
-def _get_events(product_id: int, event_type: str | None, page_size: int, offset: int) -> dict:
+def _get_events(
+    product_id: int, event_type: str | None, page_size: int, offset: int, organization_id: int
+) -> dict:
     db = SessionLocal()
     try:
-        query = db.query(InventoryEvent).filter(InventoryEvent.product_id == product_id)
+        query = db.query(InventoryEvent).filter(
+            InventoryEvent.product_id == product_id,
+            InventoryEvent.organization_id == organization_id,
+        )
         if event_type:
             query = query.filter(InventoryEvent.event_type == EventType(event_type))
 
@@ -159,8 +164,8 @@ def _list_purchase_orders(status: str | None) -> list[dict]:
 
 
 @st.cache_data(ttl=CACHE_TTL)
-def load_inventory(product_id: int) -> int:
-    return _get_inventory(product_id)
+def load_inventory(product_id: int, organization_id: int) -> int:
+    return _get_inventory(product_id, organization_id)
 
 
 @st.cache_data(ttl=CACHE_TTL)
@@ -180,9 +185,13 @@ def load_forecast(product_id: int, days: int = 7) -> pd.DataFrame:
 
 @st.cache_data(ttl=CACHE_TTL)
 def load_events(
-    product_id: int, event_type: str | None = None, page_size: int = 20, offset: int = 0
+    product_id: int,
+    organization_id: int,
+    event_type: str | None = None,
+    page_size: int = 20,
+    offset: int = 0,
 ) -> dict:
-    return _get_events(product_id, event_type, page_size, offset)
+    return _get_events(product_id, event_type, page_size, offset, organization_id)
 
 
 @st.cache_data(ttl=CACHE_TTL)
