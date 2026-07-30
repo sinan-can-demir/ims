@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from app.core.auth import require_current_user
+from app.core.auth import get_current_org_id, require_current_user
 from app.database import get_db
 from app.models.enums import PurchaseOrderStatus
 from app.models.purchase_order import PurchaseOrder
@@ -48,45 +48,67 @@ def create_purchase_order_route(
     payload: PurchaseOrderCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_current_user),
+    organization_id: int = Depends(get_current_org_id),
 ):
-    po = create_purchase_order(db, payload.supplier_id, current_user.id, payload.lines)
-    return _to_response(po, list_purchase_order_lines(db, po.id))
+    po = create_purchase_order(
+        db, payload.supplier_id, current_user.id, payload.lines, organization_id
+    )
+    return _to_response(po, list_purchase_order_lines(db, po.id, organization_id))
 
 
 @router.get("", response_model=list[PurchaseOrderResponse])
 def list_purchase_orders_route(
     status: PurchaseOrderStatus | None = Query(default=None),
     db: Session = Depends(get_db),
+    organization_id: int = Depends(get_current_org_id),
 ):
-    orders = list_purchase_orders(db, status)
-    return [_to_response(po, list_purchase_order_lines(db, po.id)) for po in orders]
+    orders = list_purchase_orders(db, status, organization_id)
+    return [
+        _to_response(po, list_purchase_order_lines(db, po.id, organization_id)) for po in orders
+    ]
 
 
 @router.get("/{purchase_order_id}", response_model=PurchaseOrderResponse)
-def get_purchase_order_route(purchase_order_id: int, db: Session = Depends(get_db)):
-    po = get_purchase_order(db, purchase_order_id)
-    return _to_response(po, list_purchase_order_lines(db, purchase_order_id))
+def get_purchase_order_route(
+    purchase_order_id: int,
+    db: Session = Depends(get_db),
+    organization_id: int = Depends(get_current_org_id),
+):
+    po = get_purchase_order(db, purchase_order_id, organization_id)
+    return _to_response(po, list_purchase_order_lines(db, purchase_order_id, organization_id))
 
 
 @router.post(
     "/{purchase_order_id}/lines", response_model=PurchaseOrderLineResponse, status_code=201
 )
 def add_purchase_order_line_route(
-    purchase_order_id: int, line: PurchaseOrderLineCreate, db: Session = Depends(get_db)
+    purchase_order_id: int,
+    line: PurchaseOrderLineCreate,
+    db: Session = Depends(get_db),
+    organization_id: int = Depends(get_current_org_id),
 ):
-    return add_purchase_order_line(db, purchase_order_id, line)
+    return add_purchase_order_line(db, purchase_order_id, line, organization_id)
 
 
 @router.patch("/lines/{line_id}", response_model=PurchaseOrderLineResponse)
 def update_purchase_order_line_route(
-    line_id: int, update: PurchaseOrderLineUpdate, db: Session = Depends(get_db)
+    line_id: int,
+    update: PurchaseOrderLineUpdate,
+    db: Session = Depends(get_db),
+    organization_id: int = Depends(get_current_org_id),
 ):
-    return update_purchase_order_line(db, line_id, update.quantity, update.unit_cost)
+    return update_purchase_order_line(
+        db, line_id, update.quantity, update.unit_cost, organization_id
+    )
 
 
 @router.delete("/lines/{line_id}", status_code=204)
-def remove_purchase_order_line_route(line_id: int, db: Session = Depends(get_db)):
-    remove_purchase_order_line(db, line_id)
+def remove_purchase_order_line_route(
+    line_id: int,
+    db: Session = Depends(get_db),
+    organization_id: int = Depends(get_current_org_id),
+):
+    remove_purchase_order_line(db, line_id, organization_id)
 
 
 @router.post("/{purchase_order_id}/submit", response_model=PurchaseOrderResponse)
@@ -94,9 +116,10 @@ def submit_purchase_order_route(
     purchase_order_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_current_user),
+    organization_id: int = Depends(get_current_org_id),
 ):
-    po = submit_purchase_order(db, purchase_order_id, current_user.id)
-    return _to_response(po, list_purchase_order_lines(db, purchase_order_id))
+    po = submit_purchase_order(db, purchase_order_id, current_user.id, organization_id)
+    return _to_response(po, list_purchase_order_lines(db, purchase_order_id, organization_id))
 
 
 @router.post("/{purchase_order_id}/receive", response_model=PurchaseOrderResponse)
@@ -104,9 +127,10 @@ def receive_purchase_order_route(
     purchase_order_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_current_user),
+    organization_id: int = Depends(get_current_org_id),
 ):
-    po = receive_purchase_order(db, purchase_order_id, current_user.id)
-    return _to_response(po, list_purchase_order_lines(db, purchase_order_id))
+    po = receive_purchase_order(db, purchase_order_id, current_user.id, organization_id)
+    return _to_response(po, list_purchase_order_lines(db, purchase_order_id, organization_id))
 
 
 @router.post("/generate/{product_id}", response_model=PurchaseOrderResponse, status_code=201)
@@ -115,6 +139,7 @@ def generate_purchase_order_route(
     supplier_id: int = Query(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_current_user),
+    organization_id: int = Depends(get_current_org_id),
 ):
-    po = generate_draft_from_forecast(db, product_id, supplier_id, current_user.id)
-    return _to_response(po, list_purchase_order_lines(db, po.id))
+    po = generate_draft_from_forecast(db, product_id, supplier_id, current_user.id, organization_id)
+    return _to_response(po, list_purchase_order_lines(db, po.id, organization_id))

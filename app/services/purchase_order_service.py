@@ -21,33 +21,51 @@ from app.services.restock_service import get_restock_recommendation
 from app.services.supplier_service import get_supplier
 
 
-def _get_product_or_raise(db: Session, product_id: int) -> Product:
-    product = db.query(Product).filter(Product.id == product_id).first()
+def _get_product_or_raise(db: Session, product_id: int, organization_id: int = 1) -> Product:
+    product = (
+        db.query(Product)
+        .filter(Product.id == product_id, Product.organization_id == organization_id)
+        .first()
+    )
     if not product:
         raise ProductNotFoundError(product_id)
     return product
 
 
-def get_purchase_order(db: Session, purchase_order_id: int) -> PurchaseOrder:
-    po = db.query(PurchaseOrder).filter(PurchaseOrder.id == purchase_order_id).first()
+def get_purchase_order(
+    db: Session, purchase_order_id: int, organization_id: int = 1
+) -> PurchaseOrder:
+    po = (
+        db.query(PurchaseOrder)
+        .filter(
+            PurchaseOrder.id == purchase_order_id,
+            PurchaseOrder.organization_id == organization_id,
+        )
+        .first()
+    )
     if not po:
         raise PurchaseOrderNotFoundError(purchase_order_id)
     return po
 
 
-def list_purchase_order_lines(db: Session, purchase_order_id: int) -> list[PurchaseOrderLine]:
+def list_purchase_order_lines(
+    db: Session, purchase_order_id: int, organization_id: int = 1
+) -> list[PurchaseOrderLine]:
     return (
         db.query(PurchaseOrderLine)
-        .filter(PurchaseOrderLine.purchase_order_id == purchase_order_id)
+        .filter(
+            PurchaseOrderLine.purchase_order_id == purchase_order_id,
+            PurchaseOrderLine.organization_id == organization_id,
+        )
         .order_by(PurchaseOrderLine.id.asc())
         .all()
     )
 
 
 def list_purchase_orders(
-    db: Session, status: PurchaseOrderStatus | None = None
+    db: Session, status: PurchaseOrderStatus | None = None, organization_id: int = 1
 ) -> list[PurchaseOrder]:
-    query = db.query(PurchaseOrder)
+    query = db.query(PurchaseOrder).filter(PurchaseOrder.organization_id == organization_id)
     if status is not None:
         query = query.filter(PurchaseOrder.status == status)
     return query.order_by(PurchaseOrder.created_at.desc()).all()
@@ -58,13 +76,17 @@ def create_purchase_order(
     supplier_id: int,
     created_by_id: int,
     lines: list[PurchaseOrderLineCreate],
+    organization_id: int = 1,
 ) -> PurchaseOrder:
-    get_supplier(db, supplier_id)
+    get_supplier(db, supplier_id, organization_id)
     for line in lines:
-        _get_product_or_raise(db, line.product_id)
+        _get_product_or_raise(db, line.product_id, organization_id)
 
     po = PurchaseOrder(
-        supplier_id=supplier_id, status=PurchaseOrderStatus.DRAFT, created_by_id=created_by_id
+        supplier_id=supplier_id,
+        status=PurchaseOrderStatus.DRAFT,
+        created_by_id=created_by_id,
+        organization_id=organization_id,
     )
     db.add(po)
     db.flush()
@@ -76,6 +98,7 @@ def create_purchase_order(
                 product_id=line.product_id,
                 quantity=line.quantity,
                 unit_cost=line.unit_cost,
+                organization_id=organization_id,
             )
         )
 
@@ -96,17 +119,18 @@ def _require_draft(po: PurchaseOrder, action: str) -> None:
 
 
 def add_purchase_order_line(
-    db: Session, purchase_order_id: int, line: PurchaseOrderLineCreate
+    db: Session, purchase_order_id: int, line: PurchaseOrderLineCreate, organization_id: int = 1
 ) -> PurchaseOrderLine:
-    po = get_purchase_order(db, purchase_order_id)
+    po = get_purchase_order(db, purchase_order_id, organization_id)
     _require_draft(po, "add a line to")
-    _get_product_or_raise(db, line.product_id)
+    _get_product_or_raise(db, line.product_id, organization_id)
 
     new_line = PurchaseOrderLine(
         purchase_order_id=purchase_order_id,
         product_id=line.product_id,
         quantity=line.quantity,
         unit_cost=line.unit_cost,
+        organization_id=organization_id,
     )
     db.add(new_line)
     db.commit()
@@ -114,18 +138,28 @@ def add_purchase_order_line(
     return new_line
 
 
-def _get_line_or_raise(db: Session, line_id: int) -> PurchaseOrderLine:
-    line = db.query(PurchaseOrderLine).filter(PurchaseOrderLine.id == line_id).first()
+def _get_line_or_raise(db: Session, line_id: int, organization_id: int = 1) -> PurchaseOrderLine:
+    line = (
+        db.query(PurchaseOrderLine)
+        .filter(
+            PurchaseOrderLine.id == line_id, PurchaseOrderLine.organization_id == organization_id
+        )
+        .first()
+    )
     if not line:
         raise PurchaseOrderLineNotFoundError(line_id)
     return line
 
 
 def update_purchase_order_line(
-    db: Session, line_id: int, quantity: int, unit_cost: float | None
+    db: Session,
+    line_id: int,
+    quantity: int,
+    unit_cost: float | None,
+    organization_id: int = 1,
 ) -> PurchaseOrderLine:
-    line = _get_line_or_raise(db, line_id)
-    po = get_purchase_order(db, line.purchase_order_id)
+    line = _get_line_or_raise(db, line_id, organization_id)
+    po = get_purchase_order(db, line.purchase_order_id, organization_id)
     _require_draft(po, "edit a line on")
 
     line.quantity = quantity
@@ -135,20 +169,22 @@ def update_purchase_order_line(
     return line
 
 
-def remove_purchase_order_line(db: Session, line_id: int) -> None:
-    line = _get_line_or_raise(db, line_id)
-    po = get_purchase_order(db, line.purchase_order_id)
+def remove_purchase_order_line(db: Session, line_id: int, organization_id: int = 1) -> None:
+    line = _get_line_or_raise(db, line_id, organization_id)
+    po = get_purchase_order(db, line.purchase_order_id, organization_id)
     _require_draft(po, "remove a line from")
 
     db.delete(line)
     db.commit()
 
 
-def submit_purchase_order(db: Session, purchase_order_id: int, actor_id: int) -> PurchaseOrder:
-    po = get_purchase_order(db, purchase_order_id)
+def submit_purchase_order(
+    db: Session, purchase_order_id: int, actor_id: int, organization_id: int = 1
+) -> PurchaseOrder:
+    po = get_purchase_order(db, purchase_order_id, organization_id)
     _require_draft(po, "submit")
 
-    lines = list_purchase_order_lines(db, purchase_order_id)
+    lines = list_purchase_order_lines(db, purchase_order_id, organization_id)
     if not lines:
         raise InvalidPurchaseOrderStateError(
             purchase_order_id, po.status.value, "submit (no lines)"
@@ -163,7 +199,9 @@ def submit_purchase_order(db: Session, purchase_order_id: int, actor_id: int) ->
     return po
 
 
-def receive_purchase_order(db: Session, purchase_order_id: int, actor_id: int) -> PurchaseOrder:
+def receive_purchase_order(
+    db: Session, purchase_order_id: int, actor_id: int, organization_id: int = 1
+) -> PurchaseOrder:
     """
     Marks a PO received and creates one PURCHASE InventoryEvent per line,
     via the existing record_event() — reused as-is rather than a custom
@@ -174,11 +212,11 @@ def receive_purchase_order(db: Session, purchase_order_id: int, actor_id: int) -
     receive is safe: record_event()'s own idempotency check no-ops any
     line already applied, rather than double-counting it.
     """
-    po = get_purchase_order(db, purchase_order_id)
+    po = get_purchase_order(db, purchase_order_id, organization_id)
     if po.status != PurchaseOrderStatus.SUBMITTED:
         raise InvalidPurchaseOrderStateError(purchase_order_id, po.status.value, "receive")
 
-    lines = list_purchase_order_lines(db, purchase_order_id)
+    lines = list_purchase_order_lines(db, purchase_order_id, organization_id)
     for line in lines:
         record_event(
             db,
@@ -187,6 +225,7 @@ def receive_purchase_order(db: Session, purchase_order_id: int, actor_id: int) -
             line.quantity,
             f"po-{purchase_order_id}-line-{line.id}",
             actor_id,
+            organization_id,
         )
 
     po.status = PurchaseOrderStatus.RECEIVED
@@ -199,7 +238,7 @@ def receive_purchase_order(db: Session, purchase_order_id: int, actor_id: int) -
 
 
 def generate_draft_from_forecast(
-    db: Session, product_id: int, supplier_id: int, created_by_id: int
+    db: Session, product_id: int, supplier_id: int, created_by_id: int, organization_id: int = 1
 ) -> PurchaseOrder:
     """
     Pre-fills a draft PO's single line from restock_service's existing
@@ -208,6 +247,11 @@ def generate_draft_from_forecast(
     this with recipe/BOM to expand a dish into its ingredients is a
     natural follow-up once that lands, not built in here to keep this
     self-contained.
+
+    get_restock_recommendation() itself isn't org-scoped yet — that's
+    restock_service.py's turn, Epoch 10 PR 11 (#147) — so this stays on
+    its current global-lookup behavior for now; only the PO this
+    recommendation feeds into is org-scoped here.
     """
     recommendation = get_restock_recommendation(db, product_id)
     qty = recommendation["recommended_order_qty"]
@@ -219,4 +263,5 @@ def generate_draft_from_forecast(
         supplier_id,
         created_by_id,
         [PurchaseOrderLineCreate(product_id=product_id, quantity=qty)],
+        organization_id,
     )

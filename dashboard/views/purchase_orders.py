@@ -37,7 +37,7 @@ if st.button("🔄 Refresh"):
     st.rerun()
 
 products = load_products(current_user["organization_id"])
-suppliers = load_suppliers()
+suppliers = load_suppliers(current_user["organization_id"])
 
 if not products:
     st.info("No products yet — create some via the API first.")
@@ -71,7 +71,7 @@ if submitted_supplier:
         st.error("Supplier name is required.")
     else:
         try:
-            add_supplier(supplier_name, supplier_email or None)
+            add_supplier(supplier_name, supplier_email or None, current_user["organization_id"])
         except DomainError as e:
             st.error(str(e))
         else:
@@ -106,7 +106,12 @@ else:
         )
         if st.button("Generate from forecast"):
             try:
-                generate_po(gen_product_id, gen_supplier_id, current_user["id"])
+                generate_po(
+                    gen_product_id,
+                    gen_supplier_id,
+                    current_user["id"],
+                    current_user["organization_id"],
+                )
             except DomainError as e:
                 st.error(str(e))
             else:
@@ -135,7 +140,11 @@ else:
         if create_submitted:
             try:
                 create_po(
-                    manual_supplier_id, manual_product_id, int(manual_quantity), current_user["id"]
+                    manual_supplier_id,
+                    manual_product_id,
+                    int(manual_quantity),
+                    current_user["id"],
+                    current_user["organization_id"],
                 )
             except DomainError as e:
                 st.error(str(e))
@@ -152,7 +161,9 @@ st.divider()
 st.subheader("Purchase orders")
 
 status_filter = st.selectbox("Filter by status", options=["All", "DRAFT", "SUBMITTED", "RECEIVED"])
-orders = load_purchase_orders(None if status_filter == "All" else status_filter)
+orders = load_purchase_orders(
+    None if status_filter == "All" else status_filter, current_user["organization_id"]
+)
 
 if not orders:
     st.info("No purchase orders match this filter.")
@@ -197,7 +208,12 @@ for po in orders:
 
             if add_line_submitted:
                 try:
-                    add_line(po["id"], line_product_id, int(line_qty))
+                    add_line(
+                        po["id"],
+                        line_product_id,
+                        int(line_qty),
+                        current_user["organization_id"],
+                    )
                 except DomainError as e:
                     st.error(str(e))
                 else:
@@ -206,7 +222,7 @@ for po in orders:
 
             if st.button("Submit purchase order", key=f"submit_{po['id']}"):
                 try:
-                    submit_po(po["id"], current_user["id"])
+                    submit_po(po["id"], current_user["id"], current_user["organization_id"])
                 except DomainError as e:
                     st.error(str(e))
                 else:
@@ -217,7 +233,7 @@ for po in orders:
             st.caption("Submitted — mark received once the shipment actually arrives.")
             if st.button("Mark received", key=f"receive_{po['id']}"):
                 try:
-                    receive_po(po["id"], current_user["id"])
+                    receive_po(po["id"], current_user["id"], current_user["organization_id"])
                 except DomainError as e:
                     st.error(str(e))
                 else:
