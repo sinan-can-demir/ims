@@ -189,18 +189,33 @@ jobs:
         with:
           inputs: requirements.txt
 
-      # --provenance=false --sbom=false: without this, buildx's default
-      # driver emits a manifest-list image (real manifest + a separate
-      # attestation/SBOM manifest) under the same tag. trivy-action's
-      # docker-daemon lookup of "ims-api:scan" can then resolve stale
-      # findings against dependency versions from an earlier attestation
-      # manifest instead of the just-built image — reproduced once on CI
-      # (msgpack 1.1.2/setuptools 70.3.0 reported as installed, when the
-      # image's own dist-info metadata showed 1.2.1/83.0.0, 0 findings,
-      # for both the venv and system copies) and not reproducible locally
-      # against the same image tag until forcing a single-manifest build.
+      # --provenance=false --sbom=false: forces a single-manifest image
+      # instead of buildx's default manifest-list (real manifest + a
+      # separate attestation/SBOM manifest) under the same tag. Kept for
+      # build hygiene even though it turned out NOT to be the cause of the
+      # stale-finding mismatch below (confirmed on a second CI run with
+      # this flag already in place — same phantom finding, unchanged).
       - name: Build image for scanning
         run: docker build -f docker/Dockerfile --provenance=false --sbom=false -t ims-api:scan .
+
+      # TEMPORARY debug step — investigating a reproducible-on-CI,
+      # not-reproducible-locally mismatch: the compact trivy-action table
+      # output reports msgpack 1.1.2 / setuptools 70.3.0 as installed
+      # (both HIGH, both supposedly fixed upstream by requirements.txt/
+      # Dockerfile changes) under a "Python (python-pkg)" aggregate
+      # heading with no associated file path, while every individual
+      # per-file dist-info entry in the same report's summary table shows
+      # the correct fixed versions (msgpack-1.2.1, setuptools-83.0.0) at 0
+      # findings. Dumping JSON output here to get the exact PkgPath/Layer
+      # this aggregate finding actually points at. Remove once diagnosed.
+      - name: Debug - dump full trivy JSON findings
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasecurity/trivy:0.70.0 image --severity CRITICAL,HIGH --ignore-unfixed \
+            --pkg-types os,library --format json ims-api:scan > /tmp/trivy-debug.json
+          jq '[.Results[]? | select(.Vulnerabilities) | .Vulnerabilities[]? | select(.PkgName == "msgpack" or .PkgName == "setuptools")] | .[:10]' /tmp/trivy-debug.json
+          echo "--- all Target/Class/Type entries with any Vulnerabilities ---"
+          jq '[.Results[]? | select(.Vulnerabilities) | {Target, Class, Type, VulnCount: (.Vulnerabilities | length)}]' /tmp/trivy-debug.json
 
       # HIGH/CRITICAL only, matching the severity trivy-action defaults to
       # failing CI on elsewhere — keeps this from blocking on low-severity
