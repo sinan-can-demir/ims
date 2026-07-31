@@ -1,31 +1,16 @@
 # tests/test_webhook.py
 
-import hashlib
-import hmac
 import json
 import uuid
 
-from app.models.organization import Organization
-
-from .utils import create_product
+from .utils import create_product, signed_webhook_request
+from .utils import set_webhook_secret as _set_webhook_secret
 
 _SECRET = "test-webhook-secret"  # noqa: S105 -- test fixture value, not a real credential
 
 
-def _set_webhook_secret(db, organization_id: int, secret: str | None) -> None:
-    org = db.query(Organization).filter(Organization.id == organization_id).first()
-    org.webhook_secret = secret
-    db.commit()
-
-
 def _signed_request(client, organization_id: int, payload: dict, secret: str = _SECRET):
-    body = json.dumps(payload).encode()
-    signature = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
-    return client.post(
-        f"/api/webhooks/{organization_id}/ingest",
-        content=body,
-        headers={"Content-Type": "application/json", "X-Webhook-Signature": signature},
-    )
+    return signed_webhook_request(client, organization_id, payload, secret)
 
 
 def _payload(sku, event_type="PURCHASE", quantity=10, external_id=None):

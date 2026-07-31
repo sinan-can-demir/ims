@@ -9,6 +9,7 @@ from app.models.product import Product
 from app.models.recipe_item import RecipeItem
 
 from .utils import create_product, purchase
+from .utils import recipe_item as _recipe_item
 
 
 def _sale(client, product_id, quantity, event_id=None):
@@ -26,17 +27,6 @@ def _sale(client, product_id, quantity, event_id=None):
 
 def _quantity(client, product_id):
     return client.get(f"/api/inventory/{product_id}").json()["quantity"]
-
-
-def _recipe_item(client, finished_product_id, component_product_id, quantity):
-    return client.post(
-        "/api/recipes",
-        json={
-            "finished_product_id": finished_product_id,
-            "component_product_id": component_product_id,
-            "quantity": quantity,
-        },
-    )
 
 
 # ---------------------------------------------------------------------------

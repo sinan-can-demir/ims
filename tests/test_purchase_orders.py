@@ -17,12 +17,7 @@ from app.models.user import User
 from app.services import purchase_order_service
 
 from .utils import create_product
-
-
-def _create_supplier(client, name="Acme Foods"):
-    response = client.post("/api/suppliers", json={"name": name})
-    assert response.status_code == 201, response.json()
-    return response.json()
+from .utils import create_supplier as _create_supplier
 
 
 def _quantity(client, product_id):
