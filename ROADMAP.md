@@ -767,14 +767,14 @@ is fully verified and public reachability is proven possible, just not
 permanent. Reopen if a card or an owned domain becomes available.
 
 ------------------------------------------------------------
-EPOCH 10 — Multi-Tenancy (Path B, in progress — started 2026-07-28)
+EPOCH 10 — Multi-Tenancy (Path B, shipped 2026-07-28 to 2026-07-30, PRs #153-#170)
 ------------------------------------------------------------
 
 **Decision to start (2026-07-28):** deliberately started without waiting for
 real multi-tenant demand signal — explicitly for portfolio/learning value,
 not because a second business is lined up. Sequenced as 16 PRs (GitHub
 milestone "Epoch 10 — Multi-Tenancy", issues #137-#152), built one PR at a
-time. See PR #137 onward for progress.
+time. See PRs #153-#170 for the full history.
 
 Goal: one deployment can safely serve more than one business. Has to
 happen before integrations or a hosted offering — retrofitting tenant
@@ -856,50 +856,67 @@ cached results across orgs viewed in the same process).
    prerequisite Epoch 11's real connectors need anyway (per-org, per-source
    credentials), so it's not wasted work building it here.
 
-- [ ] `organizations` table + bootstrap row; `organization_id` added to all
+- [x] `organizations` table + bootstrap row; `organization_id` added to all
       9 tables above, backfilled via parent where one exists
-- [ ] `products.sku` / `inventory_events.event_id` become
-      `UNIQUE (organization_id, ...)` — the `event_id` change must land in
+- [x] `products.sku` / `inventory_events.event_id` become
+      `UNIQUE (organization_id, ...)` — the `event_id` change landed in
       the same PR as the 3 call sites in `inventory_service.py` that query
       it (idempotency pre-check, duplicate-catch retry, recipe-cascade
-      derived id), not a follow-up
-- [ ] Composite FKs (`UNIQUE (organization_id, id)` on parents,
+      derived id), not a follow-up (PR 6/16, #142)
+- [x] Composite FKs (`UNIQUE (organization_id, id)` on parents,
       `FOREIGN KEY (organization_id, product_id) REFERENCES
       products(organization_id, id)` on children) so cross-org references
       are impossible at the DB level, not just checked in code
-- [ ] `get_current_org_id()` dependency (composes on `require_current_user`
-      like `require_role()` does) wired into all ~9 route files; ~9 service
-      files get an explicit `organization_id` parameter added
-- [ ] Recipe/PO ownership-check gap closed; per-org webhook secret +
-      `/webhooks/{organization_id}/ingest` routing
-- [ ] Parquet export `org_id=` partition + column; dbt models +
-      `organization_id` + join-boundary test; feature store and Prophet
-      model files/MLflow registry partitioned per org (also resolves how
-      #22's S3-capable storage, shipped, should be org-partitioned, since
-      the same `org_id=` partition level applies whether the data lake
-      root is local disk or S3)
-- [ ] Dashboard: `organization_id` in `dashboard/auth.py`'s session dict
-      (same precedent as adding `role` ahead of #72's admin gate); all
-      `dashboard/data.py` loaders and their `@st.cache_data` keys updated
-- [ ] New cross-org isolation test suite (same-SKU/same-event_id-different-org,
+- [x] `get_current_org_id()` dependency (composes on `require_current_user`
+      like `require_role()` does) wired into all route files; every
+      service function that touches org-scoped data gets an explicit
+      `organization_id` parameter
+- [x] Recipe/PO ownership-check gap closed (PR 9-10, #145-#146) + per-org
+      webhook secret + `/webhooks/{organization_id}/ingest` routing
+      (PR 12, #148)
+- [x] Parquet export `org_id=` partition + column (PR 13, #149); dbt models
+      + `organization_id` + join-boundary test (PR 14, #150); feature
+      store and Prophet model files/MLflow registry partitioned per org
+      (PR 15, #151) — also resolves how #22's S3-capable storage, shipped,
+      is org-partitioned, since the same `org_id=` partition level applies
+      whether the data lake root is local disk or S3
+- [x] Dashboard: `organization_id` in `dashboard/auth.py`'s session dict
+      (same precedent as adding `role` ahead of #72's admin gate); every
+      `dashboard/data.py` loader and its `@st.cache_data` key updated
+- [x] Cross-org isolation test suite (same-SKU/same-event_id-different-org,
       cross-org 404s on PO/recipe mutation, fleet/forecast/restock
-      scoping, webhook→org resolution) + a new multi-tenancy design doc
-      matching `docs/model-registry.md`'s style
+      scoping, webhook→org resolution) consolidated in
+      `tests/test_multi_tenancy.py`, plus [docs/multi-tenancy.md](../docs/multi-tenancy.md)
+      matching `docs/model-registry.md`'s style (PR 16, #152)
 - [ ] Explicitly deferred to a later hardening pass, not required for exit
       criteria: Postgres RLS as a second, DB-enforced layer on top of the
       composite-FK design (same "code convention + DB backstop" pattern as
       the audit_log trigger)
 
-Rough phased estimate (re-derived 2026-07-27 from the actual codebase, not
-a generic guess): design lock-in 0.5-1wk, core schema + write path
-1.5-2.5wk (highest-risk — the idempotency-critical `with_for_update()` row
-lock), services/API/auth 1.5-2wk, pipeline 1.5-2wk, dashboard 1wk,
-cross-org tests + hardening 1.5-2wk. **Total ~7.5-10.5 weeks (~2-2.5
-months) for multi-tenancy alone** — see the note at the end of this Path B
-section for what this means for the combined Epochs 10-15 estimate.
+**Closed 2026-07-30.** Original estimate (below, from the 2026-07-27
+scoping pass) was ~7.5-10.5 weeks; actual delivery was ~2.5 days across
+16 PRs, working through them sequentially with real end-to-end
+verification (real scratch Postgres, real dbt runs, real Prophet
+training against two orgs, not just mocked unit tests) at each step —
+see individual PR descriptions (#153-#170) for what was verified at each
+stage. A real live bug was found and fixed along the way (`replay`
+wiping every org's inventory projection, not just the caller's), along
+with several real IDOR gaps (bare id-only lookups with zero ownership
+check) — both categories confirmed via direct regression tests, not
+just inferred from a code read. See [docs/multi-tenancy.md](../docs/multi-tenancy.md)
+for the architecture summary and what's still deliberately deferred.
 
-Exit criteria: two unrelated businesses could run on the same instance
-without either seeing the other's data, even under a bug.
+Original rough phased estimate (re-derived 2026-07-27 from the actual
+codebase, not a generic guess): design lock-in 0.5-1wk, core schema +
+write path 1.5-2.5wk (highest-risk — the idempotency-critical
+`with_for_update()` row lock), services/API/auth 1.5-2wk, pipeline
+1.5-2wk, dashboard 1wk, cross-org tests + hardening 1.5-2wk. **Total
+~7.5-10.5 weeks (~2-2.5 months) for multi-tenancy alone** — see the note
+at the end of this Path B section for what this means for the combined
+Epochs 10-15 estimate.
+
+Exit criteria (met): two unrelated businesses could run on the same
+instance without either seeing the other's data, even under a bug.
 
 ------------------------------------------------------------
 EPOCH 11 — Real Integrations (Path B, highest leverage once started)

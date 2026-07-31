@@ -3,12 +3,12 @@
 [![CI](https://github.com/sinan-can-demir/ims/actions/workflows/ci.yml/badge.svg)](https://github.com/sinan-can-demir/ims/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-An event-driven inventory platform with a full analytics pipeline and ML-powered demand forecasting. Started as a learning project covering data engineering, backend systems, and machine learning — it's since grown into a portfolio-scale build with real production hardening (auth, audit logging, rate limiting, a verified self-hosted deployment) and an in-progress multi-tenancy rework.
+An event-driven inventory platform with a full analytics pipeline and ML-powered demand forecasting. Started as a learning project covering data engineering, backend systems, and machine learning — it's since grown into a portfolio-scale build with real production hardening (auth, audit logging, rate limiting, a verified self-hosted deployment) and a shipped multi-tenancy rework.
 
 **Stack:** FastAPI · PostgreSQL · dbt · DuckDB · Prophet · Streamlit · Docker
 
 > **Project status:** actively developed portfolio project, not a hardened production system.
-> Auth is per-user JWT bearer tokens with two roles (admin/member) — see [SECURITY.md](SECURITY.md) for the current auth model. Path A (restaurant deployment) and the self-hosted deployment/S3 hardening work (`#74`, `#22`) are both shipped; Epoch 10 (multi-tenancy, Path B) is in progress — see [ROADMAP.md](ROADMAP.md) for current status. See [Deployment](#deployment) below for how to run it yourself.
+> Auth is per-user JWT bearer tokens with two roles (admin/member) — see [SECURITY.md](SECURITY.md) for the current auth model. Path A (restaurant deployment), the self-hosted deployment/S3 hardening work (`#74`, `#22`), and Epoch 10 (multi-tenancy, Path B) are all shipped — see [ROADMAP.md](ROADMAP.md) for what's next (Path B's remaining epochs, 11-15, are scoped but not started) and [docs/multi-tenancy.md](docs/multi-tenancy.md) for the multi-tenancy architecture. See [Deployment](#deployment) below for how to run it yourself.
 
 ---
 
@@ -70,6 +70,10 @@ An event-driven inventory platform with a full analytics pipeline and ML-powered
       with newer FastAPI versions
 - [x] Size caps on both generic ingestion paths (10MB/50k-row CSV bulk
       import, 1000-item webhook payload) — see [SECURITY.md](SECURITY.md#ingestion-size-limits)
+- [x] Multi-tenancy — shared schema, `organization_id` on every tenant
+      table, composite FKs making cross-org references structurally
+      impossible at the DB level; self-hosted deployments stay
+      single-org by default. See [docs/multi-tenancy.md](docs/multi-tenancy.md)
 
 ## Recently Shipped
 
@@ -97,23 +101,29 @@ store, trained models) migrated to a pluggable local-or-S3 storage layer,
 with MinIO as the zero-cost self-hosted default; local disk stays the
 out-of-the-box default either way.
 
-## In Progress
-
-**Multi-tenancy (Epoch 10, Path B):** started 2026-07-28, deliberately
-ahead of any real multi-tenant demand signal — for portfolio/learning
-value, sequenced as 16 PRs (GitHub milestone "Epoch 10 —
-Multi-Tenancy"). `organization_id` threading is roughly halfway through
-the service layer (product/inventory/purchase-order/ingestion services
-done); schema, dashboard, and cross-org isolation tests are still
-ahead. See [ROADMAP.md](ROADMAP.md)'s Epoch 10 section for full scope
-and progress.
+**Multi-tenancy (Epoch 10, Path B):** shipped as 16 sequential PRs
+(GitHub milestone "Epoch 10 — Multi-Tenancy"), deliberately ahead of any
+real multi-tenant demand signal, for portfolio/learning value. Shared
+schema + `organization_id` on every tenant table, composite FKs making
+cross-org references structurally impossible at the DB level (not just
+checked in code), explicit `organization_id` parameter threading through
+every service/route (never a JWT claim or ambient context), per-org
+webhook secrets, and the full analytics pipeline (export, warehouse,
+dbt, feature store, model registry) partitioned per org. Along the way
+this also fixed a real live bug (`rebuild_inventory_state()` used to
+wipe every org's inventory projection, not just the caller's) and closed
+several real IDOR gaps (bare id-only lookups with no ownership check).
+Self-hosted deployments are unaffected by any of this — they stay
+single-org by default (`ALLOW_MULTIPLE_ORGS=false`), see
+[docs/multi-tenancy.md](docs/multi-tenancy.md) for the full architecture
+writeup and what's deliberately still deferred (Postgres RLS as a
+second DB-enforced isolation layer).
 
 ## Deferred
 
 Deferred until there's real signal that more than one business wants
 this (general small/mid-business audience — see
-[ROADMAP.md](ROADMAP.md) Epochs 11-15, and Epoch 10 above for the
-multi-tenancy work already underway):
+[ROADMAP.md](ROADMAP.md) Epochs 11-15):
 
 - [ ] Real S3 + Terraform/IAM for the AWS deployment path, and a CI test
       matrix covering both local and S3 storage (`#130` — split off `#22`,
@@ -222,6 +232,7 @@ ims/
 ├── docker-compose.minio.yml      # optional local MinIO for testing S3 storage (overlay)
 ├── docs/deployment/        # self-hosted deployment guide
 ├── docs/model-registry.md  # MLflow setup, promotion/rollback
+├── docs/multi-tenancy.md   # org isolation architecture — what's enforced where
 ├── docs/observability.md   # Prometheus metrics, structured request logging
 ├── infra/                  # Terraform for AWS (enterprise deployment)
 ├── Makefile                # One-command dev workflow
@@ -584,8 +595,8 @@ Copy `.env.example` to `.env` and adjust as needed.
 | 7 | Production Hardening + Deployment (self-hosted + AWS) | ✅ Complete for self-hosted — `#74` (deploy verified) and `#22` (S3 storage) both shipped. AWS-path S3/Terraform tracked separately in `#130` |
 | 7.1 | Dashboard UX Overhaul — multi-page nav, Fleet Overview, Product Detail enhancements, theming | ✅ Complete |
 | Path A | Restaurant deployment — recipes/BOM, `WASTE` events, real POs, forecasting tuning, CLI wrapper, backups | ✅ Complete |
-| 10 | Multi-Tenancy (Path B) | 🚧 In progress — started 2026-07-28, ~halfway through the 16-PR sequence |
-| 11-15 | General small/mid-business platform (Path B) | Scoped in detail, sequenced after Epoch 10 |
+| 10 | Multi-Tenancy (Path B) | ✅ Complete — shipped as 16 sequential PRs, see [docs/multi-tenancy.md](docs/multi-tenancy.md) |
+| 11-15 | General small/mid-business platform (Path B) | Scoped in detail, not started — whether to start at all is an open decision |
 
 ---
 

@@ -38,7 +38,21 @@ def get_inventory(db: Session, product_id: int, organization_id: int = 1) -> int
     )
     if not product:
         raise ProductNotFoundError(product_id)
-    state = db.query(InventoryState).filter(InventoryState.product_id == product_id).first()
+    # organization_id here is defense-in-depth, not closing a live gap —
+    # InventoryState.product_id is already confirmed to belong to this org
+    # by the Product lookup above, and product_id is globally unique
+    # (one InventoryState row per product), so a cross-org match was
+    # never actually reachable. Explicit anyway, matching this codebase's
+    # "verify the invariant, don't just assume it" discipline (Epoch 10
+    # PR 16, #152's grep sweep).
+    state = (
+        db.query(InventoryState)
+        .filter(
+            InventoryState.product_id == product_id,
+            InventoryState.organization_id == organization_id,
+        )
+        .first()
+    )
     return state.quantity if state else 0
 
 
@@ -84,10 +98,17 @@ def _apply_event(
     if not product:
         raise ProductNotFoundError(product_id)
 
-    # Lock inventory state row for update or create if not exists
+    # Lock inventory state row for update or create if not exists.
+    # organization_id is defense-in-depth here too, same reasoning as
+    # get_inventory() above — product_id already confirmed to belong to
+    # this org by the Product lookup just above, so this was never
+    # actually reachable cross-org.
     state = (
         db.query(InventoryState)
-        .filter(InventoryState.product_id == product_id)
+        .filter(
+            InventoryState.product_id == product_id,
+            InventoryState.organization_id == organization_id,
+        )
         .with_for_update()  # Lock the row
         .first()
     )
@@ -153,9 +174,20 @@ def _cascade_recipe_consumption(
     with zero extra plumbing in forecast_service.py/restock_service.py.
     One level deep only: component products are assumed to be raw
     ingredients, not dishes with their own recipe.
+
+    organization_id here is defense-in-depth, not closing a live gap —
+    recipe_items' composite FK already forces any row referencing
+    finished_product_id to share that product's own org, so a cross-org
+    RecipeItem match was never actually reachable. Explicit anyway
+    (Epoch 10 PR 16, #152's grep sweep).
     """
     recipe_items = (
-        db.query(RecipeItem).filter(RecipeItem.finished_product_id == finished_product_id).all()
+        db.query(RecipeItem)
+        .filter(
+            RecipeItem.finished_product_id == finished_product_id,
+            RecipeItem.organization_id == organization_id,
+        )
+        .all()
     )
     for item in recipe_items:
         component_event_id = f"{source_event_id}:component:{item.component_product_id}"

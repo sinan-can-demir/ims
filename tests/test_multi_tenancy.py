@@ -5,71 +5,27 @@
 # route/service adds its own isolation tests here rather than scattering
 # them across the feature-specific test files.
 
-import hashlib
-import hmac
 import io
-import json
 import uuid
 
 import pandas as pd
 import pytest
 
 from app.core.exceptions import ProductSkuNotFoundError
-from app.models.organization import Organization
 from app.services.export_service import export_inventory_events
 from app.services.fleet_service import get_fleet_status
 from app.services.product_service import get_product_by_sku
 from app.services.warehouse_service import build_dim_products, build_fact_table
 
+from .utils import create_draft_po as _create_draft_po
 from .utils import create_product, purchase
+from .utils import create_supplier as _create_supplier
+from .utils import recipe_item as _recipe_item
+from .utils import set_webhook_secret as _set_webhook_secret
+from .utils import signed_webhook_request as _signed_webhook_request
 
 _ORG1_WEBHOOK_SECRET = "org1-webhook-secret"  # noqa: S105 -- test fixture value, not a real credential
 _ORG2_WEBHOOK_SECRET = "org2-webhook-secret"  # noqa: S105 -- test fixture value, not a real credential
-
-
-def _set_webhook_secret(db, organization_id, secret):
-    org = db.query(Organization).filter(Organization.id == organization_id).first()
-    org.webhook_secret = secret
-    db.commit()
-
-
-def _signed_webhook_request(client, organization_id, payload, secret):
-    body = json.dumps(payload).encode()
-    signature = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
-    return client.post(
-        f"/api/webhooks/{organization_id}/ingest",
-        content=body,
-        headers={"Content-Type": "application/json", "X-Webhook-Signature": signature},
-    )
-
-
-def _create_supplier(client, name="Acme Foods"):
-    response = client.post("/api/suppliers", json={"name": name})
-    assert response.status_code == 201, response.json()
-    return response.json()
-
-
-def _create_draft_po(client, supplier_id, product_id, quantity=10):
-    response = client.post(
-        "/api/purchase-orders",
-        json={
-            "supplier_id": supplier_id,
-            "lines": [{"product_id": product_id, "quantity": quantity}],
-        },
-    )
-    assert response.status_code == 201, response.json()
-    return response.json()
-
-
-def _recipe_item(client, finished_product_id, component_product_id, quantity):
-    return client.post(
-        "/api/recipes",
-        json={
-            "finished_product_id": finished_product_id,
-            "component_product_id": component_product_id,
-            "quantity": quantity,
-        },
-    )
 
 
 def test_cross_org_inventory_level_returns_404(client, client_org2):
@@ -460,3 +416,128 @@ def test_fact_table_organization_id_matches_joined_product(
     assert len(merged) == len(fact)
     assert (merged["organization_id_event"] == merged["organization_id_product"]).all()
     assert set(fact["organization_id"]) == {1, second_org.id}
+
+
+# ---------------------------------------------------------------------------
+# Epoch 10 PR 16 (#152) — consolidation pass: closing cross-org coverage
+# gaps beyond what each individual PR's own testing note required.
+# ---------------------------------------------------------------------------
+
+
+def test_cross_org_forecast_returns_404(client, client_org2):
+    """
+    Epoch 10 PR 15 (forecast_service.py org threading, #151): GET
+    /api/forecast/{product_id} threads the caller's own organization_id
+    into model loading — org 2 requesting a forecast for org 1's
+    product_id must get a 404 (no model exists under org 2's own
+    model-path namespace for that id), not silently resolve against a
+    default org. See #151's PR description for the deeper real-model
+    version of this check (actual Prophet training across two orgs).
+    """
+    org1_product = create_product(client, "Org1 Widget")
+
+    response = client_org2.get(f"/api/forecast/{org1_product['id']}")
+
+    assert response.status_code == 404
+
+
+def test_cross_org_receive_purchase_order_returns_404(client, client_org2):
+    """
+    Epoch 10 PR 10 (#146) covered get/remove-line/submit; receive was
+    never given its own explicit regression test even though it's
+    protected by the same get_purchase_order() gate.
+    """
+    org1_supplier = _create_supplier(client, "Org1 Supplier")
+    org1_product = create_product(client, "Org1 Widget")
+    org1_po = _create_draft_po(client, org1_supplier["id"], org1_product["id"])
+    client.post(f"/api/purchase-orders/{org1_po['id']}/submit")
+
+    response = client_org2.post(f"/api/purchase-orders/{org1_po['id']}/receive")
+
+    assert response.status_code == 404
+    unchanged = client.get(f"/api/purchase-orders/{org1_po['id']}").json()
+    assert unchanged["status"] == "SUBMITTED"
+
+
+def test_cross_org_add_purchase_order_line_returns_404(client, client_org2):
+    """Sibling IDOR case for add_purchase_order_line(), not covered by #146."""
+    org1_supplier = _create_supplier(client, "Org1 Supplier")
+    org1_product = create_product(client, "Org1 Widget")
+    org1_po = _create_draft_po(client, org1_supplier["id"], org1_product["id"])
+
+    response = client_org2.post(
+        f"/api/purchase-orders/{org1_po['id']}/lines",
+        json={"product_id": org1_product["id"], "quantity": 5},
+    )
+
+    assert response.status_code == 404
+    unchanged = client.get(f"/api/purchase-orders/{org1_po['id']}").json()
+    assert len(unchanged["lines"]) == 1
+
+
+def test_cross_org_update_purchase_order_line_returns_404(client, client_org2):
+    """Sibling IDOR case for update_purchase_order_line(), not covered by #146."""
+    org1_supplier = _create_supplier(client, "Org1 Supplier")
+    org1_product = create_product(client, "Org1 Widget")
+    org1_po = _create_draft_po(client, org1_supplier["id"], org1_product["id"])
+    line_id = org1_po["lines"][0]["id"]
+
+    response = client_org2.patch(f"/api/purchase-orders/lines/{line_id}", json={"quantity": 99})
+
+    assert response.status_code == 404
+    unchanged = client.get(f"/api/purchase-orders/{org1_po['id']}").json()
+    assert unchanged["lines"][0]["quantity"] != 99
+
+
+def test_cross_org_create_recipe_item_rejects_other_orgs_product(client, client_org2):
+    """
+    create_recipe_item() looks up both finished_product_id and
+    component_product_id scoped to the caller's own org — referencing
+    another org's real (existing) product_id must 404 the same as a
+    genuinely nonexistent one, not silently link products across orgs.
+    """
+    org1_dish = create_product(client, "Org1 Dish")
+    org2_ingredient = create_product(client_org2, "Org2 Ingredient")
+
+    response = client.post(
+        "/api/recipes",
+        json={
+            "finished_product_id": org1_dish["id"],
+            "component_product_id": org2_ingredient["id"],
+            "quantity": 1,
+        },
+    )
+
+    assert response.status_code == 404
+
+
+def test_cross_org_create_purchase_order_rejects_other_orgs_supplier(client, client_org2):
+    """create_purchase_order()'s supplier lookup must reject a real cross-org supplier_id."""
+    org2_supplier = _create_supplier(client_org2, "Org2 Supplier")
+    org1_product = create_product(client, "Org1 Widget")
+
+    response = client.post(
+        "/api/purchase-orders",
+        json={
+            "supplier_id": org2_supplier["id"],
+            "lines": [{"product_id": org1_product["id"], "quantity": 5}],
+        },
+    )
+
+    assert response.status_code == 404
+
+
+def test_cross_org_create_purchase_order_rejects_other_orgs_product(client, client_org2):
+    """Sibling case: create_purchase_order()'s per-line product lookup, not just the supplier."""
+    org1_supplier = _create_supplier(client, "Org1 Supplier")
+    org2_product = create_product(client_org2, "Org2 Widget")
+
+    response = client.post(
+        "/api/purchase-orders",
+        json={
+            "supplier_id": org1_supplier["id"],
+            "lines": [{"product_id": org2_product["id"], "quantity": 5}],
+        },
+    )
+
+    assert response.status_code == 404
