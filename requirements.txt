@@ -16,7 +16,7 @@ prometheus-client==0.26.0
 slowapi==0.1.10
 bcrypt==5.0.0
 PyJWT==2.13.0
-duckdb==1.5.1
+duckdb==1.5.5
 s3fs==2026.6.0
 dbt-duckdb==1.10.1
 # Transitive via dbt-core -> mashumaro[msgpack] (unpinned upstream) — pinned
