@@ -15,13 +15,17 @@ router = APIRouter(prefix="/forecast", tags=["forecast"])
 
 
 @router.get("/{product_id}", response_model=ForecastResponse)
-def get_forecast(product_id: int, days: int = Query(default=7, ge=1, le=90)):
+def get_forecast(
+    product_id: int,
+    days: int = Query(default=7, ge=1, le=90),
+    organization_id: int = Depends(get_current_org_id),
+):
     """
     Return a demand forecast for the next N days.
     Requires a trained model — run make train first.
     """
     try:
-        df = forecast(product_id, days=days)
+        df = forecast(product_id, days=days, organization_id=organization_id)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception:

@@ -430,7 +430,7 @@ def test_dashboard_forecast_horizon_slider_changes_forecast_days(client, dashboa
 
     requested_days = []
 
-    def fake_forecast(product_id, days=7):
+    def fake_forecast(product_id, days=7, organization_id=1):
         requested_days.append(days)
         return _fake_forecast_df()
 

@@ -30,9 +30,9 @@ _MODEL_CACHE_DIR = Path(tempfile.gettempdir()) / "ims_model_cache"
 _MIN_TRAINING_DAYS = 14
 
 
-def _ensure_directories() -> None:
-    storage.mkdir(MODELS_DIR)
-    storage.mkdir(FEATURE_STORE_PATH)
+def _ensure_directories(organization_id: int) -> None:
+    storage.mkdir(storage.join(MODELS_DIR, f"org_id={organization_id}"))
+    storage.mkdir(storage.join(FEATURE_STORE_PATH, f"org_id={organization_id}"))
 
 
 def _log_run_to_mlflow(
@@ -93,18 +93,28 @@ def _log_run_to_mlflow(
     }
 
 
-def train_model(product_id: int) -> dict:
+def train_model(product_id: int, organization_id: int = 1) -> dict:
     """
     Train a Prophet demand forecasting model for a single product.
-    Saves the model to models/prophet_{product_id}.pkl.
+    Saves the model to models/org_id={organization_id}/prophet_{product_id}.pkl.
     Returns training summary metadata.
-    """
-    _ensure_directories()
 
-    logger.info("model_training_started", extra={"product_id": product_id})
+    MLflow's registered model name (prophet_{product_id}) deliberately
+    does NOT bake in organization_id — product_id is already globally
+    unique across every org (see ROADMAP.md's Epoch 10 section), so
+    there's zero collision risk in the registry namespace.
+    """
+    _ensure_directories(organization_id)
+
+    logger.info(
+        "model_training_started",
+        extra={"product_id": product_id, "organization_id": organization_id},
+    )
 
     # 1. Load features for this product
-    df = storage.read_parquet(storage.join(FEATURE_STORE_PATH, "daily_sales.parquet"))
+    df = storage.read_parquet(
+        storage.join(FEATURE_STORE_PATH, f"org_id={organization_id}", "daily_sales.parquet")
+    )
     product_df = df[df["product_id"] == product_id].copy()
 
     if len(product_df) < _MIN_TRAINING_DAYS:
@@ -140,7 +150,7 @@ def train_model(product_id: int) -> dict:
     #    keep reading this file regardless of the registry below). joblib
     #    doesn't understand s3:// URIs natively — needs an actual file
     #    handle, unlike the pandas to_parquet/read_parquet calls elsewhere.
-    model_path = storage.join(MODELS_DIR, f"prophet_{product_id}.pkl")
+    model_path = storage.join(MODELS_DIR, f"org_id={organization_id}", f"prophet_{product_id}.pkl")
     with storage.open_write(model_path, "wb") as f:
         joblib.dump(model, f)
 
@@ -179,24 +189,27 @@ def train_model(product_id: int) -> dict:
     }
 
 
-def train_all_models() -> list[dict]:
-    """Train a model for every product in the feature store."""
+def train_all_models(organization_id: int = 1) -> list[dict]:
+    """Train a model for every product in this org's feature store."""
 
-    df = storage.read_parquet(storage.join(FEATURE_STORE_PATH, "daily_sales.parquet"))
+    df = storage.read_parquet(
+        storage.join(FEATURE_STORE_PATH, f"org_id={organization_id}", "daily_sales.parquet")
+    )
     product_ids = df["product_id"].unique().tolist()
 
-    return [train_model(pid) for pid in product_ids]
+    return [train_model(pid, organization_id) for pid in product_ids]
 
 
-def rollback_model(product_id: int, version: int) -> dict:
+def rollback_model(product_id: int, version: int, organization_id: int = 1) -> dict:
     """
     Roll back a product's live-serving model to a specific prior MLflow
     registry version — the missing half of docs/model-registry.md's
     versioning story (the registry has tracked every run since day one;
     there was no way to act on that until this function). Overwrites
-    models/prophet_{product_id}.pkl (the exact file load_model() reads)
-    with that version's artifact, and re-points the champion alias so the
-    registry stays consistent with what's actually live.
+    models/org_id={organization_id}/prophet_{product_id}.pkl (the exact
+    file load_model() reads) with that version's artifact, and re-points
+    the champion alias so the registry stays consistent with what's
+    actually live.
     """
     try:
         import mlflow
@@ -207,7 +220,7 @@ def rollback_model(product_id: int, version: int) -> dict:
             "pip install -r requirements-train.txt"
         ) from e
 
-    _ensure_directories()
+    _ensure_directories(organization_id)
 
     mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
     registered_name = f"prophet_{product_id}"
@@ -220,7 +233,7 @@ def rollback_model(product_id: int, version: int) -> dict:
 
     model = mlflow.prophet.load_model(f"models:/{registered_name}/{version}")
 
-    model_path = storage.join(MODELS_DIR, f"prophet_{product_id}.pkl")
+    model_path = storage.join(MODELS_DIR, f"org_id={organization_id}", f"prophet_{product_id}.pkl")
     with storage.open_write(model_path, "wb") as f:
         joblib.dump(model, f)
 
@@ -228,24 +241,32 @@ def rollback_model(product_id: int, version: int) -> dict:
 
     logger.info(
         "model_rollback_completed",
-        extra={"product_id": product_id, "version": version, "model_path": str(model_path)},
+        extra={
+            "product_id": product_id,
+            "version": version,
+            "organization_id": organization_id,
+            "model_path": str(model_path),
+        },
     )
 
     return {"product_id": product_id, "version": version, "model_path": str(model_path)}
 
 
-def load_model(product_id: int) -> Prophet:
+def load_model(product_id: int, organization_id: int = 1) -> Prophet:
     """Load a trained model. Raises if not found.
 
     For local paths, reads directly. For S3 paths, checks a local
     write-through cache first (avoiding a network round-trip on every
     forecast request) — cache_key() changes whenever the underlying S3
     object changes, so a retrain automatically invalidates the old entry
-    (new key -> new cache filename -> cache miss -> refetch).
+    (new key -> new cache filename -> cache miss -> refetch). The cache
+    filename includes organization_id too — _MODEL_CACHE_DIR is a shared
+    local temp directory across every org's requests in this process, not
+    a per-org namespace like MODELS_DIR itself is.
     """
-    _ensure_directories()
+    _ensure_directories(organization_id)
 
-    model_path = storage.join(MODELS_DIR, f"prophet_{product_id}.pkl")
+    model_path = storage.join(MODELS_DIR, f"org_id={organization_id}", f"prophet_{product_id}.pkl")
     if not storage.exists(model_path):
         raise FileNotFoundError(
             f"No trained model found for product {product_id}. Run make train first."
@@ -258,7 +279,7 @@ def load_model(product_id: int) -> Prophet:
     key = storage.cache_key(model_path)
     _MODEL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     key_hash = hashlib.sha256(key.encode()).hexdigest()[:16]
-    cache_file = _MODEL_CACHE_DIR / f"prophet_{product_id}_{key_hash}.pkl"
+    cache_file = _MODEL_CACHE_DIR / f"prophet_{organization_id}_{product_id}_{key_hash}.pkl"
 
     if not cache_file.exists():
         with storage.open_read(model_path, "rb") as f:
@@ -268,16 +289,19 @@ def load_model(product_id: int) -> Prophet:
         return joblib.load(f)
 
 
-def forecast(product_id: int, days: int = 7) -> pd.DataFrame:
+def forecast(product_id: int, days: int = 7, organization_id: int = 1) -> pd.DataFrame:
     """
     Load the trained model for a product and generate a forecast.
     Returns a DataFrame with columns: ds, yhat, yhat_lower, yhat_upper.
     """
-    _ensure_directories()
+    _ensure_directories(organization_id)
 
-    logger.info("forecast_started", extra={"product_id": product_id, "days": days})
+    logger.info(
+        "forecast_started",
+        extra={"product_id": product_id, "days": days, "organization_id": organization_id},
+    )
 
-    model = load_model(product_id)
+    model = load_model(product_id, organization_id)
 
     # Prophet requires a future DataFrame with 'ds' column
     future = model.make_future_dataframe(periods=days)

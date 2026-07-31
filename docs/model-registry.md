@@ -5,10 +5,14 @@ registry — training metrics, model params, and the model artifact itself,
 versioned per product (registered model name: `prophet_{product_id}`).
 
 This is separate from model *serving*: the API still loads
-`models/prophet_{product_id}.pkl` directly (see `forecast_service.load_model`),
-unchanged. The registry is a record of what was trained, when, and how it
-scored — useful for comparing runs and knowing what to roll back to; it
-doesn't sit in the request path.
+`models/org_id={organization_id}/prophet_{product_id}.pkl` directly (see
+`forecast_service.load_model`), unchanged. The registry is a record of
+what was trained, when, and how it scored — useful for comparing runs
+and knowing what to roll back to; it doesn't sit in the request path.
+`prophet_{product_id}`, the registered model *name* itself, deliberately
+doesn't bake in organization_id — product_id is already globally unique
+across every org, so there's no collision risk in the registry
+namespace (Epoch 10 PR 15, #151).
 
 ## Setup
 
@@ -61,8 +65,8 @@ MLflow's model *stages* API (Staging/Production) is deprecated in favor of
 uses `champion` as the alias for "the version currently being served."
 
 **Promotion is automatic, not a review gate.** Every `make train` run
-immediately overwrites `models/prophet_{product_id}.pkl` (what
-`forecast_service.load_model()` reads) and now also moves `champion` to
+immediately overwrites `models/org_id={organization_id}/prophet_{product_id}.pkl`
+(what `forecast_service.load_model()` reads) and now also moves `champion` to
 match, via `forecast_service._log_run_to_mlflow()` — the alias just makes
 the registry tell the truth about what's live; it was never a gate a human
 had to approve before this, and adding one here would silently break
@@ -73,15 +77,17 @@ below).
 
 ```bash
 python -m app.scripts.rollback_model --product-id 1 --version 2
+# --organization-id defaults to 1; pass it explicitly for any other org:
+python -m app.scripts.rollback_model --product-id 1 --version 2 --organization-id 2
 ```
 
 This is `forecast_service.rollback_model()` — loads that version's artifact
-from the registry, overwrites `models/prophet_{product_id}.pkl` with it
-(the same S3-aware `storage` write path `train_model()` uses, so this works
-whether `MODELS_DIR` is local disk or S3/MinIO), and re-points `champion` at
-that version so the registry stays consistent with what's live. Find the
-version to roll back to via the Python client or web UI shown above
-(`client.search_model_versions("name='prophet_1'")`).
+from the registry, overwrites `models/org_id={organization_id}/prophet_{product_id}.pkl`
+with it (the same S3-aware `storage` write path `train_model()` uses, so
+this works whether `MODELS_DIR` is local disk or S3/MinIO), and re-points
+`champion` at that version so the registry stays consistent with what's
+live. Find the version to roll back to via the Python client or web UI
+shown above (`client.search_model_versions("name='prophet_1'")`).
 
 ## Automated retraining
 
@@ -92,3 +98,10 @@ crontab line. There is no promotion review step: a cron-triggered retrain
 goes live immediately, same as a manually-run `make train` always has.
 If a bad retrain ever needs undoing, `rollback_model` above is the fix, not
 a pre-emptive approval gate on every run.
+
+`make features`/`make train` (and therefore this cron job) only ever
+build/train org 1's models today — `build_features()`/`train_all_models()`
+are org-scoped (Epoch 10 PR 15, #151), but neither CLI loops over every
+active org yet. Fine for the default single-org self-hosted deployment;
+a real multi-org deployment relying on this cron for anything beyond org
+1 needs that gap closed first (flagged, not addressed in #151's scope).

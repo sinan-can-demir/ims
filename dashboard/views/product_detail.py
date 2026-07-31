@@ -126,7 +126,9 @@ forecast_days = st.slider(
 
 try:
     with st.spinner("Loading forecast..."):
-        forecast_df = load_forecast(selected_product, forecast_days)
+        forecast_df = load_forecast(
+            selected_product, current_user["organization_id"], forecast_days
+        )
 
     fig = go.Figure()
 
