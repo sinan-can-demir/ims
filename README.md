@@ -234,6 +234,7 @@ ims/
 ├── docs/model-registry.md  # MLflow setup, promotion/rollback
 ├── docs/multi-tenancy.md   # org isolation architecture — what's enforced where
 ├── docs/observability.md   # Prometheus metrics, structured request logging
+├── docs/wiki/              # short write-ups of specific bugs/gotchas found along the way
 ├── infra/                  # Terraform for AWS (enterprise deployment)
 ├── Makefile                # One-command dev workflow
 ├── requirements.txt
