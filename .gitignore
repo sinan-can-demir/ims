@@ -66,11 +66,15 @@ warehouse/*.duckdb
 *.duckdb
 warehouse/ims_warehouse/target
 
-# feature_store parquets
-feature_store/*.parquet
+# feature_store parquets — ** (not *) since Epoch 10 PR 15 (#151) nests
+# these one level deeper under org_id={organization_id}/, same reason
+# data_lake/**/*.parquet above already uses ** for its org_id= nesting
+# from PR 13 (#149)
+feature_store/**/*.parquet
 
-# trained model artifacts (regenerate with `make train`)
-models/*.pkl
+# trained model artifacts (regenerate with `make train`) — same org_id=
+# nesting as feature_store above
+models/**/*.pkl
 
 # MLflow model registry (local sqlite backend + artifact store)
 mlflow.db

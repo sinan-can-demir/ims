@@ -183,8 +183,8 @@ def load_fleet_status(organization_id: int) -> list[dict]:
 
 
 @st.cache_data(ttl=CACHE_TTL)
-def load_forecast(product_id: int, days: int = 7) -> pd.DataFrame:
-    return forecast(product_id, days=days)
+def load_forecast(product_id: int, organization_id: int, days: int = 7) -> pd.DataFrame:
+    return forecast(product_id, days=days, organization_id=organization_id)
 
 
 @st.cache_data(ttl=CACHE_TTL)

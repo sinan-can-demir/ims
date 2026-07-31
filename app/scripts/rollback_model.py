@@ -6,6 +6,7 @@
 #
 # Usage:
 #   python -m app.scripts.rollback_model --product-id 1 --version 2
+#   python -m app.scripts.rollback_model --product-id 1 --version 2 --organization-id 2
 
 import argparse
 
@@ -18,10 +19,11 @@ def main() -> None:
     )
     parser.add_argument("--product-id", type=int, required=True)
     parser.add_argument("--version", type=int, required=True)
+    parser.add_argument("--organization-id", type=int, default=1)
     args = parser.parse_args()
 
     try:
-        result = rollback_model(args.product_id, args.version)
+        result = rollback_model(args.product_id, args.version, args.organization_id)
     except (ValueError, FileNotFoundError) as exc:
         print(f"✗ {exc}")
         raise SystemExit(1) from exc

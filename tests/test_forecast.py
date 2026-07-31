@@ -103,9 +103,9 @@ def test_restock_clamps_negative_qty(client, db):
 
 
 _FEATURE_FILE = os.path.join(
-    os.path.dirname(__file__), "..", "feature_store", "daily_sales.parquet"
+    os.path.dirname(__file__), "..", "feature_store", "org_id=1", "daily_sales.parquet"
 )
-_MODEL_FILE_8 = os.path.join(os.path.dirname(__file__), "..", "models", "prophet_8.pkl")
+_MODEL_FILE_8 = os.path.join(os.path.dirname(__file__), "..", "models", "org_id=1", "prophet_8.pkl")
 
 _FEATURE_SKIP_REASON = "feature store not built — run make features"
 
@@ -146,7 +146,7 @@ def test_train_model_registers_to_mlflow(tmp_path, monkeypatch):
 
     result = forecast_service.train_model(1)
 
-    assert (tmp_path / "prophet_1.pkl").exists()
+    assert (tmp_path / "org_id=1" / "prophet_1.pkl").exists()
     assert result["mlflow_model_version"] == 1
     assert result["mae_in_sample"] >= 0
 
@@ -185,7 +185,7 @@ def test_rollback_model_restores_prior_version_and_champion(tmp_path, monkeypatc
     # alone can't prove a rollback happened, so hash the artifact instead.
     import hashlib
 
-    model_path = tmp_path / "prophet_1.pkl"
+    model_path = tmp_path / "org_id=1" / "prophet_1.pkl"
     after_second_train = hashlib.sha256(model_path.read_bytes()).hexdigest()
 
     result = forecast_service.rollback_model(1, first["mlflow_model_version"])
@@ -301,9 +301,52 @@ def test_train_model_rejects_data_below_min_training_days(tmp_path, monkeypatch)
     df = _weekday_shaped_series(n_days=7, seed=1).rename(columns={"y": "units_sold"})
     df["date"] = df["ds"]
     df["product_id"] = 1
-    df[["product_id", "date", "units_sold"]].to_parquet(tmp_path / "daily_sales.parquet")
+    org_dir = tmp_path / "org_id=1"
+    org_dir.mkdir()
+    df[["product_id", "date", "units_sold"]].to_parquet(org_dir / "daily_sales.parquet")
 
     monkeypatch.setattr(forecast_service, "FEATURE_STORE_PATH", tmp_path)
 
     with pytest.raises(ValueError, match="Need at least 14 days"):
         forecast_service.train_model(1)
+
+
+def test_load_model_s3_cache_disambiguated_by_org(tmp_path, monkeypatch):
+    """
+    Epoch 10 PR 15 (#151): _MODEL_CACHE_DIR is one shared local temp
+    directory across every org's requests in this process, not a
+    per-org namespace the way MODELS_DIR itself now is — real collision
+    is impossible (product_id is globally unique across orgs, so
+    cache_key() already differs per org via the differing S3 model_path),
+    but this proves the cache *filename* is disambiguated by org too, per
+    the issue's own testing note. cache_key() is mocked to return the
+    same value regardless of path specifically to isolate that — without
+    organization_id in the filename, this would be a real collision.
+    """
+    import app.services.forecast_service as forecast_service
+
+    monkeypatch.setattr(forecast_service, "_MODEL_CACHE_DIR", tmp_path)
+    monkeypatch.setattr(forecast_service.storage, "is_s3", lambda path: True)
+    monkeypatch.setattr(forecast_service.storage, "exists", lambda path: True)
+    monkeypatch.setattr(forecast_service.storage, "cache_key", lambda path: "same-key-both-orgs")
+    monkeypatch.setattr(forecast_service.joblib, "load", lambda f: "fake-model")
+
+    class _FakeReadHandle:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def read(self):
+            return b"fake-model-bytes"
+
+    monkeypatch.setattr(forecast_service.storage, "open_read", lambda path, mode: _FakeReadHandle())
+
+    forecast_service.load_model(1, organization_id=1)
+    forecast_service.load_model(1, organization_id=2)
+
+    cached_files = {p.name for p in tmp_path.glob("*.pkl")}
+    assert len(cached_files) == 2
+    assert any(name.startswith("prophet_1_1_") for name in cached_files)
+    assert any(name.startswith("prophet_2_1_") for name in cached_files)
