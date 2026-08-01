@@ -1,7 +1,7 @@
 # Optional: automatic HTTPS via Caddy, if you have a domain pointed at your
 # server. Stack on top of the base + prod files:
 #
-#   docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.caddy.yml up -d
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml -f deploy/docker-compose.caddy.yml up -d
 #
 # Requires DOMAIN set in .env (e.g. DOMAIN=ims.example.com) with an A record
 # pointing at this server's public IP. Caddy handles Let's Encrypt cert
@@ -36,7 +36,7 @@ services:
       # privately relabel the whole repo tree, including this file — an
       # unlabeled mount here then gets read-denied by SELinux. `:Z` forces a
       # fresh label scoped to this container on every start.
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro,Z
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro,Z
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
