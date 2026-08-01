@@ -99,9 +99,11 @@ goes live immediately, same as a manually-run `make train` always has.
 If a bad retrain ever needs undoing, `rollback_model` above is the fix, not
 a pre-emptive approval gate on every run.
 
-`make features`/`make train` (and therefore this cron job) only ever
-build/train org 1's models today — `build_features()`/`train_all_models()`
-are org-scoped (Epoch 10 PR 15, #151), but neither CLI loops over every
-active org yet. Fine for the default single-org self-hosted deployment;
-a real multi-org deployment relying on this cron for anything beyond org
-1 needs that gap closed first (flagged, not addressed in #151's scope).
+`make features`/`make train` (and therefore this cron job) build/train
+every active organization's models by default (#171) —
+`build_features()`/`train_all_models()` are org-scoped (Epoch 10 PR 15,
+#151), and both CLIs now loop over every row in `organizations` where
+`is_active` is true, so a newly created org gets scheduled retraining
+without any cron reconfiguration. Pass `--organization-id` to either
+command to target just one org instead, same shape as `rollback_model`
+above.
