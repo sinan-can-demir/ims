@@ -92,7 +92,7 @@ KPI tiles, event-type filter + pagination on the event history table), and
 a `.streamlit/config.toml` theming pass.
 
 **Deployment verification + S3-compatible storage:** `#74` — the
-self-hosted `docker-compose.prod.yml` path fully verified against a real
+self-hosted `deploy/docker-compose.prod.yml` path fully verified against a real
 running deployment (real secrets, real migrations, restart/crash-recovery
 semantics, backup/restore round-trip), plus a real fixed data-loss bug
 (pipeline directories now persist across redeploys) and demonstrated public
@@ -226,10 +226,8 @@ ims/
 ├── mlflow.db, mlruns/      # MLflow model registry (gitignored — see docs/model-registry.md)
 ├── dashboard/              # Streamlit app
 ├── docker/                 # Dockerfile
-├── docker-compose.yml            # local dev
-├── docker-compose.prod.yml       # self-hosted prod hardening (overlay)
-├── docker-compose.caddy.yml      # optional automatic HTTPS (overlay)
-├── docker-compose.minio.yml      # optional local MinIO for testing S3 storage (overlay)
+├── config/                 # alembic.ini, gunicorn.conf.py (pytest config lives in pyproject.toml)
+├── deploy/                 # docker-compose.yml (local dev) + prod/caddy/minio overlays, Caddyfile
 ├── docs/deployment/        # self-hosted deployment guide
 ├── docs/model-registry.md  # MLflow setup, promotion/rollback
 ├── docs/multi-tenancy.md   # org isolation architecture — what's enforced where
@@ -569,13 +567,13 @@ decisions no wizard should make silently.
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_REGION` | unset | S3-compatible object storage credentials — only used if one of the 4 paths above is an `s3://` URI |
 | `S3_ENDPOINT_URL` | unset | S3-compatible endpoint (e.g. `http://minio:9000`); leave unset for real AWS S3 |
 | `S3_URL_STYLE` | unset | `path` for MinIO/most self-hosted S3-compatible servers; unset (AWS's default `vhost` style) for real AWS S3 |
-| `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | unset | MinIO's own admin credentials — `docker-compose.prod.yml`/`docker-compose.minio.yml` only, required to start the `minio` container. See [docs/deployment/self-hosted.md](docs/deployment/self-hosted.md#s3--minio-storage-optional) |
+| `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | unset | MinIO's own admin credentials — `deploy/docker-compose.prod.yml`/`deploy/docker-compose.minio.yml` only, required to start the `minio` container. See [docs/deployment/self-hosted.md](docs/deployment/self-hosted.md#s3--minio-storage-optional) |
 | `MLFLOW_TRACKING_URI` | `sqlite:///./mlflow.db` | MLflow model registry backend, used by `make train` only — see [docs/model-registry.md](docs/model-registry.md) |
 | `MLFLOW_EXPERIMENT_NAME` | `prophet-demand-forecasting` | MLflow experiment name for training runs |
 | `WAREHOUSE_START_DATE` / `WAREHOUSE_END_DATE` | `2020-01-01` / `2030-12-31` | Date range for the generated `dim_dates` warehouse table |
 | `PYTHONPATH` | `/app` | Python module path (set inside the Docker container) |
-| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `postgres` / unset / `ims` | `docker-compose.prod.yml` only — compose-level substitution to build `DATABASE_URL`, see [self-hosted deployment](docs/deployment/self-hosted.md) |
-| `DOMAIN` | unset | `docker-compose.caddy.yml` only — your domain, for automatic HTTPS |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `postgres` / unset / `ims` | `deploy/docker-compose.prod.yml` only — compose-level substitution to build `DATABASE_URL`, see [self-hosted deployment](docs/deployment/self-hosted.md) |
+| `DOMAIN` | unset | `deploy/docker-compose.caddy.yml` only — your domain, for automatic HTTPS |
 | `PROMETHEUS_MULTIPROC_DIR` | unset | Merges `/metrics` across Gunicorn workers in production — see [docs/observability.md](docs/observability.md) |
 
 Copy `.env.example` to `.env` and adjust as needed.

@@ -4,7 +4,7 @@
 # token — the dashboard already calls service-layer functions directly
 # against app.database.SessionLocal (see dashboard/data.py), so this
 # reuses authenticate_user() the same in-process way. Coexists with
-# Caddy's basic_auth (see Caddyfile) rather than replacing it — that's a
+# Caddy's basic_auth (see deploy/Caddyfile) rather than replacing it — that's a
 # network-perimeter control, this is per-user attribution inside the app.
 
 import sys

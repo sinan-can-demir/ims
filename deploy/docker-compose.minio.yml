@@ -2,7 +2,8 @@
 # data pipeline, so you can develop/test the S3 code path without touching
 # real AWS. Stack on top of the base file:
 #
-#   docker compose -f docker-compose.yml -f docker-compose.minio.yml up -d
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.minio.yml \
+#     --project-directory . up -d
 #
 # Requires MINIO_ROOT_USER and MINIO_ROOT_PASSWORD set in .env. This file
 # alone only starts the MinIO server and wires api/dashboard's S3 env vars

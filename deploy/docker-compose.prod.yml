@@ -1,7 +1,8 @@
 # Production hardening for a self-hosted deploy. Apply on top of the base
 # compose file:
 #
-#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.prod.yml \
+#     --project-directory . up -d
 #
 # See docs/deployment/self-hosted.md for the full walkthrough. Requires a
 # .env file (copy .env.example) with, at minimum, POSTGRES_PASSWORD set
@@ -113,7 +114,7 @@ services:
     # equivalent) — Caddy's basic_auth is its only protection. So, unlike
     # api's port staying published here, the dashboard's port is hidden by
     # default in this file already: it only becomes reachable by adding
-    # docker-compose.caddy.yml, which fronts it with basic_auth. Running
+    # deploy/docker-compose.caddy.yml, which fronts it with basic_auth. Running
     # prod.yml without the Caddy overlay leaves the dashboard unreachable,
     # not unauthenticated.
     ports: !override []

@@ -11,9 +11,9 @@ _DEFAULT_RATE_LIMIT = os.getenv("RATE_LIMIT", "100/minute")
 # Every documented deployment path puts at most one reverse proxy between
 # the real client and this app, and that proxy always connects over a
 # private network: Caddy over the Docker Compose network (self-hosted +
-# Caddyfile overlay), the ALB over its VPC (10.0.0.0/16, infra/variables.tf).
-# The one path with no proxy at all — docker-compose.prod.yml alone,
-# plain HTTP on :8000 (see docker-compose.caddy.yml's comment) — has
+# deploy/Caddyfile overlay), the ALB over its VPC (10.0.0.0/16, infra/variables.tf).
+# The one path with no proxy at all — deploy/docker-compose.prod.yml alone,
+# plain HTTP on :8000 (see deploy/docker-compose.caddy.yml's comment) — has
 # Docker's published-port NAT preserve the real public client IP as the
 # TCP peer already, no header needed. So: trust X-Forwarded-For's
 # leftmost entry only when the immediate TCP peer is itself a private
@@ -60,7 +60,7 @@ def rate_limit_key(request: Request) -> str:
 
 # Storage defaults to slowapi's in-process memory:// backend, which is not
 # shared across Gunicorn's worker processes in prod (WEB_CONCURRENCY,
-# docker-compose.prod.yml) — same class of gap PROMETHEUS_MULTIPROC_DIR
+# deploy/docker-compose.prod.yml) — same class of gap PROMETHEUS_MULTIPROC_DIR
 # exists to solve for /metrics, unaddressed here. Effective limit in prod
 # is therefore ~WEB_CONCURRENCY x RATE_LIMIT, not exactly RATE_LIMIT. See
 # SECURITY.md.

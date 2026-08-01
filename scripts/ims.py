@@ -42,6 +42,13 @@ sys.stdout.reconfigure(line_buffering=True)
 
 HEALTH_URL = "http://localhost:8000/health"
 
+# docker-compose.yml lives in deploy/, not repo root — --project-directory .
+# pins build context/bind mounts/.env resolution and the Compose project
+# name (container/volume naming) to PROJECT_ROOT (the _run() subprocess cwd
+# below), same as before the move, instead of letting them drift to
+# deploy/ (Compose's default: the directory of the first -f file).
+COMPOSE_ARGS = ["-f", "deploy/docker-compose.yml", "--project-directory", "."]
+
 
 def _run(cmd: list[str]) -> int:
     print(f"$ {' '.join(cmd)}", flush=True)
@@ -67,17 +74,17 @@ def _wait_for_health(timeout: int) -> bool:
 
 def cmd_start(_args: argparse.Namespace) -> int:
     print("Starting IMS...")
-    return _run(["docker", "compose", "up", "-d"])
+    return _run(["docker", "compose", *COMPOSE_ARGS, "up", "-d"])
 
 
 def cmd_stop(_args: argparse.Namespace) -> int:
     print("Stopping IMS...")
-    return _run(["docker", "compose", "down"])
+    return _run(["docker", "compose", *COMPOSE_ARGS, "down"])
 
 
 def cmd_status(_args: argparse.Namespace) -> int:
     print("Container status:")
-    _run(["docker", "compose", "ps"])
+    _run(["docker", "compose", *COMPOSE_ARGS, "ps"])
 
     print("\nAPI health:")
     if _wait_for_health(timeout=3):
@@ -90,6 +97,7 @@ def cmd_status(_args: argparse.Namespace) -> int:
         [
             "docker",
             "compose",
+            *COMPOSE_ARGS,
             "run",
             "--rm",
             "migrate",
@@ -130,7 +138,7 @@ def cmd_setup(_args: argparse.Namespace) -> int:
     print("=" * 55)
 
     print("\n[1/3] Starting services (docker compose up -d)...")
-    if _run(["docker", "compose", "up", "-d"]) != 0:
+    if _run(["docker", "compose", *COMPOSE_ARGS, "up", "-d"]) != 0:
         print("✗ docker compose up failed — see the output above.")
         return 1
 

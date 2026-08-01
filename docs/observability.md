@@ -33,7 +33,7 @@ expose publicly without a firewall rule or its own auth in front.
 
 ### Multiprocess mode (production only)
 
-`docker-compose.prod.yml` runs the API under Gunicorn with multiple
+`deploy/docker-compose.prod.yml` runs the API under Gunicorn with multiple
 `UvicornWorker` processes (see `WEB_CONCURRENCY`). Each worker process has
 its own Python memory space, so without extra wiring each one would report
 only the requests *it* handled, and a scrape would just see whichever worker
@@ -43,14 +43,14 @@ answered that connection.
 write to shared mmap'd files instead of an in-memory registry, which
 `metrics_response()` then merges on scrape. It's wired via:
 
-- `PROMETHEUS_MULTIPROC_DIR` — set in `docker-compose.prod.yml`, tells
+- `PROMETHEUS_MULTIPROC_DIR` — set in `deploy/docker-compose.prod.yml`, tells
   `prometheus_client` where to put those files.
 - `config/gunicorn.conf.py` — `on_starting` clears stale files left over
   from a previous run (they'd otherwise double-count after a restart);
   `child_exit` removes a worker's files when it exits (worker recycling,
   crashes) so dead workers don't leak stale series into the merged output.
 
-The base `docker-compose.yml` dev command runs a single Uvicorn process with
+The base `deploy/docker-compose.yml` dev command runs a single Uvicorn process with
 `PROMETHEUS_MULTIPROC_DIR` unset, so `metrics_response()` falls back to the
 default in-process registry — no multiprocess setup needed locally.
 

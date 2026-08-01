@@ -6,7 +6,7 @@ from starlette.requests import Request
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Sets baseline security response headers. TLS termination (Caddy, ALB)
-    doesn't add these on its own — Caddyfile is a bare reverse_proxy, and ALB
+    doesn't add these on its own — deploy/Caddyfile is a bare reverse_proxy, and ALB
     listeners don't inject them either — so the app has to.
     """
 

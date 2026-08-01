@@ -23,7 +23,7 @@ st.set_page_config(page_title="IMS Dashboard", page_icon="🏭", layout="wide")
 # ---------------------------------------------------------------
 # Auth gate — blocks everything below for an unauthenticated visitor.
 # Coexists with Caddy basic_auth in the self-hosted deploy (see
-# Caddyfile); that's a network-perimeter control, this is per-user
+# deploy/Caddyfile); that's a network-perimeter control, this is per-user
 # attribution inside the app.
 # ---------------------------------------------------------------
 current_user = require_login()
