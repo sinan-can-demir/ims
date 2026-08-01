@@ -45,6 +45,13 @@ class InvalidCredentialsError(DomainError):
         super().__init__("Invalid email or password")
 
 
+class RegistrationClosedError(DomainError):
+    status_code = 409
+
+    def __init__(self):
+        super().__init__("Registration is closed — an account already exists for this organization")
+
+
 class InsufficientInventoryError(DomainError):
     status_code = 400
 

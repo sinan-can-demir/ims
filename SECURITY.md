@@ -28,14 +28,20 @@ route requires `Authorization: Bearer <token>`, validated by
   promotion or demotion takes effect immediately with the same
   still-unexpired token, no re-login required. Deactivating an account
   (`is_active=False`) takes effect immediately for the same reason.
-- **No self-service registration.** Accounts are created CLI-only via
+- **Self-service registration is bootstrap-only, not general-purpose.**
+  `POST /api/auth/register` (added for the desktop installer's first-run
+  wizard, #189 — no self-service `getpass` equivalent existed for a GUI
+  caller) only succeeds while `organization_id=1` has zero users;
+  hardcodes `role=admin` and `organization_id=1` (no client-settable
+  role or org), and is race-safe via `with_for_update()` on the
+  organization row rather than a naive count-then-insert, so two
+  concurrent first-run requests can't both create an account. Every
+  account after that first one is still CLI-only via
   `scripts/create_user.py --role {admin,member}` (default `member`);
   `scripts/set_user_role.py` promotes/demotes an existing account and
-  writes an `audit_log` entry (`action="role_changed"`) — the one CLI
-  action that's audited, since it's a privilege-escalation event, unlike
-  account creation. Deliberate for a solo/small-team deployment, not a
-  permanent constraint; a `POST /api/auth/register` endpoint would be a
-  natural, low-risk future addition if that's ever needed.
+  writes an `audit_log` entry (`action="role_changed"`) — the one
+  account-related action that's audited, since it's a
+  privilege-escalation event, unlike account creation.
 - **Login failures are generic.** Unknown email, wrong password, and a
   deactivated account all return the same `401 Invalid email or password`
   — no signal about which case occurred, so an attacker can't use the
