@@ -43,7 +43,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
 
 def metrics_response() -> Response:
     # Gunicorn runs multiple worker processes in production, each with its own
-    # in-memory registry. PROMETHEUS_MULTIPROC_DIR (set in docker-compose.prod.yml)
+    # in-memory registry. PROMETHEUS_MULTIPROC_DIR (set in deploy/docker-compose.prod.yml)
     # tells prometheus_client to shard counters to disk instead, so a scrape can
     # merge every worker's data — see config/gunicorn.conf.py for the matching cleanup hooks.
     if os.environ.get("PROMETHEUS_MULTIPROC_DIR"):

@@ -46,13 +46,13 @@ COPY . .
 ENV PYTHONPATH=/app
 
 # UID 1000 matches the default first-user UID on most Linux distros
-# (including Fedora), so the dev bind-mount in docker-compose.yml stays
+# (including Fedora), so the dev bind-mount in deploy/docker-compose.yml stays
 # writable without needing a matching --user override.
 #
 # The 4 `mkdir -p` targets must exist here with correct ownership
 # regardless of whether the build context happens to have content in them
 # (data_lake/feature_store are gitignored and may be genuinely empty on a
-# fresh clone) — docker-compose.prod.yml mounts named volumes at these
+# fresh clone) — deploy/docker-compose.prod.yml mounts named volumes at these
 # exact paths, and Docker only copies the image's existing ownership into
 # a fresh named volume on first mount if the directory already exists in
 # the image. Without this, an empty/absent dir gets created root-owned,
@@ -65,9 +65,9 @@ USER appuser
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
   CMD curl -f http://localhost:8000/health || exit 1
 
-# Plain single-worker Uvicorn by default — matches what docker-compose.yml's
-# dev command and docker-compose.prod.yml/infra/ecs.tf's production commands
+# Plain single-worker Uvicorn by default — matches what deploy/docker-compose.yml's
+# dev command and deploy/docker-compose.prod.yml/infra/ecs.tf's production commands
 # all explicitly override anyway. Production paths run Gunicorn with
-# UvicornWorker instead (see docker-compose.prod.yml, infra/ecs.tf); this is
+# UvicornWorker instead (see deploy/docker-compose.prod.yml, infra/ecs.tf); this is
 # just a sane default for anyone running the image directly.
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -112,8 +112,8 @@ jobs:
       - run: pip install -r requirements.txt
 
       # A `services:` container can't be given a command, and the official
-      # minio/minio image (same one docker-compose.minio.yml/
-      # docker-compose.prod.yml already use) has no working default one —
+      # minio/minio image (same one deploy/docker-compose.minio.yml/
+      # deploy/docker-compose.prod.yml already use) has no working default one —
       # started directly as a step instead, same image/command as those
       # compose files.
       - name: Start MinIO
