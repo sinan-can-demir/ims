@@ -19,4 +19,5 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
+ureq = { version = "2", default-features = false }
 
