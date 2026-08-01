@@ -18,7 +18,8 @@
 # Usage:
 #   scripts/backup.sh <destination_dir>
 #
-# Requires the `db` service to be up (docker compose up -d db).
+# Requires the `db` service to be up
+# (docker compose -f deploy/docker-compose.yml --project-directory . up -d db).
 # Linux/GNU tooling assumed, same as the rest of the self-hosted path.
 
 set -euo pipefail
@@ -81,7 +82,8 @@ info "Dumping Postgres ($POSTGRES_DB)..."
 # an existing schema (the normal restore scenario — a fresh instance
 # already has empty tables from `alembic upgrade head`) drops everything
 # first instead of failing on "relation already exists".
-docker compose exec -T db pg_dump -U "$POSTGRES_USER" --clean --if-exists "$POSTGRES_DB" \
+docker compose -f deploy/docker-compose.yml --project-directory . exec -T db \
+  pg_dump -U "$POSTGRES_USER" --clean --if-exists "$POSTGRES_DB" \
   | gzip > "$WORK_DIR/postgres.sql.gz"
 
 info "Copying local pipeline artifacts..."

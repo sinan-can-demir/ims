@@ -21,17 +21,27 @@ else
     STREAMLIT := streamlit
 endif
 
+# docker-compose.yml lives in deploy/ now, not repo root — Compose defaults
+# to treating the *first* -f file's directory as the "project directory"
+# (resolves build context, bind mounts, and .env interpolation against it),
+# which would silently become deploy/ instead of repo root, and would also
+# rename the Compose project itself (deploy_* container/volume names)
+# instead of matching what pre-existing deployments already have. Pinning
+# --project-directory . keeps both exactly as they were when the file lived
+# at repo root.
+COMPOSE := docker compose -f deploy/docker-compose.yml --project-directory .
+
 # -------------------------
 # Dev lifecycle
 # -------------------------
 up:
-	docker compose up
+	$(COMPOSE) up
 
 up-d:
-	docker compose up -d
+	$(COMPOSE) up -d
 
 down:
-	docker compose down
+	$(COMPOSE) down
 
 # data_lake/, feature_store/, warehouse/, and models/ are local files, not
 # Docker volumes — `down -v` wipes the DB but leaves these stale. A stale
@@ -41,19 +51,19 @@ down:
 # uniqueness test and starving the feature store. Clear them so a reset
 # always starts every downstream stage from a clean slate.
 reset:
-	docker compose down -v
+	$(COMPOSE) down -v
 	rm -rf data_lake/inventory_events/* data_lake/checkpoints.json
 	rm -f feature_store/*.parquet
 	rm -f warehouse/*.parquet warehouse/ims.duckdb
 	rm -f models/*.pkl
 	$(PYTHON) -m app.scripts.reset_storage
-	docker compose up --build
+	$(COMPOSE) up --build
 
 rebuild:
-	docker compose up --build
+	$(COMPOSE) up --build
 
 logs:
-	docker compose logs -f
+	$(COMPOSE) logs -f
 
 # -------------------------
 # Application layer
@@ -65,7 +75,7 @@ dashboard:
 # Database
 # -------------------------
 migrate:
-	docker compose run --rm migrate
+	$(COMPOSE) run --rm migrate
 
 # -------------------------
 # Seed data
@@ -121,7 +131,7 @@ train:
 # Shell access
 # -------------------------
 shell:
-	docker compose exec api sh
+	$(COMPOSE) exec api sh
 
 # -------------------------
 # Pytest (fast tests)

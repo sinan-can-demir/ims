@@ -4,6 +4,13 @@ set -euo pipefail
 
 BASE="http://localhost:8000"
 
+# docker-compose.yml lives in deploy/, not repo root — --project-directory .
+# keeps build context/bind mounts/.env resolution and the Compose project
+# name (container/volume naming) pinned to repo root, same as before the
+# move, instead of drifting to deploy/ (Compose's default: the directory of
+# the first -f file). Run this script from the repo root.
+COMPOSE=(docker compose -f deploy/docker-compose.yml --project-directory .)
+
 ############################################
 # Colors
 ############################################
@@ -29,7 +36,7 @@ command -v jq >/dev/null 2>&1 || fail "jq is required but not installed"
 # Cleanup on exit
 ############################################
 
-trap 'docker compose down -v' EXIT
+trap '"${COMPOSE[@]}" down -v' EXIT
 
 ############################################
 # Start containers
@@ -37,8 +44,8 @@ trap 'docker compose down -v' EXIT
 
 info "Starting containers..."
 
-docker compose down -v
-docker compose up --build -d
+"${COMPOSE[@]}" down -v
+"${COMPOSE[@]}" up --build -d
 
 ############################################
 # Wait for DB
@@ -47,7 +54,7 @@ docker compose up --build -d
 info "Waiting for database..."
 
 for i in {1..20}; do
-    if docker compose exec -T db pg_isready -U postgres > /dev/null 2>&1; then
+    if "${COMPOSE[@]}" exec -T db pg_isready -U postgres > /dev/null 2>&1; then
         pass "Database ready"
         break
     fi
