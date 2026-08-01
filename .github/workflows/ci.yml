@@ -148,7 +148,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Apply migrations
-        run: alembic upgrade head
+        run: alembic -c config/alembic.ini upgrade head
 
       - name: Seed demo data
         run: python scripts/seed_data.py

@@ -42,7 +42,7 @@ Example:
 2. Generate migration
 
 ```bash
-alembic revision --autogenerate -m "description"
+alembic -c config/alembic.ini revision --autogenerate -m "description"
 ```
 
 3. Inspect migration file
@@ -63,7 +63,7 @@ op.create_index()
 4. Apply migration
 
 ```bash
-alembic upgrade head
+alembic -c config/alembic.ini upgrade head
 ```
 
 ---
@@ -73,7 +73,7 @@ alembic upgrade head
 To revert the last migration:
 
 ```bash
-alembic downgrade -1
+alembic -c config/alembic.ini downgrade -1
 ```
 
 ---
@@ -121,7 +121,7 @@ Add column to product:
 2. Generate migration
 
 ```bash
-alembic revision --autogenerate -m "add product description"
+alembic -c config/alembic.ini revision --autogenerate -m "add product description"
 ```
 
 3. Inspect migration
@@ -129,5 +129,5 @@ alembic revision --autogenerate -m "add product description"
 4. Apply migration
 
 ```bash
-alembic upgrade head
+alembic -c config/alembic.ini upgrade head
 ```

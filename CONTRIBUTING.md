@@ -48,7 +48,7 @@ thing (`.github/workflows/ci.yml`'s `pipeline` job) and will catch it either
 way, but it's faster to find locally:
 
 ```bash
-alembic upgrade head
+alembic -c config/alembic.ini upgrade head
 python scripts/seed_data.py
 make export
 make warehouse
