@@ -46,7 +46,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - .:/app:Z
+      - .:/app:z
     environment:
       - PYTHONPATH=/app
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/ims
@@ -65,7 +65,7 @@ services:
     ports:
       - "8501:8501"
     volumes:
-      - .:/app:Z
+      - .:/app:z
     environment:
       - PYTHONPATH=/app
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/ims
