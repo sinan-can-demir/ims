@@ -325,6 +325,25 @@ def test_register_then_login_round_trip(db):
     assert login_response.json()["access_token"]
 
 
+def test_bootstrap_status_true_when_no_users(db):
+    response = _unauthenticated_client(db).get("/api/auth/bootstrap-status")
+    assert response.status_code == 200
+    assert response.json() == {"needs_registration": True}
+
+
+def test_bootstrap_status_false_after_registration(db):
+    client = _unauthenticated_client(db)
+    register_response = client.post(
+        "/api/auth/register",
+        json={"email": "bootstrap@example.com", "password": "pw", "display_name": "Bootstrap"},
+    )
+    assert register_response.status_code == 201
+
+    response = client.get("/api/auth/bootstrap-status")
+    assert response.status_code == 200
+    assert response.json() == {"needs_registration": False}
+
+
 @pytest.mark.postgres
 def test_register_concurrent_requests_only_one_succeeds(db):
     """

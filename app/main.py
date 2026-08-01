@@ -55,6 +55,18 @@ _cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:8501").split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
+    # The desktop app's webview origin (#192) turned out not to match either
+    # of Tauri's documented patterns — empirically confirmed (via a request
+    # header dump against a real running instance, port stable across
+    # restarts) to be a loopback HTTP server on an app-specific port
+    # (127.0.0.1:1430 for this app's identifier), not http://tauri.localhost
+    # (the Windows/Android-only workaround per wry's
+    # custom_protocol_workaround.rs) or tauri://localhost (what Tauri's own
+    # docs describe for Linux/macOS). A single hardcoded port isn't portable
+    # across machines/Tauri versions anyway, so loopback origins are allowed
+    # by pattern instead — still same-machine-only, not spoofable by remote
+    # web content, since browsers/webviews set the Origin header themselves.
+    allow_origin_regex=r"^http://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_methods=["*"],
     allow_headers=["*"],
 )
