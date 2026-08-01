@@ -66,7 +66,7 @@ Point an A record for your domain at the server's public IP first, then also
 set `DOMAIN=your-domain.com` in `.env`:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.caddy.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.prod.yml -f deploy/docker-compose.caddy.yml up -d --build
 ```
 
 Caddy requests and renews a Let's Encrypt certificate automatically — no
@@ -104,7 +104,7 @@ curl -H "Authorization: Bearer $TOKEN" http://<server-ip>:8000/api/products
 
 ```bash
 git pull
-docker compose -f docker-compose.yml -f docker-compose.prod.yml [-f docker-compose.caddy.yml] up -d --build
+docker compose -f docker-compose.yml -f docker-compose.prod.yml [-f deploy/docker-compose.caddy.yml] up -d --build
 ```
 
 Migrations run automatically on container start (same `alembic upgrade head`
@@ -188,7 +188,7 @@ docker run --rm caddy:2-alpine caddy hash-password --plaintext '<your password>'
 Then bring up the stack with the Caddy overlay as usual:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.caddy.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.prod.yml -f deploy/docker-compose.caddy.yml up -d --build
 ```
 
 The dashboard is now reachable at `https://your-domain.com:8501`, prompting
