@@ -33,10 +33,10 @@ services:
       DASHBOARD_AUTH_HASH: ${DASHBOARD_AUTH_HASH:?Set DASHBOARD_AUTH_HASH in .env}
     volumes:
       # `:Z` matters here, not just cosmetic: on SELinux hosts (Fedora/RHEL),
-      # the dev compose file's `.:/app:Z` bind mounts (api/migrate/dashboard)
-      # privately relabel the whole repo tree, including this file — an
-      # unlabeled mount here then gets read-denied by SELinux. `:Z` forces a
-      # fresh label scoped to this container on every start.
+      # the dev compose file's `.:/app` bind mounts (api, dashboard — see
+      # docker-compose.yml) touch the whole repo tree, including this file.
+      # An unlabeled mount here can end up read-denied by SELinux. `:Z`
+      # forces a fresh label scoped to this container on every start.
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro,Z
       - caddy_data:/data
       - caddy_config:/config
