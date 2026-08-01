@@ -1,5 +1,6 @@
 # tests/test_auth.py
 
+import threading
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -15,10 +16,15 @@ from app.core.auth import (
     require_current_user,
     require_role,
 )
+from app.core.exceptions import RegistrationClosedError
 from app.core.security import hash_password
+from app.database import get_db
 from app.main import app
 from app.models.enums import UserRole
 from app.models.user import User
+from app.services.auth_service import register_first_user
+
+from .conftest import TestingSessionLocal
 
 
 def test_health_is_exempt():
@@ -249,3 +255,113 @@ def test_get_current_org_id_reflects_live_row_without_new_token(db, second_org):
 
     resolved = require_current_user(credentials=credentials, db=db)
     assert get_current_org_id(current_user=resolved) == second_org.id
+
+
+def _unauthenticated_client(db):
+    """
+    A TestClient bound to the test db but with no bearer token and no
+    pre-created user — unlike the `client`/`admin_client` fixtures, which
+    both insert a user into org 1 as a side effect and would break the
+    "zero users exist" precondition these register() tests depend on.
+    """
+
+    def override_get_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_get_db
+    return TestClient(app, raise_server_exceptions=False)
+
+
+def test_register_first_user_succeeds(db):
+    response = _unauthenticated_client(db).post(
+        "/api/auth/register",
+        json={
+            "email": "founder@example.com",
+            "password": "correct horse battery",
+            "display_name": "Founder",
+        },
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["email"] == "founder@example.com"
+    assert body["role"] == "admin"
+    assert body["organization_id"] == 1
+
+
+def test_register_second_call_rejected(db):
+    client = _unauthenticated_client(db)
+    first = client.post(
+        "/api/auth/register",
+        json={"email": "first@example.com", "password": "pw", "display_name": "First"},
+    )
+    assert first.status_code == 201
+
+    second = client.post(
+        "/api/auth/register",
+        json={"email": "second@example.com", "password": "pw", "display_name": "Second"},
+    )
+    assert second.status_code == 409
+
+    assert db.query(User).filter(User.organization_id == 1).count() == 1
+
+
+def test_register_then_login_round_trip(db):
+    client = _unauthenticated_client(db)
+    register_response = client.post(
+        "/api/auth/register",
+        json={
+            "email": "roundtrip@example.com",
+            "password": "correct horse battery",
+            "display_name": "Round Trip",
+        },
+    )
+    assert register_response.status_code == 201
+
+    login_response = client.post(
+        "/api/auth/login",
+        json={"email": "roundtrip@example.com", "password": "correct horse battery"},
+    )
+    assert login_response.status_code == 200
+    assert login_response.json()["access_token"]
+
+
+@pytest.mark.postgres
+def test_register_concurrent_requests_only_one_succeeds(db):
+    """
+    Real concurrency coverage for the with_for_update() lock in
+    register_first_user (see #189) — not just the sequential
+    already-registered case above. N threads race to register the first
+    account for org 1, each on its own real DB connection (a fresh
+    TestingSessionLocal() per thread, matching
+    test_idempotency.py's established pattern — a single shared Session
+    isn't safe for concurrent use and wouldn't exercise real
+    connection-level row locking). Exactly one must succeed.
+    """
+    thread_count = 8
+    barrier = threading.Barrier(thread_count)
+    results = [None] * thread_count
+
+    def _worker(i):
+        session = TestingSessionLocal()
+        try:
+            barrier.wait()  # maximize real overlap on the row-lock window
+            try:
+                user = register_first_user(session, f"racer{i}@example.com", "pw", f"Racer {i}")
+                results[i] = ("ok", user.id)
+            except RegistrationClosedError:
+                results[i] = ("rejected", None)
+        finally:
+            session.close()
+
+    threads = [threading.Thread(target=_worker, args=(i,)) for i in range(thread_count)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    outcomes = [r[0] for r in results]
+    assert outcomes.count("ok") == 1
+    assert outcomes.count("rejected") == thread_count - 1
+
+    db.expire_all()
+    assert db.query(User).filter(User.organization_id == 1).count() == 1
