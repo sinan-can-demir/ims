@@ -5,12 +5,36 @@
     <link rel="stylesheet" href="styles.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>IMS Desktop</title>
+    <script type="module" src="/main.js" defer></script>
   </head>
 
   <body>
     <main class="container">
       <h1>IMS Desktop</h1>
-      <p>Placeholder window. No backend logic wired up yet.</p>
+
+      <p id="status-message">Waiting for IMS to start...</p>
+
+      <form id="register-form" class="hidden">
+        <label>
+          Email
+          <input id="register-email" type="email" required autocomplete="username" />
+        </label>
+        <label>
+          Display name
+          <input id="register-display-name" type="text" required autocomplete="name" />
+        </label>
+        <label>
+          Password
+          <input
+            id="register-password"
+            type="password"
+            required
+            autocomplete="new-password"
+          />
+        </label>
+        <button type="submit">Create account</button>
+        <p id="register-error" class="error hidden"></p>
+      </form>
     </main>
   </body>
 </html>

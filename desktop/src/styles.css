@@ -27,9 +27,62 @@ h1 {
   text-align: center;
 }
 
+.hidden {
+  display: none;
+}
+
+#register-form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75em;
+  margin-top: 1em;
+}
+
+#register-form label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25em;
+  width: 260px;
+}
+
+#register-form input,
+#register-form button {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 0.5em 0.8em;
+  font-size: 1em;
+  font-family: inherit;
+  color: #0f0f0f;
+  background-color: #ffffff;
+  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.15);
+}
+
+#register-form button {
+  cursor: pointer;
+  font-weight: 500;
+}
+
+#register-form button:hover {
+  border-color: #396cd8;
+}
+
+.error {
+  color: #d33;
+  width: 260px;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     color: #f6f6f6;
     background-color: #2f2f2f;
+  }
+
+  #register-form input,
+  #register-form button {
+    color: #ffffff;
+    background-color: #0f0f0f98;
   }
 }

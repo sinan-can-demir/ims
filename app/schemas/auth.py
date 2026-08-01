@@ -23,3 +23,7 @@ class RegisterResponse(BaseModel):
     display_name: str
     role: str
     organization_id: int
+
+
+class BootstrapStatusResponse(BaseModel):
+    needs_registration: bool

@@ -29,6 +29,24 @@ def authenticate_user(db: Session, email: str, password: str) -> User:
     return user
 
 
+def _org1_has_users(db: Session) -> bool:
+    return db.query(User).filter(User.organization_id == 1).count() > 0
+
+
+def needs_registration(db: Session) -> bool:
+    """
+    Read-only bootstrap check for the desktop wizard (#192) — whether to
+    show a "create the first account" form at all, before any user input
+    exists to submit. Not itself a race guard (no locking): a concurrent
+    registration between this check and the wizard's later POST just means
+    that POST hits register_first_user()'s own with_for_update() lock and
+    gets RegistrationClosedError, same as any other late caller. This
+    function only ever gates what the UI *shows*, not what's allowed to
+    happen — the real security boundary stays register_first_user()'s lock.
+    """
+    return not _org1_has_users(db)
+
+
 def register_first_user(db: Session, email: str, password: str, display_name: str) -> User:
     """
     Bootstrap-only account creation for organization_id=1 — the desktop
@@ -51,7 +69,7 @@ def register_first_user(db: Session, email: str, password: str, display_name: st
     """
     db.query(Organization).filter(Organization.id == 1).with_for_update().first()
 
-    if db.query(User).filter(User.organization_id == 1).count() > 0:
+    if _org1_has_users(db):
         raise RegistrationClosedError()
 
     user = User(
