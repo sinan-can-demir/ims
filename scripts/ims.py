@@ -95,8 +95,16 @@ def cmd_status(_args: argparse.Namespace) -> int:
     print("\nMigration status:")
     _run(
         [
-            "docker", "compose", *COMPOSE_ARGS, "run", "--rm", "migrate",
-            "alembic", "-c", "config/alembic.ini", "current",
+            "docker",
+            "compose",
+            *COMPOSE_ARGS,
+            "run",
+            "--rm",
+            "migrate",
+            "alembic",
+            "-c",
+            "config/alembic.ini",
+            "current",
         ]
     )
     return 0
