@@ -11,7 +11,8 @@
 # Usage:
 #   scripts/restore.sh <backup_archive.tar.gz>
 #
-# Requires the `db` service to be up (docker compose up -d db).
+# Requires the `db` service to be up
+# (docker compose -f deploy/docker-compose.yml --project-directory . up -d db).
 
 set -euo pipefail
 
@@ -83,7 +84,9 @@ POSTGRES_USER="${POSTGRES_USER:-postgres}"
 POSTGRES_DB="${POSTGRES_DB:-ims}"
 
 info "Restoring Postgres ($POSTGRES_DB)..."
-gunzip -c "$WORK_DIR/postgres.sql.gz" | docker compose exec -T db psql -U "$POSTGRES_USER" "$POSTGRES_DB"
+gunzip -c "$WORK_DIR/postgres.sql.gz" \
+  | docker compose -f deploy/docker-compose.yml --project-directory . exec -T db \
+      psql -U "$POSTGRES_USER" "$POSTGRES_DB"
 
 info "Restoring local pipeline artifacts..."
 rm -rf "$PROJECT_ROOT/data_lake/inventory_events"

@@ -1,7 +1,8 @@
 # Optional: automatic HTTPS via Caddy, if you have a domain pointed at your
 # server. Stack on top of the base + prod files:
 #
-#   docker compose -f docker-compose.yml -f docker-compose.prod.yml -f deploy/docker-compose.caddy.yml up -d
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.prod.yml \
+#     -f deploy/docker-compose.caddy.yml --project-directory . up -d
 #
 # Requires DOMAIN set in .env (e.g. DOMAIN=ims.example.com) with an A record
 # pointing at this server's public IP. Caddy handles Let's Encrypt cert

@@ -55,7 +55,8 @@ Edit `.env` and set, at minimum:
 **Without a domain (plain HTTP):**
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.prod.yml \
+  --project-directory . up -d --build
 ```
 
 The API is now reachable at `http://<server-ip>:8000`.
@@ -66,7 +67,8 @@ Point an A record for your domain at the server's public IP first, then also
 set `DOMAIN=your-domain.com` in `.env`:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml -f deploy/docker-compose.caddy.yml up -d --build
+docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.prod.yml \
+  -f deploy/docker-compose.caddy.yml --project-directory . up -d --build
 ```
 
 Caddy requests and renews a Let's Encrypt certificate automatically — no
@@ -89,7 +91,8 @@ There's no self-service registration — create your first account with
 `DATABASE_URL` pointed at the same Postgres):
 
 ```bash
-docker compose exec api python scripts/create_user.py --email you@example.com --display-name "Your Name"
+docker compose -f deploy/docker-compose.yml --project-directory . exec api \
+  python scripts/create_user.py --email you@example.com --display-name "Your Name"
 ```
 
 ```bash
@@ -104,7 +107,8 @@ curl -H "Authorization: Bearer $TOKEN" http://<server-ip>:8000/api/products
 
 ```bash
 git pull
-docker compose -f docker-compose.yml -f docker-compose.prod.yml [-f deploy/docker-compose.caddy.yml] up -d --build
+docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.prod.yml \
+  [-f deploy/docker-compose.caddy.yml] --project-directory . up -d --build
 ```
 
 Migrations run automatically on container start (same `alembic upgrade head`
@@ -138,11 +142,13 @@ FEATURE_STORE_PATH=s3://ims/feature_store
 MODELS_DIR=s3://ims/models
 ```
 
-Create the bucket first — `docker compose exec minio mc alias set local
-http://localhost:9000 $MINIO_ROOT_USER $MINIO_ROOT_PASSWORD && docker compose
-exec minio mc mb local/ims` — then recreate the stack (`docker compose -f
-docker-compose.yml -f docker-compose.prod.yml up -d --build`) to pick up the
-new `.env` values.
+Create the bucket first — `docker compose -f deploy/docker-compose.yml
+--project-directory . exec minio mc alias set local http://localhost:9000
+$MINIO_ROOT_USER $MINIO_ROOT_PASSWORD && docker compose -f
+deploy/docker-compose.yml --project-directory . exec minio mc mb local/ims`
+— then recreate the stack (`docker compose -f deploy/docker-compose.yml -f
+deploy/docker-compose.prod.yml --project-directory . up -d --build`) to pick
+up the new `.env` values.
 
 One path stays local no matter what: `WAREHOUSE_DB_PATH` (the DuckDB catalog
 file dbt and the feature-builder both open) — there's no supported way to
@@ -152,8 +158,8 @@ itself is on S3. Don't set it to an `s3://` URI.
 
 `scripts/backup.sh`/`scripts/restore.sh` only ever cover local disk — they
 print an explicit warning naming which paths they're skipping if any are on
-S3. For S3/MinIO durability instead, use bucket versioning (`docker compose
-exec minio mc version enable local/ims`) and back up the `minio_data` Docker
+S3. For S3/MinIO durability instead, use bucket versioning (`docker compose -f deploy/docker-compose.yml
+--project-directory . exec minio mc version enable local/ims`) and back up the `minio_data` Docker
 volume itself on whatever schedule matters to you, the same way you would
 any other named volume.
 
@@ -188,7 +194,8 @@ docker run --rm caddy:2-alpine caddy hash-password --plaintext '<your password>'
 Then bring up the stack with the Caddy overlay as usual:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml -f deploy/docker-compose.caddy.yml up -d --build
+docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.prod.yml \
+  -f deploy/docker-compose.caddy.yml --project-directory . up -d --build
 ```
 
 The dashboard is now reachable at `https://your-domain.com:8501`, prompting
@@ -214,8 +221,8 @@ without the Caddy overlay (see above), so the tunnel has nothing to point at
 until you temporarily publish it to localhost:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml \
-  -f - up -d dashboard <<'EOF'
+docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.prod.yml \
+  --project-directory . -f - up -d dashboard <<'EOF'
 services:
   dashboard:
     ports:
@@ -245,7 +252,8 @@ dashboard's own per-user login is the only thing gating actual access.
 When you're done, `Ctrl+C` the tunnel and revert the port publish:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d dashboard
+docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.prod.yml \
+  --project-directory . up -d dashboard
 ```
 
 **Why not a stable custom domain instead?** A permanent address needs a
@@ -283,7 +291,8 @@ artifacts, prompts for confirmation):
 scripts/restore.sh /path/to/backup/dir/ims-backup-<timestamp>.tar.gz
 ```
 
-Both require the `db` service to be up (`docker compose up -d db`).
+Both require the `db` service to be up (`docker compose -f
+deploy/docker-compose.yml --project-directory . up -d db`).
 
 ## Automated retraining
 
