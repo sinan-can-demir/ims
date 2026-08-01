@@ -73,7 +73,7 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-ims}
       # Required so /metrics can merge counters across Gunicorn's worker
-      # processes — see gunicorn.conf.py and app/core/metrics.py.
+      # processes — see config/gunicorn.conf.py and app/core/metrics.py.
       PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus_multiproc
       # MinIO wiring — only actually used once DATA_LAKE_ROOT etc. (in .env)
       # are pointed at s3:// URIs; harmless no-op while they stay local.
@@ -89,7 +89,7 @@ services:
     # here — the base file's `migrate` service (overridden above with prod
     # credentials) runs once and `api` waits for it via depends_on.
     command: >
-      gunicorn app.main:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --workers ${WEB_CONCURRENCY:-4} --config gunicorn.conf.py
+      gunicorn app.main:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --workers ${WEB_CONCURRENCY:-4} --config config/gunicorn.conf.py
 
   dashboard:
     restart: unless-stopped

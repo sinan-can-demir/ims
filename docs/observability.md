@@ -45,7 +45,7 @@ write to shared mmap'd files instead of an in-memory registry, which
 
 - `PROMETHEUS_MULTIPROC_DIR` — set in `docker-compose.prod.yml`, tells
   `prometheus_client` where to put those files.
-- `gunicorn.conf.py` (repo root) — `on_starting` clears stale files left over
+- `config/gunicorn.conf.py` — `on_starting` clears stale files left over
   from a previous run (they'd otherwise double-count after a restart);
   `child_exit` removes a worker's files when it exits (worker recycling,
   crashes) so dead workers don't leak stale series into the merged output.
