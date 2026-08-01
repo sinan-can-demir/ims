@@ -18,3 +18,10 @@ select = ["E", "F", "I", "S"]
 # test, which is exactly where that tends to happen; the one known false
 # positive (tests/test_webhook.py) is noqa'd inline instead.
 "tests/**/*.py" = ["S101", "S608"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v"
+asyncio_mode = "auto"
