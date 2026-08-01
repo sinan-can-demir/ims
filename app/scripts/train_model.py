@@ -39,9 +39,7 @@ def main() -> None:
     args = parser.parse_args()
 
     org_ids = (
-        [args.organization_id]
-        if args.organization_id is not None
-        else _active_organization_ids()
+        [args.organization_id] if args.organization_id is not None else _active_organization_ids()
     )
 
     for org_id in org_ids:
