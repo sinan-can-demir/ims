@@ -218,7 +218,7 @@ with col_next:
 # ---------------------------------------------------------------
 # Section 5 — Admin / Ops (issue #72) — replay control, previously
 # only reachable via API or CLI. Gated on role, not just being logged
-# in — Caddy basic_auth (see Caddyfile) is a network-perimeter control
+# in — Caddy basic_auth (see deploy/Caddyfile) is a network-perimeter control
 # and doesn't distinguish members from admins, so this app-level check
 # is what actually restricts it.
 #

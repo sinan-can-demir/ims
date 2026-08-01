@@ -114,7 +114,7 @@ services:
     # equivalent) — Caddy's basic_auth is its only protection. So, unlike
     # api's port staying published here, the dashboard's port is hidden by
     # default in this file already: it only becomes reachable by adding
-    # docker-compose.caddy.yml, which fronts it with basic_auth. Running
+    # deploy/docker-compose.caddy.yml, which fronts it with basic_auth. Running
     # prod.yml without the Caddy overlay leaves the dashboard unreachable,
     # not unauthenticated.
     ports: !override []

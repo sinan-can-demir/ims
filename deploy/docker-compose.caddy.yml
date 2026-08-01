@@ -8,7 +8,7 @@
 # pointing at this server's public IP. Caddy handles Let's Encrypt cert
 # issuance and renewal automatically — no manual ACM/Route53-style ceremony.
 #
-# No domain yet? Skip this file — docker-compose.prod.yml alone serves the
+# No domain yet? Skip this file — deploy/docker-compose.prod.yml alone serves the
 # API over plain HTTP on port 8000, matching the AWS path's current state
 # (also HTTP-only until a domain is available there too).
 

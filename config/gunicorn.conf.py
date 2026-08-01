@@ -2,7 +2,7 @@
 
 Each Gunicorn worker has its own Python process and therefore its own
 in-memory metrics registry. PROMETHEUS_MULTIPROC_DIR (set in
-docker-compose.prod.yml) redirects those registries to a shared directory of
+deploy/docker-compose.prod.yml) redirects those registries to a shared directory of
 mmap'd files instead, so a single /metrics scrape can see all workers' data
 (merged by app.core.metrics.metrics_response). These two hooks keep that
 directory clean: stale files break counters after a restart, and a dead

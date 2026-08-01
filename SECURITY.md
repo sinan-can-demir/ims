@@ -92,7 +92,7 @@ mitigate anything IP-based abuse (scraping, brute force) cares about.
 
 **Known limitation:** the default `memory://` storage backend is
 per-process, not shared across Gunicorn's worker processes in production
-(`WEB_CONCURRENCY`, `docker-compose.prod.yml` — same gap
+(`WEB_CONCURRENCY`, `deploy/docker-compose.prod.yml` — same gap
 `PROMETHEUS_MULTIPROC_DIR` exists to solve for `/metrics`). The effective
 limit in prod is therefore roughly `WEB_CONCURRENCY x RATE_LIMIT`, not
 exactly `RATE_LIMIT`. Divide `RATE_LIMIT` by your worker count if you need
@@ -126,7 +126,7 @@ itself private (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`,
 `127.0.0.0/8`) — i.e. only when the peer can only be our own proxy, never
 an arbitrary internet client, who could otherwise forge the header to reset
 their own bucket on every request. The one deployment path with no proxy at
-all (`docker-compose.prod.yml` alone, plain HTTP on `:8000`) doesn't need
+all (`deploy/docker-compose.prod.yml` alone, plain HTTP on `:8000`) doesn't need
 this: Docker's published-port NAT already preserves the real public client
 IP as the TCP peer.
 
@@ -174,7 +174,7 @@ HTTPS (detected via `X-Forwarded-Proto`, set by both Caddy and AWS's ALB) —
 uvicorn itself always sees plain HTTP, since TLS is terminated upstream, so
 asserting HSTS unconditionally would break local dev and the no-domain
 plain-HTTP self-hosted path. Neither Caddy nor the ALB add these headers on
-their own; `Caddyfile` is a bare `reverse_proxy`.
+their own; `deploy/Caddyfile` is a bare `reverse_proxy`.
 
 ## Dependency & vulnerability scanning
 
@@ -210,7 +210,7 @@ sign-in (`dashboard/auth.py`'s `login_form()`/`require_login()`), calling
 accounts as the API (`scripts/create_user.py`), same generic-401-equivalent
 "Invalid email or password" on failure. In the self-hosted deployment
 path, its container port is never published by default; it's only
-reachable once the Caddy overlay (`docker-compose.caddy.yml`) also fronts
+reachable once the Caddy overlay (`deploy/docker-compose.caddy.yml`) also fronts
 it with HTTP basic auth on a dedicated HTTPS listener
 (`https://<DOMAIN>:8501`) — see
 [`docs/deployment/self-hosted.md`](docs/deployment/self-hosted.md). The

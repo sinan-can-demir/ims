@@ -74,7 +74,7 @@ docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.prod.yml \
 Caddy requests and renews a Let's Encrypt certificate automatically — no
 manual cert management. The API is now reachable at `https://your-domain.com`.
 
-In both modes, `docker-compose.prod.yml` also: runs the built image only (no
+In both modes, `deploy/docker-compose.prod.yml` also: runs the built image only (no
 live source bind-mount), restarts containers automatically on crash/reboot
 (`restart: unless-stopped`), stops publishing Postgres's port to the outside
 world — only the `api` container can reach it, over the internal Docker
@@ -172,7 +172,7 @@ the API, created the same way via `scripts/create_user.py` (see
 it's only reachable once the Caddy overlay fronts it with HTTP basic auth
 on its own HTTPS listener — a separate, network-perimeter layer on top of
 the per-user sign-in, not a replacement for it. Running
-`docker-compose.prod.yml` without the Caddy overlay leaves the dashboard
+`deploy/docker-compose.prod.yml` without the Caddy overlay leaves the dashboard
 **unreachable**, not merely unauthenticated.
 
 To enable it, in addition to `DOMAIN`, set in `.env`:
@@ -216,7 +216,7 @@ curl -fsSL -o ~/.local/bin/cloudflared \
 chmod +x ~/.local/bin/cloudflared
 ```
 
-The dashboard isn't published to the host at all under `docker-compose.prod.yml`
+The dashboard isn't published to the host at all under `deploy/docker-compose.prod.yml`
 without the Caddy overlay (see above), so the tunnel has nothing to point at
 until you temporarily publish it to localhost:
 
