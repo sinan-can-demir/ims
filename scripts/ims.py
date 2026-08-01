@@ -86,7 +86,19 @@ def cmd_status(_args: argparse.Namespace) -> int:
         print(f"✗ not reachable at {HEALTH_URL}")
 
     print("\nMigration status:")
-    _run(["docker", "compose", "run", "--rm", "migrate", "alembic", "current"])
+    _run(
+        [
+            "docker",
+            "compose",
+            "run",
+            "--rm",
+            "migrate",
+            "alembic",
+            "-c",
+            "config/alembic.ini",
+            "current",
+        ]
+    )
     return 0
 
 

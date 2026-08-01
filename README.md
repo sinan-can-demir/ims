@@ -286,7 +286,7 @@ streamlit run dashboard/app.py
 ```bash
 pip install -r requirements.txt
 export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/ims"
-alembic upgrade head
+alembic -c config/alembic.ini upgrade head
 python scripts/create_user.py --email you@example.com --display-name "Your Name"
 uvicorn app.main:app --reload
 ```

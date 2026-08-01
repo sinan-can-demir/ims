@@ -101,7 +101,7 @@ resource "aws_ecs_task_definition" "migrate" {
       image     = "${aws_ecr_repository.api.repository_url}:${var.api_image_tag}"
       essential = true
 
-      command = ["alembic", "upgrade", "head"]
+      command = ["alembic", "-c", "config/alembic.ini", "upgrade", "head"]
 
       secrets = [
         { name = "DATABASE_URL", valueFrom = aws_secretsmanager_secret.database_url.arn },
