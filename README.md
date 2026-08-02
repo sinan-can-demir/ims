@@ -225,10 +225,11 @@ ims/
 ├── models/                 # Trained Prophet model artifacts (gitignored — run `make train` to generate)
 ├── mlflow.db, mlruns/      # MLflow model registry (gitignored — see docs/model-registry.md)
 ├── dashboard/              # Streamlit app
+├── desktop/                # Tauri native app (Linux) — see docs/deployment/desktop-app.md
 ├── docker/                 # Dockerfile
 ├── config/                 # alembic.ini, gunicorn.conf.py (pytest config lives in pyproject.toml)
 ├── deploy/                 # docker-compose.yml (local dev) + prod/caddy/minio overlays, Caddyfile
-├── docs/deployment/        # self-hosted deployment guide
+├── docs/deployment/        # self-hosted + desktop-app deployment guides
 ├── docs/model-registry.md  # MLflow setup, promotion/rollback
 ├── docs/multi-tenancy.md   # org isolation architecture — what's enforced where
 ├── docs/observability.md   # Prometheus metrics, structured request logging
@@ -297,19 +298,24 @@ other `/api` request — see [API Reference](#api-reference).
 
 ## Deployment
 
-Two paths, depending on what you're running this for:
+Three paths, depending on what you're running this for:
 
-- **[Self-hosted](docs/deployment/self-hosted.md)** (recommended default) —
-  any VPS, ~$5-20/month, no cloud account, fully open-source tooling
-  (Docker Compose + optional [Caddy](https://caddyserver.com/) for automatic
-  HTTPS). Lowest barrier to actually running this for real use.
+- **[IMS Desktop](docs/deployment/desktop-app.md)** (non-technical users,
+  Linux only) — a native installer (`.rpm`) that wraps the Docker Compose
+  stack in a real app: install it, open it, create an account, done. No
+  terminal use required beyond the initial install. Written for a real
+  end user, not a developer.
+- **[Self-hosted](docs/deployment/self-hosted.md)** (recommended default for
+  running your own server) — any VPS, ~$5-20/month, no cloud account, fully
+  open-source tooling (Docker Compose + optional
+  [Caddy](https://caddyserver.com/) for automatic HTTPS).
 - **[AWS](infra/README.md)** (enterprise) — Terraform for ECS Fargate + RDS +
   ALB with least-privilege IAM and OIDC-based CI/CD, for teams already
   running on AWS. More capable (managed failover, autoscaling headroom) and
   more expensive (~$75-85/month) than the self-hosted path.
 
-Both deploy the same Docker image; neither is required to run the project
-locally (see Getting Started above).
+All three run the same underlying application; none is required to run the
+project locally (see Getting Started above).
 
 ---
 
