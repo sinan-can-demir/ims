@@ -7,7 +7,12 @@ sources:
       # Default is relative to the cwd dbt runs from (warehouse/ims_warehouse/,
       # per the Makefile's `cd warehouse/ims_warehouse && dbt ...`), so this
       # works out of the box on a fresh clone with no env var needed.
-      external_location: "read_parquet('{{ env_var(\"DATA_LAKE_ROOT\", \"../../data_lake\") }}/inventory_events/**/*.parquet')"
+      # union_by_name=true (#210) — matches app/services/warehouse_service.py's
+      # own events glob: without it, a file from before a schema change (e.g.
+      # organization_id, added in Epoch 10 PR 13, #149) sitting next to
+      # newer-schema files makes this glob throw instead of unioning by
+      # column name (missing columns read as NULL for that file's rows).
+      external_location: "read_parquet('{{ env_var(\"DATA_LAKE_ROOT\", \"../../data_lake\") }}/inventory_events/**/*.parquet', union_by_name=true)"
     tables:
       - name: inventory_events
         description: "Append-only inventory event log — source of truth for all stock changes"
