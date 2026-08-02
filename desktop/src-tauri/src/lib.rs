@@ -1,5 +1,6 @@
 mod docker;
 
+use std::path::Path;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 
@@ -56,6 +57,26 @@ fn emit_phase(handle: &AppHandle, phase: LaunchPhase) {
     let _ = handle.emit("launch-phase", phase);
 }
 
+fn port_conflict_message(conflicts: &[docker::PortConflict]) -> String {
+    let details: Vec<String> =
+        conflicts.iter().map(|c| format!("port {} ({})", c.port, c.label)).collect();
+    format!("Another application is already using {}. Close it and try again.", details.join(", "))
+}
+
+/// When compose_up fails or times out, db failing its own healthcheck is a
+/// specific, common enough cause (issue #194) to deserve a more actionable
+/// message than the generic fallback -- and a pointer at the actual logs,
+/// rather than a raw exit status a non-technical user can't act on.
+fn compose_up_failure_message(root: &Path, fallback: String) -> String {
+    match docker::db_health_status(root).as_deref() {
+        Some("healthy") | None => fallback,
+        Some(status) => format!(
+            "The database container failed its health check (status: {status}). Run \
+             `docker compose -f deploy/docker-compose.yml logs db` to see why."
+        ),
+    }
+}
+
 fn launch_stack(handle: AppHandle) {
     emit_phase(&handle, LaunchPhase::CheckingDocker);
     match docker::check_daemon() {
@@ -74,6 +95,15 @@ fn launch_stack(handle: AppHandle) {
     }
 
     let root = docker::project_root();
+
+    // Checked before compose_build, not just before compose_up, so a real
+    // conflict fails fast -- no reason to make the user sit through a
+    // possibly-many-minute build only to hit this at the very end.
+    let conflicts = docker::check_port_conflicts(&root);
+    if !conflicts.is_empty() {
+        emit_phase(&handle, LaunchPhase::Failed(port_conflict_message(&conflicts)));
+        return;
+    }
 
     emit_phase(&handle, LaunchPhase::BuildingImages);
     match docker::compose_build(&root) {
@@ -98,17 +128,13 @@ fn launch_stack(handle: AppHandle) {
     match docker::compose_up(&root, START_TIMEOUT) {
         Ok(docker::StartOutcome::Started) => {}
         Ok(docker::StartOutcome::Failed(status)) => {
-            emit_phase(
-                &handle,
-                LaunchPhase::Failed(format!("docker compose up exited with {status}")),
-            );
+            let fallback = format!("docker compose up exited with {status}");
+            emit_phase(&handle, LaunchPhase::Failed(compose_up_failure_message(&root, fallback)));
             return;
         }
         Ok(docker::StartOutcome::TimedOut) => {
-            emit_phase(
-                &handle,
-                LaunchPhase::Failed(format!("Services did not start within {START_TIMEOUT:?}.")),
-            );
+            let fallback = format!("Services did not start within {START_TIMEOUT:?}.");
+            emit_phase(&handle, LaunchPhase::Failed(compose_up_failure_message(&root, fallback)));
             return;
         }
         Err(err) => {
@@ -124,9 +150,7 @@ fn launch_stack(handle: AppHandle) {
     if docker::wait_for_health(HEALTH_TIMEOUT) {
         emit_phase(&handle, LaunchPhase::Healthy);
     } else {
-        emit_phase(
-            &handle,
-            LaunchPhase::Failed(format!("IMS did not become healthy within {HEALTH_TIMEOUT:?}.")),
-        );
+        let fallback = format!("IMS did not become healthy within {HEALTH_TIMEOUT:?}.");
+        emit_phase(&handle, LaunchPhase::Failed(compose_up_failure_message(&root, fallback)));
     }
 }

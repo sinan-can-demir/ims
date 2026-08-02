@@ -30,6 +30,72 @@ pub fn check_daemon() -> DaemonStatus {
     }
 }
 
+const SERVICE_PORTS: &[(&str, u16, &str)] =
+    &[("db", 5432, "database"), ("api", 8000, "API"), ("dashboard", 8501, "dashboard")];
+
+pub struct PortConflict {
+    pub port: u16,
+    pub label: &'static str,
+}
+
+fn port_is_free(port: u16) -> bool {
+    std::net::TcpListener::bind(("127.0.0.1", port)).is_ok()
+}
+
+/// Which of our own services are already running for this compose project
+/// — not JSON, just service names, one per line, so no need for a JSON
+/// dependency just to read this.
+fn running_services(project_root: &Path) -> Vec<String> {
+    let output = compose_command(project_root)
+        .args(["ps", "--status", "running", "--services"])
+        .output();
+    match output {
+        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// A port already held by *our own* already-running container (e.g. a
+/// relaunch against a stack that never got torn down) isn't a conflict —
+/// `docker compose up` recreates it cleanly. Only a port held by something
+/// outside our own project is a real, actionable conflict (issue #174's
+/// "why this matters": a stray unrelated process already bound to 8501).
+pub fn check_port_conflicts(project_root: &Path) -> Vec<PortConflict> {
+    let running = running_services(project_root);
+    SERVICE_PORTS
+        .iter()
+        .filter(|(service, _, _)| !running.iter().any(|s| s == service))
+        .filter(|(_, port, _)| !port_is_free(*port))
+        .map(|(_, port, label)| PortConflict { port: *port, label })
+        .collect()
+}
+
+/// db's healthcheck status ("healthy"/"unhealthy"/"starting"/...), used to
+/// give a specific, actionable message when `compose_up` fails or times out
+/// because db never became healthy — rather than the same generic "docker
+/// compose up exited with ..." message regardless of cause.
+pub fn db_health_status(project_root: &Path) -> Option<String> {
+    let output = compose_command(project_root)
+        .args(["ps", "db", "--format", "{{.Health}}"])
+        .output()
+        .ok()?;
+    if output.status.success() {
+        let status = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if status.is_empty() {
+            None
+        } else {
+            Some(status)
+        }
+    } else {
+        None
+    }
+}
+
 // Mirrors scripts/ims.py's COMPOSE_ARGS: pin the project directory to the
 // repo root (not deploy/, Compose's default for a -f-only invocation) so
 // build context, bind mounts, .env resolution, and the Compose project name
