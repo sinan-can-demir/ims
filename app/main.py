@@ -55,18 +55,19 @@ _cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:8501").split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
-    # The desktop app's webview origin (#192) turned out not to match either
-    # of Tauri's documented patterns — empirically confirmed (via a request
-    # header dump against a real running instance, port stable across
-    # restarts) to be a loopback HTTP server on an app-specific port
-    # (127.0.0.1:1430 for this app's identifier), not http://tauri.localhost
-    # (the Windows/Android-only workaround per wry's
-    # custom_protocol_workaround.rs) or tauri://localhost (what Tauri's own
-    # docs describe for Linux/macOS). A single hardcoded port isn't portable
-    # across machines/Tauri versions anyway, so loopback origins are allowed
-    # by pattern instead — still same-machine-only, not spoofable by remote
-    # web content, since browsers/webviews set the Origin header themselves.
-    allow_origin_regex=r"^http://(localhost|127\.0\.0\.1)(:\d+)?$",
+    # The desktop app's webview origin (#192/#195) is *different* between a
+    # `cargo tauri dev` debug build and a packaged release build, confirmed
+    # empirically both times via a request header dump against a real
+    # running instance (not from Tauri's docs, which describe neither of
+    # these exactly): the debug build presents a loopback HTTP server on an
+    # app-specific port (127.0.0.1:1430 for this app's identifier, port
+    # stable across restarts but not portable across machines/Tauri
+    # versions); the release build presents tauri://localhost (a genuine
+    # custom URL scheme, not http:// at all). Both real, both need to be
+    # allowed — same security boundary either way (same-machine-only, not
+    # spoofable by remote web content, since browsers/webviews set the
+    # Origin header themselves).
+    allow_origin_regex=r"^(http://(localhost|127\.0\.0\.1)(:\d+)?|tauri://localhost)$",
     allow_methods=["*"],
     allow_headers=["*"],
 )
