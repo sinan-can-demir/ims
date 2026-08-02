@@ -2,7 +2,6 @@ services:
 
   db:
     image: postgres:15
-    container_name: ims_db
     restart: always
     environment:
       POSTGRES_USER: postgres
@@ -37,7 +36,6 @@ services:
     build:
       context: .
       dockerfile: ./docker/Dockerfile
-    container_name: ims_api
     depends_on:
       db:
         condition: service_healthy
@@ -56,7 +54,6 @@ services:
     build:
       context: .
       dockerfile: ./docker/Dockerfile
-    container_name: ims_dashboard
     depends_on:
       db:
         condition: service_healthy
