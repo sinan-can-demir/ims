@@ -46,10 +46,48 @@ fn compose_command(project_root: &Path) -> Command {
     cmd
 }
 
-pub fn compose_up(project_root: &Path) -> std::io::Result<ExitStatus> {
-    compose_command(project_root)
-        .args(["up", "-d", "--build"])
-        .status()
+/// Deliberately unbounded — no timeout wraps this. #174 always runs a
+/// rebuild on every launch, and killing a build partway through via a
+/// timeout would leave Docker's build cache and possibly partially-created
+/// layers in a worse state than just waiting, however long that takes
+/// (measured ~49min for a genuine --no-cache cold build on the dev's own
+/// machine — see #191/#193's HEALTH_TIMEOUT comment in lib.rs).
+pub fn compose_build(project_root: &Path) -> std::io::Result<ExitStatus> {
+    compose_command(project_root).arg("build").status()
+}
+
+pub enum StartOutcome {
+    Started,
+    Failed(ExitStatus),
+    TimedOut,
+}
+
+/// Bounded, unlike compose_build above — once images exist, `up -d` just
+/// creates/starts containers and waits on Compose's own depends_on
+/// conditions (db healthcheck, migrate's one-off completion). That can
+/// legitimately hang forever on a genuinely broken environment (e.g. a
+/// stuck healthcheck), with nothing else timing it out, so this is the one
+/// place in the launch sequence a Rust-side kill is actually the safer
+/// choice, not the riskier one. Spawn + poll rather than `.status()`
+/// (which has no way to time out) since Command has no native timeout.
+pub fn compose_up(project_root: &Path, timeout: Duration) -> std::io::Result<StartOutcome> {
+    let mut child = compose_command(project_root).args(["up", "-d"]).spawn()?;
+    let deadline = Instant::now() + timeout;
+    loop {
+        if let Some(status) = child.try_wait()? {
+            return Ok(if status.success() {
+                StartOutcome::Started
+            } else {
+                StartOutcome::Failed(status)
+            });
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Ok(StartOutcome::TimedOut);
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
 }
 
 pub fn compose_down(project_root: &Path) -> std::io::Result<ExitStatus> {
