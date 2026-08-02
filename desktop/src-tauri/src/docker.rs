@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus};
 use std::time::{Duration, Instant};
+use tauri::{AppHandle, Manager};
 
 const COMPOSE_FILE: &str = "deploy/docker-compose.yml";
 const HEALTH_URL: &str = "http://localhost:8000/health";
@@ -11,15 +12,38 @@ pub enum DaemonStatus {
     Running,
 }
 
-/// The IMS repo root, resolved relative to this crate at compile time.
-/// Only valid for a `cargo tauri dev` / locally-built binary — packaging
-/// (issue #195) will need Tauri's bundled-resource path resolution instead,
-/// since a bundled app won't have `CARGO_MANIFEST_DIR`'s source layout.
-pub fn project_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .canonicalize()
-        .expect("desktop/src-tauri/../.. should resolve to the repo root")
+/// Where deploy/docker-compose.yml, docker/, app/, dashboard/, etc. live at
+/// runtime -- the actual Docker build context. Two genuinely different
+/// answers depending on how the binary is running:
+///
+/// - `cargo tauri dev`: the live source tree, via `CARGO_MANIFEST_DIR`
+///   (baked in at compile time) -- so edits to app/ or dashboard/ are
+///   picked up on the next launch without needing to re-bundle anything.
+/// - A packaged build (.rpm/.AppImage, issue #195): `CARGO_MANIFEST_DIR`
+///   would point at wherever *this binary* happened to be compiled --
+///   meaningless, often nonexistent, on the end user's machine. Those
+///   directories are bundled as Tauri resources instead (see
+///   tauri.conf.json's bundle.resources, all mapped under "repo/"), and
+///   `AppHandle::path().resource_dir()` resolves to wherever Tauri's
+///   installer/AppImage actually put them at install/run time.
+///
+/// Gated on `cfg!(debug_assertions)` rather than a Tauri-specific "is dev"
+/// check -- `cargo tauri dev` builds debug by default, `cargo tauri build`
+/// builds release by default, which is the same distinction that already
+/// matters here.
+pub fn project_root(handle: &AppHandle) -> PathBuf {
+    if cfg!(debug_assertions) {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .expect("desktop/src-tauri/../.. should resolve to the repo root")
+    } else {
+        handle
+            .path()
+            .resource_dir()
+            .expect("packaged app should have a resolvable resource directory")
+            .join("repo")
+    }
 }
 
 pub fn check_daemon() -> DaemonStatus {

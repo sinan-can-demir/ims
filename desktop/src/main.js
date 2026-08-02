@@ -1,5 +1,7 @@
 const API_BASE = "http://localhost:8000/api";
 const DASHBOARD_URL = "http://localhost:8501";
+const BOOTSTRAP_STATUS_MAX_ATTEMPTS = 5;
+const BOOTSTRAP_STATUS_RETRY_DELAY_MS = 400;
 
 const statusMessage = document.getElementById("status-message");
 const failureMessage = document.getElementById("failure-message");
@@ -39,9 +41,14 @@ function showFailure(message) {
   failureMessage.classList.remove("hidden");
 }
 
-// Only called once the "healthy" phase event has confirmed the API is
-// actually up — no retry loop needed here anymore, unlike before #193.
-async function checkBootstrapStatus() {
+// "healthy" only means Rust's own HTTP client (ureq, not the webview's)
+// successfully reached the API -- it says nothing about whether
+// WebKitGTK's separate network stack has finished initializing yet.
+// Confirmed by direct instrumentation: fetch() here can throw "Load
+// failed" for a brief window immediately after "healthy" fires, even
+// though the API is already answering curl/ureq requests fine at that
+// exact moment -- a handful of quick retries absorbs that gap.
+async function checkBootstrapStatus(attempt = 1) {
   try {
     const response = await fetch(`${API_BASE}/auth/bootstrap-status`);
     if (!response.ok) {
@@ -55,6 +62,10 @@ async function checkBootstrapStatus() {
       window.location.replace(DASHBOARD_URL);
     }
   } catch {
+    if (attempt < BOOTSTRAP_STATUS_MAX_ATTEMPTS) {
+      setTimeout(() => checkBootstrapStatus(attempt + 1), BOOTSTRAP_STATUS_RETRY_DELAY_MS);
+      return;
+    }
     showFailure("Could not reach IMS. Please restart the app.");
   }
 }

@@ -40,9 +40,9 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|_app_handle, event| {
+        .run(|app_handle, event| {
             if let tauri::RunEvent::Exit = event {
-                let root = docker::project_root();
+                let root = docker::project_root(app_handle);
                 if let Err(err) = docker::compose_down(&root) {
                     eprintln!("failed to run docker compose down: {err}");
                 }
@@ -94,7 +94,7 @@ fn launch_stack(handle: AppHandle) {
         docker::DaemonStatus::Running => {}
     }
 
-    let root = docker::project_root();
+    let root = docker::project_root(&handle);
 
     // Checked before compose_build, not just before compose_up, so a real
     // conflict fails fast -- no reason to make the user sit through a
