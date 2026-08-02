@@ -1,7 +1,8 @@
 # 📦 IMS Makefile
 
 .PHONY: up down reset rebuild logs seed export warehouse dbt-run dbt-test dbt-docs \
-        features train train-deps test test-e2e test-all test-clean migrate shell dashboard lint format
+        features train train-deps test test-e2e test-all test-clean migrate shell dashboard lint format \
+        desktop-dev desktop-build desktop-sign desktop-release
 
 # Prefer the project's own venv so these don't silently break (dbt/joblib
 # "not found") when it exists but isn't activated — but fall back to bare
@@ -166,3 +167,24 @@ lint:
 
 format:
 	$(RUFF) format .
+
+# -------------------------
+# Desktop app (Linux native installer, see desktop/README.md)
+# -------------------------
+desktop-dev:
+	cd desktop && npm run tauri dev
+
+desktop-build:
+	cd desktop && npm run tauri build
+
+# Finds the most recently built .rpm rather than hardcoding a version, so
+# this doesn't need editing every release. Signing is a manual, local-only
+# step on purpose (see #213) -- prompts for the GPG passphrase, no CI
+# automation, no private key anywhere but the maintainer's own machine.
+desktop-sign:
+	./desktop/sign-release.sh "$$(ls -t desktop/src-tauri/target/release/bundle/rpm/*.rpm | head -1)"
+
+# Chains build -> sign, matching how `test-all` already chains test -> test-e2e.
+desktop-release:
+	make desktop-build
+	make desktop-sign

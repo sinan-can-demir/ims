@@ -40,10 +40,19 @@ own app you can open, when it's active.
    It'll ask for your password — that's normal, it's just confirming you're
    allowed to install new programs.
 
-3. **You may see a warning that the installer isn't "signed" or from a
-   verified source.** This is expected for now — the app isn't set up with
-   a security certificate yet. As long as you downloaded it from the
-   official IMS project, it's safe to continue.
+3. **(Optional but recommended) Verify the download is genuine.** IMS
+   Desktop releases are digitally signed, so you can confirm a downloaded
+   file really came from the official project and wasn't tampered with:
+
+   ```
+   sudo rpm --import https://raw.githubusercontent.com/sinan-can-demir/ims/main/desktop/keys/RPM-GPG-KEY-ims-desktop
+   rpm -K ~/Downloads/IMS\ Desktop-0.1.0-1.x86_64.rpm
+   ```
+
+   You should see `digests signatures OK`. This is a one-time setup — once
+   the key is imported, `dnf install` will also verify future updates
+   automatically. Skipping this step doesn't stop the app from installing
+   or working; it's purely about confirming authenticity.
 
 ## Opening it for the first time
 
