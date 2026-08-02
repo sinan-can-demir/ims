@@ -171,6 +171,16 @@ def build_fact_table() -> int:
     # elsewhere, not something possible via normal writes today — this
     # excludes that row from the fact table instead of silently including
     # it un-flagged.
+    #
+    # union_by_name=true (#210) — the events glob spans every partition
+    # file ever written, including ones from before a schema change (e.g.
+    # organization_id itself, added in Epoch 10 PR 13, #149). Without this,
+    # DuckDB requires identical columns/order across every file matched by
+    # the glob and throws a binder error the moment an old-schema file is
+    # in the mix. With it, files are unioned by column name and a file
+    # missing a newer column just reads that column as NULL for its rows —
+    # those rows then naturally drop out of the join below instead of
+    # crashing the whole build.
     result = conn.execute(f"""
     SELECT
         e.event_id,
@@ -180,7 +190,7 @@ def build_fact_table() -> int:
         e.quantity,
         e.created_at,
         e.organization_id
-    FROM read_parquet('{events_path}/**/*.parquet') e
+    FROM read_parquet('{events_path}/**/*.parquet', union_by_name=true) e
     JOIN read_parquet('{products_path}') p
         ON e.product_id = p.product_id
         AND e.organization_id = p.organization_id

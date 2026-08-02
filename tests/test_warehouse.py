@@ -102,6 +102,49 @@ def test_build_fact_table(client, db, warehouse_paths, export_paths):
     assert count == 2
 
 
+def test_build_fact_table_survives_schema_drift(client, db, warehouse_paths, export_paths):
+    """
+    Regression test for #210. Historically (Epoch 10 PR 13, #149) a real
+    schema change added organization_id to exported parquet files — a
+    pre-migration file left on disk lacks that column entirely. Without
+    union_by_name=true on the events glob, DuckDB requires identical
+    columns across every file it matches and throws a binder error the
+    moment an old-schema file is in the mix, instead of unioning by name
+    and letting the missing column read as NULL.
+    """
+    events_root, _ = export_paths
+
+    product = create_product(client)
+    purchase(client, product["id"], 50)
+
+    db.expire_all()
+    export_inventory_events(db, incremental=False)
+    db.expire_all()
+    build_dim_products(db)
+
+    stale_df = pd.DataFrame(
+        {
+            "id": [999],
+            "event_id": ["evt-stale"],
+            "product_id": [product["id"]],
+            "event_type": ["PURCHASE"],
+            "quantity": [10],
+            "created_at": [pd.Timestamp("2025-01-01", tz="UTC")],
+            # no organization_id column — pre-migration shape
+        }
+    )
+    stale_dir = events_root / "legacy"
+    stale_dir.mkdir(parents=True)
+    stale_df.to_parquet(stale_dir / "inventory_events_start_999_end_999.parquet", index=False)
+
+    count = build_fact_table()
+
+    # Doesn't crash on the schema mismatch, and the stale row — unable to
+    # be attributed to an org — drops out of the join rather than being
+    # included un-scoped.
+    assert count == 1
+
+
 def test_balance_query(client, db, warehouse_paths, export_paths):
     # 1. Create product and known events
     product = create_product(client)
