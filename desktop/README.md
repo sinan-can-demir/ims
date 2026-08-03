@@ -80,3 +80,9 @@ The public key lives at [`keys/RPM-GPG-KEY-ims-desktop`](keys/RPM-GPG-KEY-ims-de
 — safe to commit, that's the whole point of public-key signing. See
 [docs/deployment/desktop-app.md](../docs/deployment/desktop-app.md) for how
 end users import it to verify a download.
+
+A revocation certificate for the signing key has been generated (see #221)
+and is stored offline, outside the repo and off this machine. If the
+private key or its passphrase is ever lost or compromised, that
+certificate is what lets us publish a revocation and tell anyone who
+trusts the public key above that it's no longer good.
