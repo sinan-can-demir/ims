@@ -17,7 +17,7 @@ slowapi==0.1.10
 bcrypt==5.0.0
 PyJWT==2.13.0
 duckdb==1.5.5
-s3fs==2026.6.0
+s3fs==2026.7.0
 dbt-duckdb==1.10.1
 # Transitive via dbt-core -> mashumaro[msgpack] (unpinned upstream) — pinned
 # directly to close GHSA-6v7p-g79w-8964 (OOB read/crash on Unpacker reuse),
