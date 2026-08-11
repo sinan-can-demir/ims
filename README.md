@@ -225,7 +225,7 @@ ims/
 ├── models/                 # Trained Prophet model artifacts (gitignored — run `make train` to generate)
 ├── mlflow.db, mlruns/      # MLflow model registry (gitignored — see docs/model-registry.md)
 ├── dashboard/              # Streamlit app
-├── desktop/                # Tauri native app (Linux) — see docs/deployment/desktop-app.md
+├── tauri/                  # Tauri native app (Linux; Windows/mobile in progress) — see docs/deployment/desktop-app.md
 ├── docker/                 # Dockerfile
 ├── config/                 # alembic.ini, gunicorn.conf.py (pytest config lives in pyproject.toml)
 ├── deploy/                 # docker-compose.yml (local dev) + prod/caddy/minio overlays, Caddyfile

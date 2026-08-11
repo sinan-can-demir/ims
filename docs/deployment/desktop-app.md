@@ -45,7 +45,7 @@ own app you can open, when it's active.
    file really came from the official project and wasn't tampered with:
 
    ```
-   sudo rpm --import https://raw.githubusercontent.com/sinan-can-demir/ims/main/desktop/keys/RPM-GPG-KEY-ims-desktop
+   sudo rpm --import https://raw.githubusercontent.com/sinan-can-demir/ims/main/tauri/keys/RPM-GPG-KEY-ims-desktop
    rpm -K ~/Downloads/IMS\ Desktop-0.1.0-1.x86_64.rpm
    ```
 

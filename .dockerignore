@@ -30,10 +30,10 @@ warehouse/*.duckdb
 infra/.terraform/
 infra/terraform.tfvars
 
-# The Tauri desktop app (#174) is a separate app — none of its source is
+# The Tauri app (#174) is a separate app — none of its source is
 # ever needed by these Python images. Whole directory, not just
 # src-tauri/target/ and node_modules/: those change on every single Rust
 # compile / npm install, which was invalidating COPY . .'s cache on every
 # `docker compose up --build` regardless of whether app/ itself changed —
 # real, measured slowdown discovered while testing #192.
-desktop/
+tauri/

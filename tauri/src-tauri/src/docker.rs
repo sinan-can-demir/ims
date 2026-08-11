@@ -36,7 +36,7 @@ pub fn project_root(handle: &AppHandle) -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
             .canonicalize()
-            .expect("desktop/src-tauri/../.. should resolve to the repo root")
+            .expect("tauri/src-tauri/../.. should resolve to the repo root")
     } else {
         handle
             .path()
