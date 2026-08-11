@@ -45,6 +45,9 @@ services:
       - "8000:8000"
     volumes:
       - .:/app:z
+    # This quickstart file deliberately does not load .env (no `env_file:`),
+    # so JWT_SECRET etc. fall back to the documented dev-only default — see
+    # SECURITY.md. docker-compose.prod.yml does load .env, for real deploys.
     environment:
       - PYTHONPATH=/app
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/ims
