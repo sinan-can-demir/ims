@@ -1,9 +1,12 @@
 # IMS Desktop
 
-A native Tauri app (Linux only, v1) that wraps the IMS Docker Compose stack:
-launch → detects Docker → builds/starts the stack → shows a first-run wizard
-or the dashboard → quit stops everything cleanly. See issue #174 for the
-original design and #189-195 for how it was built out.
+A native Tauri app that wraps the IMS Docker Compose stack: launch →
+detects Docker → builds/starts the stack → shows a first-run wizard or the
+dashboard → quit stops everything cleanly. See issue #174 for the original
+design and #189-195 for how the Linux build was shipped. Windows (#226) and
+mobile (#234) targets are in progress as additional bundles from this same
+Tauri project — see #225 for why this now lives at the repo root instead of
+under `desktop/`.
 
 **Looking for install/usage instructions as an end user?** See
 [docs/deployment/desktop-app.md](../docs/deployment/desktop-app.md) instead —
@@ -11,7 +14,8 @@ this README is for people working on the app itself.
 
 ## Prerequisites (Linux)
 
-Linux is the only platform in scope for v1 (see issue #195). You need:
+Linux is the only platform currently shipping (see issue #195); Windows
+prerequisites will land with #226. You need:
 
 1. **Rust toolchain** — stable, 1.77.2 or newer. Install via
    [rustup](https://rustup.rs/):

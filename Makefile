@@ -169,20 +169,20 @@ format:
 	$(RUFF) format .
 
 # -------------------------
-# Desktop app (Linux native installer, see desktop/README.md)
+# Desktop app (Linux native installer, see tauri/README.md)
 # -------------------------
 desktop-dev:
-	cd desktop && npm run tauri dev
+	cd tauri && npm run tauri dev
 
 desktop-build:
-	cd desktop && npm run tauri build
+	cd tauri && npm run tauri build
 
 # Finds the most recently built .rpm rather than hardcoding a version, so
 # this doesn't need editing every release. Signing is a manual, local-only
 # step on purpose (see #213) -- prompts for the GPG passphrase, no CI
 # automation, no private key anywhere but the maintainer's own machine.
 desktop-sign:
-	./desktop/sign-release.sh "$$(ls -t desktop/src-tauri/target/release/bundle/rpm/*.rpm | head -1)"
+	./tauri/sign-release.sh "$$(ls -t tauri/src-tauri/target/release/bundle/rpm/*.rpm | head -1)"
 
 # Chains build -> sign, matching how `test-all` already chains test -> test-e2e.
 desktop-release:
