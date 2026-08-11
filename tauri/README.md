@@ -45,6 +45,71 @@ prerequisites will land with #226. You need:
    Other distros: see the
    [official Tauri Linux prerequisites](https://tauri.app/start/prerequisites/#linux).
 
+## Prerequisites (Android)
+
+Android is the mobile target currently shipping (see #234); iOS is
+explicitly deferred — it requires a macOS + Xcode build host, which wasn't
+available when #234 was done. You need everything above (Rust toolchain,
+Node.js) plus:
+
+1. **A JDK Gradle actually supports — not necessarily your system's
+   default.** Gradle 8.14.3 (the version this project's Android scaffold
+   pins) can't run under a too-new JDK: on a machine whose system JDK was
+   25, every build failed immediately with `Unsupported class file major
+   version 69` (69 is JDK 25's bytecode version). The fix is a JDK 17 or 21
+   LTS installed just for this, independent of whatever the system default
+   is — the same reason Android Studio bundles its own JDK rather than
+   using the system one. A self-contained download works fine, no root/dnf
+   needed:
+   ```sh
+   curl -sL -o temurin21.tar.gz \
+     "https://api.adoptium.net/v3/binary/latest/21/ga/linux/x64/jdk/hotspot/normal/eclipse?project=jdk"
+   mkdir -p ~/.jdks && tar xzf temurin21.tar.gz -C ~/.jdks/
+   mv ~/.jdks/jdk-21* ~/.jdks/temurin-21
+   ```
+2. **Android SDK command-line tools.**
+   ```sh
+   mkdir -p ~/Android/Sdk/cmdline-tools
+   curl -sL -o cmdline-tools.zip \
+     https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+   unzip -q cmdline-tools.zip -d ~/Android/Sdk/cmdline-tools/
+   mv ~/Android/Sdk/cmdline-tools/cmdline-tools ~/Android/Sdk/cmdline-tools/latest
+   ```
+   Then, with `JAVA_HOME` pointed at the JDK from step 1:
+   ```sh
+   export PATH="$HOME/Android/Sdk/cmdline-tools/latest/bin:$PATH"
+   yes | sdkmanager --licenses
+   sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.1.0" "ndk;29.0.14206865"
+   ```
+3. **Rust Android targets:**
+   ```sh
+   rustup target add aarch64-linux-android armv7-linux-androideabi \
+     i686-linux-android x86_64-linux-android
+   ```
+4. **Environment variables**, every time you build (not just once):
+   ```sh
+   export JAVA_HOME=~/.jdks/temurin-21
+   export ANDROID_HOME="$HOME/Android/Sdk"
+   export NDK_HOME="$ANDROID_HOME/ndk/$(ls -1 $ANDROID_HOME/ndk)"
+   ```
+
+`npx tauri android init` (already run once — `src-tauri/gen/android/` is
+committed) generates the Android Studio project; `npx tauri android build
+--target aarch64` (or `npx tauri android dev`) builds/runs it.
+
+**A config gotcha worth knowing if you ever touch `bundle.resources`:**
+`tauri.android.conf.json` overrides the base `tauri.conf.json` via JSON
+merge-patch semantics, where an **empty object is a no-op, not a clear** —
+`"resources": {}` silently keeps whatever the base config already set;
+only `"resources": null` actually blanks it out. This mattered here
+because the base `tauri.conf.json` bundles the entire Python backend
+(`app/`, `dashboard/`, `docker/`, `deploy/`, `migrations/`, `scripts/`) as
+resources so *desktop* can locally `docker compose` it — mobile is a
+remote thin client (see #227) and should never carry any of that.
+`tauri.android.conf.json` sets `"bundle": {"resources": null}` for exactly
+this reason; without the explicit `null`, the mobile APK would silently
+ship the whole backend source and deploy configs to every phone install.
+
 ## Running
 
 ```sh
