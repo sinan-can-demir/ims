@@ -5,6 +5,14 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
+    ignore:
+      # streamlit (all releases through 1.61.1) pins pyarrow<25 -- not a lagging
+      # version bound, a deliberate one: streamlit 1.60.0's own changelog cites
+      # "Avoid PyArrow 25 thread initialization crash" as the reason for the cap
+      # (see #241, closed). Recreates itself every week otherwise. Remove once a
+      # streamlit release lifts the pyarrow<25 pin.
+      - dependency-name: "pyarrow"
+        versions: [">=25.0.0"]
 
   - package-ecosystem: "docker"
     directory: "/docker"
