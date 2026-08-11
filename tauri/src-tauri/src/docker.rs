@@ -3,7 +3,6 @@ use std::process::{Command, ExitStatus};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager};
 
-const COMPOSE_FILE: &str = "deploy/docker-compose.yml";
 const HEALTH_URL: &str = "http://localhost:8000/health";
 
 pub enum DaemonStatus {
@@ -31,6 +30,10 @@ pub enum DaemonStatus {
 /// check -- `cargo tauri dev` builds debug by default, `cargo tauri build`
 /// builds release by default, which is the same distinction that already
 /// matters here.
+///
+/// Both branches build the path via `Path`/`PathBuf` (`.join`,
+/// `.canonicalize`), which use the platform separator automatically, so
+/// this needs no Windows-specific handling (#226).
 pub fn project_root(handle: &AppHandle) -> PathBuf {
     if cfg!(debug_assertions) {
         Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -46,6 +49,13 @@ pub fn project_root(handle: &AppHandle) -> PathBuf {
     }
 }
 
+/// On Windows, Docker Desktop's daemon listens on a named pipe rather than
+/// a Unix socket, but the `docker` CLI itself abstracts that -- `docker
+/// info`'s exit code means the same thing on both platforms as long as
+/// Docker Desktop put `docker.exe` on PATH (its installer does this by
+/// default). Assumes the WSL2 backend specifically (Docker Desktop's
+/// default and only recommended Windows mode) -- Windows containers mode
+/// is out of scope, see #226, since this stack's images are Linux-based.
 pub fn check_daemon() -> DaemonStatus {
     match Command::new("docker").arg("info").output() {
         Ok(output) if output.status.success() => DaemonStatus::Running,
@@ -62,6 +72,16 @@ pub struct PortConflict {
     pub label: &'static str,
 }
 
+// std::net::TcpListener::bind is a thin wrapper over the OS socket API on
+// every platform Rust supports, including Windows, so the happy path here
+// is identical. The one open question (#226) is a TIME_WAIT edge case:
+// Windows and Linux don't default to the same bind-vs-TIME_WAIT-socket
+// behavior, so a port that just closed could in theory read as "in use" on
+// one platform and "free" on the other for a few seconds. Neither this
+// function nor its caller sets SO_REUSEADDR (would need the `socket2`
+// crate; std::net doesn't expose it), so this is unverified on real
+// Windows rather than fixed -- flagging it here instead of guessing at a
+// fix with no Windows machine to reproduce against.
 fn port_is_free(port: u16) -> bool {
     std::net::TcpListener::bind(("127.0.0.1", port)).is_ok()
 }
@@ -124,15 +144,20 @@ pub fn db_health_status(project_root: &Path) -> Option<String> {
 // repo root (not deploy/, Compose's default for a -f-only invocation) so
 // build context, bind mounts, .env resolution, and the Compose project name
 // (container/volume naming) all match what `python scripts/ims.py` produces.
+//
+// The compose file path is built via `Path::join`, not a hardcoded
+// forward-slash string -- `docker compose` on Windows does tolerate `/` in
+// practice, but there's no reason to rely on that when `PathBuf` gives the
+// platform-correct separator for free (#226). `Command::arg` takes anything
+// `AsRef<OsStr>`, which `PathBuf` implements, so this passes through as-is.
 fn compose_command(project_root: &Path) -> Command {
+    let compose_file = Path::new("deploy").join("docker-compose.yml");
     let mut cmd = Command::new("docker");
-    cmd.current_dir(project_root).args([
-        "compose",
-        "-f",
-        COMPOSE_FILE,
-        "--project-directory",
-        ".",
-    ]);
+    cmd.current_dir(project_root)
+        .arg("compose")
+        .arg("-f")
+        .arg(compose_file)
+        .args(["--project-directory", "."]);
     cmd
 }
 
