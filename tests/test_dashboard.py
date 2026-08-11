@@ -1,5 +1,7 @@
 # tests/test_dashboard.py
 
+from pathlib import Path
+
 import pandas as pd
 import streamlit as st
 from streamlit.testing.v1 import AppTest
@@ -11,9 +13,17 @@ from app.models.user import User
 
 from .utils import create_product, purchase
 
-RECIPES_PAGE = "dashboard/views/recipes.py"
-PURCHASE_ORDERS_PAGE = "dashboard/views/purchase_orders.py"
-FLEET_OVERVIEW_PAGE = "dashboard/views/fleet_overview.py"
+# Absolute, not relative -- streamlit 1.61 changed AppTest.from_file()'s
+# relative-path resolution from cwd to "the file that calls from_file()"
+# (broke every call below when bumping streamlit 1.60.0 -> 1.61.1).
+# Absolute paths sidestep that resolution rule entirely, so this is correct
+# regardless of which behavior a future streamlit version picks.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+DASHBOARD_APP = str(_REPO_ROOT / "dashboard" / "app.py")
+RECIPES_PAGE = str(_REPO_ROOT / "dashboard" / "views" / "recipes.py")
+PURCHASE_ORDERS_PAGE = str(_REPO_ROOT / "dashboard" / "views" / "purchase_orders.py")
+FLEET_OVERVIEW_PAGE = str(_REPO_ROOT / "dashboard" / "views" / "fleet_overview.py")
+PRODUCT_DETAIL_PAGE = str(_REPO_ROOT / "dashboard" / "views" / "product_detail.py")
 
 
 def _make_dashboard_user(
@@ -86,7 +96,7 @@ def test_dashboard_renders_without_exception(client, dashboard_db, monkeypatch):
 
     _mock_forecast(monkeypatch)
 
-    at = AppTest.from_file("dashboard/app.py")
+    at = AppTest.from_file(DASHBOARD_APP)
     _signed_in(at, user)
     at.run()
 
@@ -100,7 +110,7 @@ def test_dashboard_shows_inventory_metric(client, dashboard_db, monkeypatch):
 
     _mock_forecast(monkeypatch)
 
-    at = AppTest.from_file("dashboard/app.py")
+    at = AppTest.from_file(DASHBOARD_APP)
     _signed_in(at, user)
     at.run()
 
@@ -115,7 +125,7 @@ def test_dashboard_blocks_unauthenticated_visitor(client, dashboard_db, monkeypa
 
     _mock_forecast(monkeypatch)
 
-    at = AppTest.from_file("dashboard/app.py")
+    at = AppTest.from_file(DASHBOARD_APP)
     at.run()
 
     assert not at.exception
@@ -135,7 +145,7 @@ def test_dashboard_login_success_unlocks_content(client, dashboard_db, monkeypat
 
     _mock_forecast(monkeypatch)
 
-    at = AppTest.from_file("dashboard/app.py")
+    at = AppTest.from_file(DASHBOARD_APP)
     at.run()
 
     at.text_input[0].input("login-flow@example.com")
@@ -161,7 +171,7 @@ def test_dashboard_login_failure_shows_error(client, dashboard_db, monkeypatch):
 
     _mock_forecast(monkeypatch)
 
-    at = AppTest.from_file("dashboard/app.py")
+    at = AppTest.from_file(DASHBOARD_APP)
     at.run()
 
     at.text_input[0].input("login-fail@example.com")
@@ -180,7 +190,7 @@ def test_dashboard_admin_sees_admin_ops_section(client, dashboard_db, monkeypatc
 
     _mock_forecast(monkeypatch)
 
-    at = AppTest.from_file("dashboard/app.py")
+    at = AppTest.from_file(DASHBOARD_APP)
     _signed_in(at, admin)
     at.run()
 
@@ -195,7 +205,7 @@ def test_dashboard_member_does_not_see_admin_ops_section(client, dashboard_db, m
 
     _mock_forecast(monkeypatch)
 
-    at = AppTest.from_file("dashboard/app.py")
+    at = AppTest.from_file(DASHBOARD_APP)
     _signed_in(at, member)
     at.run()
 
@@ -212,7 +222,7 @@ def test_dashboard_admin_can_trigger_replay(client, admin_actions_db, monkeypatc
 
     _mock_forecast(monkeypatch)
 
-    at = AppTest.from_file("dashboard/app.py")
+    at = AppTest.from_file(DASHBOARD_APP)
     _signed_in(at, admin)
     at.run()
 
@@ -258,7 +268,7 @@ def test_dashboard_admin_ops_has_no_export_button(client, admin_actions_db, monk
 
     _mock_forecast(monkeypatch)
 
-    at = AppTest.from_file("dashboard/app.py")
+    at = AppTest.from_file(DASHBOARD_APP)
     _signed_in(at, admin)
     at.run()
 
@@ -335,7 +345,15 @@ def test_purchase_orders_page_create_manual_draft_and_submit(client, dashboard_d
     create_button.click().run()
 
     assert not at.exception
-    assert any("Draft purchase order created" in s.value for s in at.success)
+    # Not asserting on the st.success(...) message itself: the view calls
+    # st.rerun() immediately after it (purchase_orders.py), and streamlit
+    # 1.61 changed AppTest to actually perform that rerun rather than
+    # stopping at the exception -- so the pre-rerun success message is gone
+    # by the time .run() returns, same as what a real end user would see
+    # (the message flashes and is replaced by the rerun, it was never meant
+    # to persist). Assert on the durable outcome instead: the new draft PO
+    # now shows up in the post-rerun list.
+    assert any("DRAFT" in e.label for e in at.expander)
 
     submit_button = next(b for b in at.button if b.label == "Submit purchase order")
     submit_button.click().run()
@@ -413,7 +431,7 @@ def test_dashboard_shows_safety_stock_and_days_of_stock_metrics(client, dashboar
     # load_products() etc. are @st.cache_data'd with no per-test isolation
     # — see the Recipes/Purchase Orders section above for why this matters.
     st.cache_data.clear()
-    at = AppTest.from_file("dashboard/app.py")
+    at = AppTest.from_file(DASHBOARD_APP)
     _signed_in(at, user)
     at.run()
 
@@ -437,7 +455,7 @@ def test_dashboard_forecast_horizon_slider_changes_forecast_days(client, dashboa
     _mock_forecast(monkeypatch, fn=fake_forecast)
 
     st.cache_data.clear()
-    at = AppTest.from_file("dashboard/app.py")
+    at = AppTest.from_file(DASHBOARD_APP)
     _signed_in(at, user)
     at.run()
 
@@ -468,7 +486,7 @@ def test_dashboard_events_filtered_by_type(client, dashboard_db, monkeypatch):
     _mock_forecast(monkeypatch)
 
     st.cache_data.clear()
-    at = AppTest.from_file("dashboard/app.py")
+    at = AppTest.from_file(DASHBOARD_APP)
     _signed_in(at, user)
     at.run()
 
@@ -489,7 +507,7 @@ def test_dashboard_events_pagination(client, dashboard_db, monkeypatch):
     _mock_forecast(monkeypatch)
 
     st.cache_data.clear()
-    at = AppTest.from_file("dashboard/app.py")
+    at = AppTest.from_file(DASHBOARD_APP)
     _signed_in(at, user)
     at.run()
 
@@ -611,7 +629,7 @@ def test_product_detail_deep_link_preselects_product(client, dashboard_db, monke
     _mock_forecast(monkeypatch)
 
     st.cache_data.clear()
-    at = AppTest.from_file("dashboard/views/product_detail.py")
+    at = AppTest.from_file(PRODUCT_DETAIL_PAGE)
     _signed_in(at, user)
     at.session_state["deep_link_product_id"] = product_b["id"]
     at.run()
