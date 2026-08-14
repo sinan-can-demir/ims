@@ -1,10 +1,21 @@
 # IMS Desktop
 
-A native Tauri app that wraps the IMS Docker Compose stack: launch →
-detects Docker → builds/starts the stack → shows a first-run wizard or the
-dashboard → quit stops everything cleanly. See issue #174 for the original
-design and #189-195 for how the Linux build was shipped. Windows (#226) and
-mobile (#234) targets are in progress as additional bundles from this same
+A native Tauri app with two very different frontends sharing one Rust
+backend, per platform:
+
+- **Desktop** (`tauri/src/`) wraps the IMS Docker Compose stack: launch →
+  detects Docker → builds/starts the stack → shows a first-run wizard or the
+  dashboard → quit stops everything cleanly. See issue #174 for the original
+  design and #189-195 for how the Linux build was shipped.
+- **Mobile** (`tauri/src-mobile/`) is a remote thin client with no local
+  Docker stack (see #227) — it connects to a server (desktop/self-hosted
+  install) elsewhere on the user's Tailscale network instead of launching
+  one itself. The Android toolchain and first working build shipped in
+  #234; the server-address settings screen shipped in #232. The rest of
+  mobile's UX (first-run flow #245, login #233, error states #246) is still
+  in progress.
+
+Windows (#226) is in progress as an additional desktop bundle from this same
 Tauri project — see #225 for why this now lives at the repo root instead of
 under `desktop/`.
 
@@ -109,6 +120,16 @@ remote thin client (see #227) and should never carry any of that.
 `tauri.android.conf.json` sets `"bundle": {"resources": null}` for exactly
 this reason; without the explicit `null`, the mobile APK would silently
 ship the whole backend source and deploy configs to every phone install.
+
+**Two more Android-specific gotchas worth knowing, each with its own
+write-up:** this frontend has no bundler, so a normal `@tauri-apps/*` npm
+import (e.g. the store plugin) fails at runtime in the actual webview even
+though `cargo check`/`npm install` pass — see
+[docs/wiki/tauri-plugin-bare-imports-dont-resolve.md](../docs/wiki/tauri-plugin-bare-imports-dont-resolve.md).
+And Android release builds silently block all `http://` traffic unless
+`usesCleartextTraffic` is set for the `release` build type too, not just
+`debug` — see
+[docs/wiki/android-release-blocks-cleartext-http.md](../docs/wiki/android-release-blocks-cleartext-http.md).
 
 ## Running
 
