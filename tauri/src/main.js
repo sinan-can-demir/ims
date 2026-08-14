@@ -1,5 +1,13 @@
-const API_BASE = "http://localhost:8000/api";
-const DASHBOARD_URL = "http://localhost:8501";
+import { getApiBase, getDashboardUrl } from "./config.js";
+
+// Desktop always launches its own local stack (lib.rs's launch_stack), so
+// unlike mobile it has a safe default to fall back on when nothing's been
+// explicitly configured yet -- preserves the old hardcoded behavior (#232).
+const DESKTOP_DEFAULT_HOST = "localhost";
+
+let API_BASE;
+let DASHBOARD_URL;
+
 const BOOTSTRAP_STATUS_MAX_ATTEMPTS = 5;
 const BOOTSTRAP_STATUS_RETRY_DELAY_MS = 400;
 
@@ -106,6 +114,8 @@ async function handleRegisterSubmit(event) {
 }
 
 window.addEventListener("DOMContentLoaded", () => {
+  API_BASE = getApiBase(DESKTOP_DEFAULT_HOST);
+  DASHBOARD_URL = getDashboardUrl(DESKTOP_DEFAULT_HOST);
   registerForm.addEventListener("submit", handleRegisterSubmit);
   window.__TAURI__.event.listen("launch-phase", handleLaunchPhase);
 });

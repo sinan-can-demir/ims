@@ -37,6 +37,17 @@ android {
             }
         }
         getByName("release") {
+            // Tauri's default here is "false" (Android blocks all cleartext
+            // HTTP by default for release builds targeting API 28+, unlike
+            // debug builds which get it for free). Verified empirically: a
+            // release build silently failed to reach the API at all -- no
+            // CORS error, no console output, just nothing -- until this was
+            // set. Deliberate for mobile specifically: the server address is
+            // always a Tailscale host (#227), so the VPN tunnel is the
+            // encryption boundary, not TLS on the HTTP connection itself
+            // (#232's own resolution) -- matches tauri.android.conf.json's
+            // CSP, which already accepts the same trade-off.
+            manifestPlaceholders["usesCleartextTraffic"] = "true"
             isMinifyEnabled = true
             proguardFiles(
                 *fileTree(".") { include("**/*.pro") }

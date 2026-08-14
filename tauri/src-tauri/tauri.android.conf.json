@@ -1,6 +1,14 @@
 {
   "identifier": "com.ims.mobile",
   "productName": "IMS Mobile",
+  "build": {
+    "frontendDist": "../src-mobile"
+  },
+  "app": {
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' http:; style-src 'self'; script-src 'self'"
+    }
+  },
   "bundle": {
     "resources": null
   }
