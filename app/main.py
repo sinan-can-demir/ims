@@ -67,7 +67,18 @@ app.add_middleware(
     # allowed — same security boundary either way (same-machine-only, not
     # spoofable by remote web content, since browsers/webviews set the
     # Origin header themselves).
-    allow_origin_regex=r"^(http://(localhost|127\.0\.0\.1)(:\d+)?|tauri://localhost)$",
+    #
+    # Mobile (#232) is a third, different case yet again -- verified against
+    # a real Android build (both debug and release; unlike desktop these two
+    # don't differ from each other on Android) rather than assumed: its
+    # webview presents `http://tauri.localhost`, not the `tauri://localhost`
+    # custom-scheme origin desktop's release build uses. Same trust boundary
+    # rationale as desktop: the Origin header is set by the OS webview, not
+    # forgeable by remote content, and now cross-machine since mobile's
+    # server is remote (Tailscale, #227) rather than same-machine -- but
+    # Tailscale's own network-level auth is the boundary there, same as it
+    # is for every other service reachable over that tailnet.
+    allow_origin_regex=r"^(http://(localhost|127\.0\.0\.1)(:\d+)?|tauri://localhost|http://tauri\.localhost)$",
     allow_methods=["*"],
     allow_headers=["*"],
 )

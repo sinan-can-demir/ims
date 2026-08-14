@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IMS Mobile</title>
+    <script type="module" src="/main.js" defer></script>
+  </head>
+
+  <body>
+    <main class="container">
+      <h1>IMS Mobile</h1>
+
+      <p>Enter the address of your IMS server (a Tailscale hostname or IP).</p>
+
+      <form id="server-form">
+        <label>
+          Server address
+          <input
+            id="server-host"
+            type="text"
+            required
+            placeholder="myserver.tailnet-name.ts.net"
+            autocapitalize="none"
+            autocorrect="off"
+            spellcheck="false"
+          />
+        </label>
+        <button type="submit">Save</button>
+        <p id="server-saved" class="hidden">Saved.</p>
+        <p id="server-error" class="error hidden"></p>
+      </form>
+    </main>
+  </body>
+</html>

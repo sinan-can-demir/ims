@@ -1,7 +1,11 @@
+#[cfg(desktop)]
 mod docker;
 
+#[cfg(desktop)]
 use std::path::Path;
+#[cfg(desktop)]
 use std::time::Duration;
+#[cfg(desktop)]
 use tauri::{AppHandle, Emitter};
 
 // Bounded, but only the post-build window: once docker::compose_up()
@@ -10,6 +14,7 @@ use tauri::{AppHandle, Emitter};
 // api/dashboard binding and passing their own healthcheck is left, measured
 // at ~10s in practice. 60s leaves real headroom without masking a genuinely
 // stuck container as still "starting up".
+#[cfg(desktop)]
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(60);
 
 // Bounded, unlike docker::compose_build (deliberately unbounded -- see its
@@ -17,8 +22,10 @@ const HEALTH_TIMEOUT: Duration = Duration::from_secs(60);
 // ~19-30s on the dev's own machine. 120s leaves generous headroom over that
 // while still giving up on a genuinely stuck depends_on wait (e.g. a broken
 // healthcheck) instead of hanging forever.
+#[cfg(desktop)]
 const START_TIMEOUT: Duration = Duration::from_secs(120);
 
+#[cfg(desktop)]
 #[derive(Clone, serde::Serialize)]
 #[serde(tag = "phase", content = "detail", rename_all = "snake_case")]
 enum LaunchPhase {
@@ -33,16 +40,25 @@ enum LaunchPhase {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .setup(|app| {
-            let handle = app.handle().clone();
-            std::thread::spawn(move || launch_stack(handle));
+        .setup(|_app| {
+            // Mobile has no local Docker daemon to launch -- the stack it
+            // talks to runs on a remote desktop/server install (#227). Only
+            // desktop owns its own lifecycle; mobile's frontend drives its
+            // own first-run flow (#232/#245) instead of waiting on
+            // "launch-phase" events that would otherwise never fire.
+            #[cfg(desktop)]
+            {
+                let handle = _app.handle().clone();
+                std::thread::spawn(move || launch_stack(handle));
+            }
             Ok(())
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|app_handle, event| {
-            if let tauri::RunEvent::Exit = event {
-                let root = docker::project_root(app_handle);
+        .run(|_app_handle, _event| {
+            #[cfg(desktop)]
+            if let tauri::RunEvent::Exit = _event {
+                let root = docker::project_root(_app_handle);
                 if let Err(err) = docker::compose_down(&root) {
                     eprintln!("failed to run docker compose down: {err}");
                 }
@@ -50,6 +66,7 @@ pub fn run() {
         });
 }
 
+#[cfg(desktop)]
 fn emit_phase(handle: &AppHandle, phase: LaunchPhase) {
     // Best-effort: if no window is listening yet, there's nothing more
     // useful to do than drop the event -- the frontend re-derives its state
@@ -57,6 +74,7 @@ fn emit_phase(handle: &AppHandle, phase: LaunchPhase) {
     let _ = handle.emit("launch-phase", phase);
 }
 
+#[cfg(desktop)]
 fn port_conflict_message(conflicts: &[docker::PortConflict]) -> String {
     let details: Vec<String> =
         conflicts.iter().map(|c| format!("port {} ({})", c.port, c.label)).collect();
@@ -67,6 +85,7 @@ fn port_conflict_message(conflicts: &[docker::PortConflict]) -> String {
 /// specific, common enough cause (issue #194) to deserve a more actionable
 /// message than the generic fallback -- and a pointer at the actual logs,
 /// rather than a raw exit status a non-technical user can't act on.
+#[cfg(desktop)]
 fn compose_up_failure_message(root: &Path, fallback: String) -> String {
     match docker::db_health_status(root).as_deref() {
         Some("healthy") | None => fallback,
@@ -77,6 +96,7 @@ fn compose_up_failure_message(root: &Path, fallback: String) -> String {
     }
 }
 
+#[cfg(desktop)]
 fn launch_stack(handle: AppHandle) {
     emit_phase(&handle, LaunchPhase::CheckingDocker);
     match docker::check_daemon() {
