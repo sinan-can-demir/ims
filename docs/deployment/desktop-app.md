@@ -4,8 +4,10 @@ IMS Desktop is an app that runs your inventory system on your own computer.
 You don't need to be a programmer to use it — this guide walks through
 everything step by step.
 
-**Right now, IMS Desktop only works on Linux computers.** Windows and Mac
-support may come later.
+**Right now, IMS Desktop is only officially released for Linux computers.**
+A Windows installer can be built from source and installs/runs, but it
+hasn't been fully verified end-to-end yet, so there's no official Windows
+download here. Mac support may come later.
 
 ## Before you start: install Docker
 

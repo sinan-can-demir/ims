@@ -15,9 +15,11 @@ backend, per platform:
   mobile's UX (first-run flow #245, login #233, error states #246) is still
   in progress.
 
-Windows (#226) is in progress as an additional desktop bundle from this same
-Tauri project — see #225 for why this now lives at the repo root instead of
-under `desktop/`.
+Windows (#226) ships `msi`/`nsis` bundle targets and a Windows-audited
+`docker.rs` — see #225 for why this now lives at the repo root instead of
+under `desktop/`. The build and per-user install have been verified on real
+Windows hardware; the full Docker-stack happy path (Docker Desktop + WSL2)
+has not been, since that needs admin rights to set up.
 
 **Looking for install/usage instructions as an end user?** See
 [docs/deployment/desktop-app.md](../docs/deployment/desktop-app.md) instead —
@@ -25,8 +27,8 @@ this README is for people working on the app itself.
 
 ## Prerequisites (Linux)
 
-Linux is the only platform currently shipping (see issue #195); Windows
-prerequisites will land with #226. You need:
+Linux is the only platform officially shipping releases (see issue #195).
+You need:
 
 1. **Rust toolchain** — stable, 1.77.2 or newer. Install via
    [rustup](https://rustup.rs/):
@@ -55,6 +57,27 @@ prerequisites will land with #226. You need:
 
    Other distros: see the
    [official Tauri Linux prerequisites](https://tauri.app/start/prerequisites/#linux).
+
+## Prerequisites (Windows)
+
+Windows builds (`msi`/`nsis`) are not an official release yet — the happy
+path with Docker Desktop running hasn't been verified on real hardware. You
+need:
+
+1. **Rust toolchain** and **Node.js + npm**, same as Linux above.
+2. **MSVC Build Tools** — Rust's default Windows target needs the MSVC
+   linker. Install via the
+   [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio)
+   installer with the "Desktop development with C++" workload (a full
+   Visual Studio install with that workload also satisfies this).
+3. **WebView2 runtime** — ships preinstalled on current Windows 10/11, so
+   usually nothing to do here.
+
+`npm run tauri build -- --bundles msi,nsis` handles the rest itself: it
+downloads WiX (for `msi`) and NSIS (for `nsis`) on first use, no manual
+install needed. The NSIS installer supports a silent, per-user, no-admin
+install (`IMS Desktop_<version>_x64-setup.exe /S`), which is how this was
+verified — that installs to `%LOCALAPPDATA%\IMS Desktop`.
 
 ## Prerequisites (Android)
 

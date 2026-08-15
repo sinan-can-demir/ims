@@ -4,9 +4,11 @@ mod docker;
 #[cfg(desktop)]
 use std::path::Path;
 #[cfg(desktop)]
+use std::sync::Mutex;
+#[cfg(desktop)]
 use std::time::Duration;
 #[cfg(desktop)]
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 // Bounded, but only the post-build window: once docker::compose_up()
 // ("up -d", no --build -- see below) returns Started, db/migrate have
@@ -37,6 +39,22 @@ enum LaunchPhase {
     Failed(String),
 }
 
+// launch_stack starts racing the frontend's event listener the moment the
+// window is created -- when Docker isn't even installed, checking for it
+// fails near-instantly (a `CreateProcess` lookup failure), so `emit_phase`
+// can fire and drop its *only* events before `main.js`'s DOMContentLoaded
+// listener has registered. Caching the last phase here lets the frontend
+// ask "what did I miss?" once it's actually listening, instead of freezing
+// on the static "Starting..." placeholder forever with no error shown.
+#[cfg(desktop)]
+struct LastLaunchPhase(Mutex<Option<LaunchPhase>>);
+
+#[cfg(desktop)]
+#[tauri::command]
+fn get_launch_phase(state: tauri::State<LastLaunchPhase>) -> Option<LaunchPhase> {
+    state.0.lock().unwrap().clone()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -48,10 +66,21 @@ pub fn run() {
             // "launch-phase" events that would otherwise never fire.
             #[cfg(desktop)]
             {
+                _app.manage(LastLaunchPhase(Mutex::new(None)));
                 let handle = _app.handle().clone();
                 std::thread::spawn(move || launch_stack(handle));
             }
             Ok(())
+        })
+        .invoke_handler({
+            #[cfg(desktop)]
+            {
+                tauri::generate_handler![get_launch_phase]
+            }
+            #[cfg(not(desktop))]
+            {
+                tauri::generate_handler![]
+            }
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
@@ -68,9 +97,10 @@ pub fn run() {
 
 #[cfg(desktop)]
 fn emit_phase(handle: &AppHandle, phase: LaunchPhase) {
-    // Best-effort: if no window is listening yet, there's nothing more
-    // useful to do than drop the event -- the frontend re-derives its state
-    // from whichever event arrives next, not from a delivery guarantee.
+    *handle.state::<LastLaunchPhase>().0.lock().unwrap() = Some(phase.clone());
+    // Best-effort: the frontend doesn't rely solely on this event arriving --
+    // it also asks get_launch_phase for the cached copy above once its
+    // listener is registered, to catch anything emitted before that point.
     let _ = handle.emit("launch-phase", phase);
 }
 
