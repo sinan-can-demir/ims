@@ -23,10 +23,16 @@ const PHASE_LABELS = {
   waiting_for_health: "Waiting for IMS to respond...",
 };
 
+// Set once a launch-phase event (live or caught up via get_launch_phase,
+// see below) has actually updated the UI -- guards against a delayed
+// catch-up response clobbering a newer phase a live event already applied.
+let phaseHandled = false;
+
 // Driven by real phase events from the Rust side (desktop/src-tauri/src/
 // lib.rs's launch_stack) rather than blindly polling and hoping, like the
 // wizard did before this landed.
 function handleLaunchPhase(event) {
+  phaseHandled = true;
   const { phase, detail } = event.payload;
 
   if (phase === "failed") {
@@ -118,4 +124,15 @@ window.addEventListener("DOMContentLoaded", () => {
   DASHBOARD_URL = getDashboardUrl(DESKTOP_DEFAULT_HOST);
   registerForm.addEventListener("submit", handleRegisterSubmit);
   window.__TAURI__.event.listen("launch-phase", handleLaunchPhase);
+
+  // launch_stack (Rust) starts running before this listener exists, and on
+  // a fast failure (e.g. Docker isn't even installed) can emit its only
+  // events into the void -- best-effort emit doesn't queue them for a
+  // listener that shows up later. Ask Rust what actually happened so we
+  // don't sit on the static "Starting..." placeholder forever.
+  window.__TAURI__.core.invoke("get_launch_phase").then((phase) => {
+    if (!phaseHandled && phase) {
+      handleLaunchPhase({ payload: phase });
+    }
+  });
 });
