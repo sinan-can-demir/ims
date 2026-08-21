@@ -1,6 +1,6 @@
 fastapi==0.141.1
 python-multipart==0.0.32
-uvicorn[standard]==0.52.1
+uvicorn[standard]==0.52.3
 gunicorn==26.0.0
 sqlalchemy==2.0.51
 psycopg2-binary==2.9.12
