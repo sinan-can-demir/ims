@@ -3,7 +3,7 @@
 # This is a manifest-list digest, so the correct platform (amd64/arm64) is
 # still resolved at pull time. Re-resolve periodically with:
 #   skopeo inspect docker://docker.io/library/python:3.11-slim
-ARG PYTHON_BASE_IMAGE=python:3.11-slim@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93
+ARG PYTHON_BASE_IMAGE=python:3.11-slim@sha256:be1575ed968de893bd54f4c56315ff7c4736ce522c1bca08fd521731aafc0d76
 
 # ---- builder: install deps into an isolated venv, nothing else survives ----
 FROM ${PYTHON_BASE_IMAGE} AS builder
