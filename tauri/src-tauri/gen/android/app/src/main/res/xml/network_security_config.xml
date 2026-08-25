@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cleartext (http://) traffic is permitted only to Tailscale's MagicDNS
+  domain (*.ts.net) — mobile always reaches its backend over a Tailscale
+  address (#227/#232), and Tailscale's own WireGuard tunnel is the real
+  encryption boundary, not TLS on the HTTP connection itself. Everywhere
+  else falls through to the base-config below and is denied, so a
+  mistyped or non-Tailscale host fails closed instead of silently sending
+  real plaintext HTTP over whatever network the phone is on (#269).
+
+  Supersedes build.gradle.kts's old per-build-type
+  manifestPlaceholders["usesCleartextTraffic"] = "true" (added in #232
+  to fix release builds silently blocking all HTTP) — a Network Security
+  Configuration takes precedence over that manifest attribute once
+  present, and this scopes to exactly the traffic #232 needed working
+  (ts.net) instead of allowing cleartext to any host.
+
+  Scoped by domain, not by Tailscale's 100.64.0.0/10 CGNAT IP range as
+  #269 originally described — Android's Network Security Configuration
+  has no CIDR/IP-range primitive, domain-config only matches exact
+  domains (with includeSubdomains) or exact IP literals (confirmed
+  against the current platform docs). Every Tailscale address the
+  settings screen's own placeholder text already recommends
+  (myserver.tailnet-name.ts.net) is a ts.net hostname anyway; a raw
+  Tailscale IP literal would need to be added here explicitly to work,
+  which is why config.js's isLikelyTailscaleHost() warns on anything
+  that isn't a ts.net host.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">ts.net</domain>
+    </domain-config>
+</network-security-config>
