@@ -207,6 +207,27 @@ jobs:
           exit-code: "1"
           ignore-unfixed: true
 
+      # Code-level static analysis (OWASP Top 10 ruleset) — gitleaks/pip-audit/
+      # Trivy above cover secrets and dependency/image CVEs, but nothing else
+      # here catches injection or access-control patterns in the app's own
+      # code (#271; the multi-tenancy work found real IDOR bugs this class of
+      # tool would help catch). `returntocorp/semgrep-action` is deprecated
+      # upstream in favor of running the `semgrep/semgrep` image directly, so
+      # that's what this does rather than adding a marketplace Action.
+      #
+      # Scoped to the Python application code specifically, not the whole
+      # repo — the same ruleset also carries Terraform/GitHub-Actions/Android-
+      # manifest rules that are a different, unrelated concern (e.g. flags
+      # every `uses: action@vN` tag in this very file as "mutable", which is
+      # this repo's deliberate existing convention, not a bug). Verified 0
+      # findings against the current app/dashboard/scripts/migrations code
+      # before wiring this in, so it starts clean rather than needing a
+      # baseline-suppression file.
+      - name: Static analysis (Semgrep, OWASP Top 10 ruleset)
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src semgrep/semgrep:1.174.0 \
+            semgrep --config p/owasp-top-ten --error app dashboard scripts migrations
+
   # Deploys to AWS on every push to main, once lint/test/docker-build are all
   # green. Uses GitHub OIDC to assume an AWS IAM role — no long-lived AWS
   # keys are stored in this repo. The role, ECS cluster/service, and ECR
