@@ -49,3 +49,16 @@ export function getDashboardUrl(fallbackHost) {
   const host = getServerHost(fallbackHost);
   return host ? `http://${host}:${DASHBOARD_PORT}` : null;
 }
+
+// Only *.ts.net (Tailscale's MagicDNS domain) is exempted from Android's
+// cleartext block -- see gen/android/app/src/main/res/xml/
+// network_security_config.xml. A raw Tailscale IP literal (100.64.0.0/10)
+// would still be a "real" Tailscale address, but Android's Network
+// Security Configuration has no CIDR/IP-range primitive to scope cleartext
+// by (confirmed against the platform docs), only exact domains -- so a raw
+// IP here would actually fail at the OS level, not just look unusual.
+// Warns (never blocks, #269) so leaving the ts.net path is a conscious
+// choice, not a silent connection failure with no explanation.
+export function isLikelyTailscaleHost(host) {
+  return /\.ts\.net$/i.test(normalizeHost(host));
+}

@@ -17,7 +17,6 @@ android {
     compileSdk = 36
     namespace = "com.ims.mobile"
     defaultConfig {
-        manifestPlaceholders["usesCleartextTraffic"] = "false"
         applicationId = "com.ims.mobile"
         minSdk = 24
         targetSdk = 36
@@ -26,7 +25,6 @@ android {
     }
     buildTypes {
         getByName("debug") {
-            manifestPlaceholders["usesCleartextTraffic"] = "true"
             isDebuggable = true
             isJniDebuggable = true
             isMinifyEnabled = false
@@ -37,17 +35,14 @@ android {
             }
         }
         getByName("release") {
-            // Tauri's default here is "false" (Android blocks all cleartext
-            // HTTP by default for release builds targeting API 28+, unlike
-            // debug builds which get it for free). Verified empirically: a
-            // release build silently failed to reach the API at all -- no
-            // CORS error, no console output, just nothing -- until this was
-            // set. Deliberate for mobile specifically: the server address is
-            // always a Tailscale host (#227), so the VPN tunnel is the
-            // encryption boundary, not TLS on the HTTP connection itself
-            // (#232's own resolution) -- matches tauri.android.conf.json's
-            // CSP, which already accepts the same trade-off.
-            manifestPlaceholders["usesCleartextTraffic"] = "true"
+            // Cleartext-to-ts.net is now governed by
+            // res/xml/network_security_config.xml, not a per-build-type
+            // manifestPlaceholder here (#269) -- Android blocking all
+            // cleartext by default for release builds (verified empirically
+            // in #232: a release build silently failed to reach the API,
+            // no CORS error, no console output, just nothing) is exactly
+            // what that config's domain-config exemption for ts.net fixes,
+            // for both build types uniformly.
             isMinifyEnabled = true
             proguardFiles(
                 *fileTree(".") { include("**/*.pro") }
