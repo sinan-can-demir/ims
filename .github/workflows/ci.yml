@@ -60,16 +60,9 @@ jobs:
       # it's actually exercised.
       - run: make test
 
-  docker-build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - run: docker build -f docker/Dockerfile .
-
   # Exercises the export -> warehouse -> dbt pipeline end-to-end against a
   # real Postgres with real (seeded) data, catching regressions that
-  # lint/test/docker-build can't — e.g. a broken dbt model or schema test
+  # lint/test/scan's own build step can't — e.g. a broken dbt model or schema test
   # only ever surfaces here, never in the API test suite. Matrixed over
   # local disk and S3 (MinIO) storage backends — the S3 code path
   # (app/core/storage.py's fsspec/s3fs wrapping, warehouse's DuckDB httpfs
@@ -193,7 +186,13 @@ jobs:
       # instead of buildx's default manifest-list (real manifest + a
       # separate attestation/SBOM manifest) under the same tag — simpler,
       # more deterministic image for a downstream scanner to resolve.
-      - name: Build image for scanning
+      #
+      # This also serves as this workflow's only "does the image actually
+      # build" check (#272) — there used to be a separate `docker-build` job
+      # doing the exact same build with no further use of its own, purely in
+      # parallel with this one. Folded into one build here instead of two:
+      # a real duplicate build every single CI run, not a hypothetical one.
+      - name: Build image (also the build-validation check)
         run: docker build -f docker/Dockerfile --provenance=false --sbom=false -t ims-api:scan .
 
       # HIGH/CRITICAL only, matching the severity trivy-action defaults to
@@ -228,7 +227,7 @@ jobs:
           docker run --rm -v "$PWD:/src" -w /src semgrep/semgrep:1.174.0 \
             semgrep --config p/owasp-top-ten --error app dashboard scripts migrations
 
-  # Deploys to AWS on every push to main, once lint/test/docker-build are all
+  # Deploys to AWS on every push to main, once lint/test/scan/pipeline are all
   # green. Uses GitHub OIDC to assume an AWS IAM role — no long-lived AWS
   # keys are stored in this repo. The role, ECS cluster/service, and ECR
   # repo are provisioned separately via Terraform (see infra/README.md);
@@ -236,7 +235,7 @@ jobs:
   # Opt-in: skipped entirely until AWS_DEPLOY_ROLE_ARN is set (i.e. until
   # someone runs the Terraform bootstrap), rather than failing CI.
   deploy:
-    needs: [lint, test, docker-build, scan, pipeline]
+    needs: [lint, test, scan, pipeline]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.AWS_DEPLOY_ROLE_ARN != ''
     runs-on: ubuntu-latest
     permissions:
