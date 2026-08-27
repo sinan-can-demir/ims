@@ -33,8 +33,10 @@ def authenticate_user(db: Session, email: str, password: str) -> User:
     # (not proactively cleared) so a wrong attempt right after expiry still
     # counts against the same streak instead of silently granting a fresh
     # set of attempts; only a successful login below resets the streak.
-    if user is not None and user.locked_until is not None and user.locked_until > datetime.now(
-        timezone.utc
+    if (
+        user is not None
+        and user.locked_until is not None
+        and user.locked_until > datetime.now(timezone.utc)
     ):
         log_action(db, user.id, "login_failed", detail=email)
         raise InvalidCredentialsError()
