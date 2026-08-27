@@ -66,3 +66,13 @@ class User(Base):
     )
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Account-level brute-force lockout (see auth_service.authenticate_user)
+    # — a defense-in-depth layer distinct from the API's IP-based
+    # slowapi rate limiting (app/core/rate_limit.py). Needed because
+    # dashboard/auth.py calls authenticate_user() directly, in-process, with
+    # no HTTP request/IP to key a rate limit off of; this column-based
+    # counter protects that path too, for free, since both surfaces share
+    # this one function.
+    failed_login_attempts = Column(Integer, nullable=False, server_default="0")
+    locked_until = Column(DateTime(timezone=True), nullable=True)
