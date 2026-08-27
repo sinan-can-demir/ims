@@ -136,6 +136,27 @@ all (`deploy/docker-compose.prod.yml` alone, plain HTTP on `:8000`) doesn't need
 this: Docker's published-port NAT already preserves the real public client
 IP as the TCP peer.
 
+## Account lockout
+
+`authenticate_user()` (`app/services/auth_service.py`) also enforces a
+per-account lockout, independent of the IP-based rate limiting above: 5
+consecutive failed attempts against one account locks it for 15 minutes
+(`User.failed_login_attempts`/`locked_until`). This exists specifically
+because it's the *only* brute-force protection on the dashboard's login
+path (`dashboard/auth.py`'s `login_form()`, see "Dashboard access" below)
+— that path calls `authenticate_user()` directly, in-process, with no HTTP
+request/IP available to key an IP-based limit off of. Since both the API
+and the dashboard share this one function, the API gets the same
+protection as a second, redundant layer on top of its own IP rate limit.
+
+A wrong attempt made right after a lockout expires still counts against
+the same streak (the counter isn't proactively reset on expiry, only on an
+actual successful login) — one grace attempt after the cooldown, not a
+fresh set of 5. Locked-out and wrong-password responses are identical
+(same generic `InvalidCredentialsError`, same audit-log distinction as
+unknown-email vs. wrong-password) — a distinct "account locked" message
+would itself leak that the account exists.
+
 ## Ingestion size limits
 
 Both generic ingestion paths (see Epoch 7.2 in [`ROADMAP.md`](ROADMAP.md))
@@ -214,15 +235,29 @@ the bearer-token protection above, but it does have its own per-user
 sign-in (`dashboard/auth.py`'s `login_form()`/`require_login()`), calling
 `authenticate_user()` directly in-process rather than over HTTP. Same
 accounts as the API (`scripts/create_user.py`), same generic-401-equivalent
-"Invalid email or password" on failure. In the self-hosted deployment
-path, its container port is never published by default; it's only
-reachable once the Caddy overlay (`deploy/docker-compose.caddy.yml`) also fronts
-it with HTTP basic auth on a dedicated HTTPS listener
-(`https://<DOMAIN>:8501`) — see
+"Invalid email or password" on failure, and — since it shares
+`authenticate_user()` with the API — the same account lockout described
+above.
+
+**This "port never published by default" claim only holds for the
+self-hosted production path.** There, its container port is never
+published by default; it's only reachable once the Caddy overlay
+(`deploy/docker-compose.caddy.yml`) also fronts it with HTTP basic auth on
+a dedicated HTTPS listener (`https://<DOMAIN>:8501`) — see
 [`docs/deployment/self-hosted.md`](docs/deployment/self-hosted.md). The
-two don't replace each other: basic auth here is a network-perimeter
+two don't replace each other there: basic auth is a network-perimeter
 control (one shared username/password), the dashboard's own sign-in is
 per-user identity inside the app.
+
+The desktop/mobile path is different: the Tauri desktop wizard
+(`tauri/src-tauri/src/docker.rs`) always runs the base
+`deploy/docker-compose.yml` directly, which *does* publish `:8501`, and
+has no Caddy overlay at all. Mobile (`tauri/src-mobile/config.js`) then
+reaches that same port over Tailscale. So on this path, the account
+lockout above — not Caddy's basic auth, not IP rate limiting — is the
+dashboard login's only brute-force protection; the network-level gate is
+Tailscale's own ACL (device/tailnet membership), not anything this app
+controls.
 
 ## Prior security review
 

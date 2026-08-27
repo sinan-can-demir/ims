@@ -27,7 +27,18 @@ FROM ${PYTHON_BASE_IMAGE}
 WORKDIR /app
 
 # curl is needed by the HEALTHCHECK below; not present in the slim base image.
+#
+# --only-upgrade openssl/openssl-provider-legacy (pulls the matching
+# libssl3t64 in as a dependency) closes CVE-2026-14456 — the pinned base
+# image's own openssl package (3.5.6-1~deb13u2) lags Debian's security repo
+# (3.5.7-1~deb13u2, confirmed via `apt-cache policy` against this exact
+# base image), because the upstream python:3.11-slim image hasn't been
+# rebuilt with it yet. Re-pinning PYTHON_BASE_IMAGE's digest (the usual fix
+# for a base-image CVE, see that ARG's comment) doesn't help here — no
+# newer digest exists yet to re-pin to.
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && apt-get install -y --no-install-recommends --only-upgrade \
+        openssl openssl-provider-legacy \
     && rm -rf /var/lib/apt/lists/*
 
 # This stage is FROM the base image directly (not the builder), so it still
