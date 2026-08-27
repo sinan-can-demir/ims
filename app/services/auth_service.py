@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import InvalidCredentialsError, RegistrationClosedError
@@ -7,25 +9,54 @@ from app.models.organization import Organization
 from app.models.user import User
 from app.services.audit_service import log_action
 
+# Account-level brute-force lockout — see User.failed_login_attempts'
+# docstring for why this exists alongside the API's IP-based rate limiting.
+_MAX_FAILED_ATTEMPTS = 5
+_LOCKOUT_DURATION = timedelta(minutes=15)
+
 
 def authenticate_user(db: Session, email: str, password: str) -> User:
     """
     Looks up a user by email and verifies their password.
 
-    Raises the same InvalidCredentialsError for "no such user" and "wrong
-    password" — a distinct error per case would let an attacker enumerate
-    which emails have accounts. The audit log, unlike the response, does
-    distinguish them: actor_id is the found user's id when one exists
-    (wrong password, deactivated account), or None for a genuinely unknown
-    email, since there's no user row to reference.
+    Raises the same InvalidCredentialsError for "no such user", "wrong
+    password", and "locked out" — a distinct error per case would let an
+    attacker enumerate which emails have accounts (or which are currently
+    locked, which is just as much of a leak). The audit log, unlike the
+    response, does distinguish them: actor_id is the found user's id when
+    one exists (wrong password, deactivated account, locked out), or None
+    for a genuinely unknown email, since there's no user row to reference.
     """
     user = db.query(User).filter(User.email == email).first()
+
+    # Still-locked check only — an *expired* lockout is left as-is here
+    # (not proactively cleared) so a wrong attempt right after expiry still
+    # counts against the same streak instead of silently granting a fresh
+    # set of attempts; only a successful login below resets the streak.
+    if user is not None and user.locked_until is not None and user.locked_until > datetime.now(
+        timezone.utc
+    ):
+        log_action(db, user.id, "login_failed", detail=email)
+        raise InvalidCredentialsError()
+
     if user is None or not verify_password(password, user.password_hash):
+        if user is not None:
+            user.failed_login_attempts += 1
+            if user.failed_login_attempts >= _MAX_FAILED_ATTEMPTS:
+                user.locked_until = datetime.now(timezone.utc) + _LOCKOUT_DURATION
+            db.commit()
         log_action(db, user.id if user else None, "login_failed", detail=email)
         raise InvalidCredentialsError()
+
     if not user.is_active:
         log_action(db, user.id, "login_failed", detail=email)
         raise InvalidCredentialsError()
+
+    if user.failed_login_attempts or user.locked_until is not None:
+        user.failed_login_attempts = 0
+        user.locked_until = None
+        db.commit()
+
     return user
 
 

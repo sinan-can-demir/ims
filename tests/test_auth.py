@@ -344,6 +344,63 @@ def test_bootstrap_status_false_after_registration(db):
     assert response.json() == {"needs_registration": False}
 
 
+def test_login_lockout_after_max_failed_attempts(client, db):
+    """
+    5 wrong passwords in a row lock the account even on the 6th attempt
+    with the *correct* password — same generic 401, not a distinct
+    "locked out" message (see authenticate_user's docstring).
+    """
+    _make_user(db, "lockout@example.com", "right-password")
+
+    for _ in range(5):
+        response = client.post(
+            "/api/auth/login",
+            json={"email": "lockout@example.com", "password": "wrong"},
+        )
+        assert response.status_code == 401
+
+    response = client.post(
+        "/api/auth/login",
+        json={"email": "lockout@example.com", "password": "right-password"},
+    )
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid email or password"
+
+
+def test_login_lockout_clears_on_expiry(client, db):
+    """A lockout that has already expired doesn't block a correct login."""
+    user = _make_user(db, "lockout-expired@example.com", "right-password")
+    user.failed_login_attempts = 5
+    user.locked_until = datetime.now(timezone.utc) - timedelta(seconds=1)
+    db.commit()
+
+    response = client.post(
+        "/api/auth/login",
+        json={"email": "lockout-expired@example.com", "password": "right-password"},
+    )
+    assert response.status_code == 200
+
+
+def test_login_success_resets_failed_attempt_counter(client, db):
+    user = _make_user(db, "lockout-reset@example.com", "right-password")
+
+    for _ in range(3):
+        client.post(
+            "/api/auth/login",
+            json={"email": "lockout-reset@example.com", "password": "wrong"},
+        )
+
+    response = client.post(
+        "/api/auth/login",
+        json={"email": "lockout-reset@example.com", "password": "right-password"},
+    )
+    assert response.status_code == 200
+
+    db.refresh(user)
+    assert user.failed_login_attempts == 0
+    assert user.locked_until is None
+
+
 @pytest.mark.postgres
 def test_register_concurrent_requests_only_one_succeeds(db):
     """
