@@ -29,4 +29,4 @@ streamlit==1.61.1
 plotly==6.9.0
 
 # Dev tooling
-ruff==0.16.3
+ruff==0.16.4
