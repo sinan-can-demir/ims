@@ -578,7 +578,10 @@ def test_role_change_audit_row_attributed_to_users_org(set_user_role_db, second_
     set_user_role("promote-org2@example.com", UserRole.ADMIN.value)
 
     entry = (
-        db.query(AuditLog).filter(AuditLog.action == "role_changed").order_by(AuditLog.id.desc()).first()
+        db.query(AuditLog)
+        .filter(AuditLog.action == "role_changed")
+        .order_by(AuditLog.id.desc())
+        .first()
     )
     assert entry is not None
     assert entry.organization_id == second_org.id
