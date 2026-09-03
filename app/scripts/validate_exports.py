@@ -32,6 +32,7 @@ def validate_exports(db: Session) -> dict:
         "event_type",
         "quantity",
         "created_at",
+        "organization_id",
     }
 
     schema_valid = set(df.columns) == expected_columns
