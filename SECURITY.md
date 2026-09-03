@@ -28,6 +28,22 @@ route requires `Authorization: Bearer <token>`, validated by
   promotion or demotion takes effect immediately with the same
   still-unexpired token, no re-login required. Deactivating an account
   (`is_active=False`) takes effect immediately for the same reason.
+- **`POST /api/inventory/export` is whole-deployment, not org-scoped —
+  an accepted, deliberate gap, not an oversight.** There's no
+  platform-operator role distinct from org-admin (still just the two
+  roles above), so any org's admin who can hit this route exports
+  every org's inventory events, not just their own. Replay
+  (`/api/inventory/replay`) had the identical shape and *was* scoped
+  per-org during Epoch 10 (see `docs/multi-tenancy.md`'s "Webhook
+  ingestion"/analytics-pipeline sections) — export was deliberately
+  left whole-deployment because its checkpoint is a single global
+  `InventoryEvent.id` high-water mark shared by every org, and
+  splitting that into a real per-org checkpoint (plus the `make export`
+  cron path's own whole-deployment assumption) was out of scope for the
+  PR that removed the dashboard's own export button (Epoch 10 PR 13,
+  #149). Revisit if a real multi-org self-hosted deployment ever makes
+  this matter in practice; see `docs/multi-tenancy.md` for the full
+  writeup of what's org-scoped where.
 - **Self-service registration is bootstrap-only, not general-purpose.**
   `POST /api/auth/register` (added for the desktop installer's first-run
   wizard, #189 — no self-service `getpass` equivalent existed for a GUI
