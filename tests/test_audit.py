@@ -15,7 +15,7 @@ from .utils import create_product
 
 
 def test_log_action_persists_row(db):
-    entry = log_action(db, actor_id=None, action="test_action", detail="hello")
+    entry = log_action(db, actor_id=None, action="test_action", organization_id=1, detail="hello")
 
     assert entry.id is not None
     row = db.query(AuditLog).filter(AuditLog.id == entry.id).first()
@@ -186,7 +186,7 @@ def audit_log_trigger(db):
 
 @pytest.mark.postgres
 def test_audit_log_update_is_rejected_at_db_level(db, audit_log_trigger):
-    entry = log_action(db, actor_id=None, action="tamper_test_update", detail="original")
+    entry = log_action(db, actor_id=None, action="tamper_test_update", organization_id=1, detail="original")
     db.commit()
 
     with pytest.raises(DBAPIError, match="append-only"):
@@ -199,7 +199,7 @@ def test_audit_log_update_is_rejected_at_db_level(db, audit_log_trigger):
 
 @pytest.mark.postgres
 def test_audit_log_delete_is_rejected_at_db_level(db, audit_log_trigger):
-    entry = log_action(db, actor_id=None, action="tamper_test_delete", detail="original")
+    entry = log_action(db, actor_id=None, action="tamper_test_delete", organization_id=1, detail="original")
     db.commit()
 
     with pytest.raises(DBAPIError, match="append-only"):

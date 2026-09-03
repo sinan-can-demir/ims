@@ -194,7 +194,13 @@ def submit_purchase_order(
     db.commit()
     db.refresh(po)
 
-    log_action(db, actor_id, "po_submitted", detail=f"purchase_order_id={purchase_order_id}")
+    log_action(
+        db,
+        actor_id,
+        "po_submitted",
+        organization_id=organization_id,
+        detail=f"purchase_order_id={purchase_order_id}",
+    )
 
     return po
 
@@ -232,7 +238,13 @@ def receive_purchase_order(
     db.commit()
     db.refresh(po)
 
-    log_action(db, actor_id, "po_received", detail=f"purchase_order_id={purchase_order_id}")
+    log_action(
+        db,
+        actor_id,
+        "po_received",
+        organization_id=organization_id,
+        detail=f"purchase_order_id={purchase_order_id}",
+    )
 
     return po
 

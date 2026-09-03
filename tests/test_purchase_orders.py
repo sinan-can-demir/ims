@@ -144,6 +144,11 @@ def test_full_lifecycle_submit_then_receive_updates_inventory(client, db):
     actions = {a.action for a in db.query(AuditLog).all()}
     assert "po_submitted" in actions
     assert "po_received" in actions
+    # Both rows must be attributed to the org that actually submitted/
+    # received the PO, not silently misattributed to some other org.
+    for action in ("po_submitted", "po_received"):
+        entry = db.query(AuditLog).filter(AuditLog.action == action).first()
+        assert entry.organization_id == 1
 
 
 def test_cannot_edit_line_after_submit(client):

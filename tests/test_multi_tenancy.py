@@ -527,6 +527,63 @@ def test_cross_org_create_purchase_order_rejects_other_orgs_supplier(client, cli
     assert response.status_code == 404
 
 
+def test_purchase_order_audit_rows_attributed_to_acting_org(client_org2, db, second_org):
+    """
+    po_submitted/po_received audit rows must be attributed to the org
+    that actually acted, not silently misattributed to org 1 (the
+    log_action() default this used to fall through to when the call
+    site forgot to pass organization_id).
+    """
+    from app.models.audit_log import AuditLog
+
+    supplier = _create_supplier(client_org2, "Org2 Supplier")
+    product = create_product(client_org2, "Org2 Widget")
+    po = _create_draft_po(client_org2, supplier["id"], product["id"])
+
+    client_org2.post(f"/api/purchase-orders/{po['id']}/submit")
+    client_org2.post(f"/api/purchase-orders/{po['id']}/receive")
+
+    for action in ("po_submitted", "po_received"):
+        entry = (
+            db.query(AuditLog)
+            .filter(AuditLog.action == action)
+            .order_by(AuditLog.id.desc())
+            .first()
+        )
+        assert entry is not None
+        assert entry.organization_id == second_org.id
+
+
+def test_role_change_audit_row_attributed_to_users_org(set_user_role_db, second_org, db):
+    """Same misattribution class as the PO test above, for scripts/set_user_role.py."""
+    from app.core.security import hash_password
+    from app.models.audit_log import AuditLog
+    from app.models.enums import UserRole
+    from app.models.user import User
+    from scripts.set_user_role import set_user_role
+
+    session = set_user_role_db()
+    try:
+        user = User(
+            email="promote-org2@example.com",
+            password_hash=hash_password("pw"),
+            display_name="Org2 Promote",
+            organization_id=second_org.id,
+        )
+        session.add(user)
+        session.commit()
+    finally:
+        session.close()
+
+    set_user_role("promote-org2@example.com", UserRole.ADMIN.value)
+
+    entry = (
+        db.query(AuditLog).filter(AuditLog.action == "role_changed").order_by(AuditLog.id.desc()).first()
+    )
+    assert entry is not None
+    assert entry.organization_id == second_org.id
+
+
 def test_cross_org_create_purchase_order_rejects_other_orgs_product(client, client_org2):
     """Sibling case: create_purchase_order()'s per-line product lookup, not just the supplier."""
     org1_supplier = _create_supplier(client, "Org1 Supplier")
