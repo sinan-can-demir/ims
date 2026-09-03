@@ -16,13 +16,13 @@ from app.core.auth import (
     require_current_user,
     require_role,
 )
-from app.core.exceptions import RegistrationClosedError
+from app.core.exceptions import InvalidCredentialsError, RegistrationClosedError
 from app.core.security import hash_password
 from app.database import get_db
 from app.main import app
 from app.models.enums import UserRole
 from app.models.user import User
-from app.services.auth_service import register_first_user
+from app.services.auth_service import authenticate_user, register_first_user
 
 from .conftest import TestingSessionLocal
 
@@ -441,3 +441,50 @@ def test_register_concurrent_requests_only_one_succeeds(db):
 
     db.expire_all()
     assert db.query(User).filter(User.organization_id == 1).count() == 1
+
+
+@pytest.mark.postgres
+def test_login_concurrent_wrong_passwords_lockout_is_exact(db):
+    """
+    Real concurrency coverage for the with_for_update() lock added to
+    authenticate_user() (see its own docstring for the race this closes).
+    Same pattern as test_register_concurrent_requests_only_one_succeeds:
+    N threads, each its own real DB connection, racing to submit a wrong
+    password for the same account at once.
+
+    with_for_update() is a silent no-op under SQLite (confirmed
+    empirically) — @pytest.mark.postgres is load-bearing here, not
+    decorative; this test only means something against a real Postgres
+    connection (CI already sets TEST_DATABASE_URL for exactly this).
+
+    A correct fix always lands on exactly 5 failed attempts and a set
+    locked_until, regardless of thread interleaving — a deterministic
+    assertion, not a flaky range, because every attempt is serialized
+    through the row lock one at a time.
+    """
+    user = _make_user(db, "race-lockout@example.com", "right-password")
+
+    thread_count = 8
+    barrier = threading.Barrier(thread_count)
+
+    def _worker():
+        session = TestingSessionLocal()
+        try:
+            barrier.wait()  # maximize real overlap on the row-lock window
+            try:
+                authenticate_user(session, "race-lockout@example.com", "wrong")
+            except InvalidCredentialsError:
+                pass
+        finally:
+            session.close()
+
+    threads = [threading.Thread(target=_worker) for _ in range(thread_count)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    db.expire_all()
+    db.refresh(user)
+    assert user.failed_login_attempts == 5
+    assert user.locked_until is not None
