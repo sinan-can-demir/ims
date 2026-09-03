@@ -30,7 +30,7 @@ current_user = require_login()
 
 st.sidebar.caption(f"Signed in as {current_user['display_name']}")
 if st.sidebar.button("Sign out"):
-    del st.session_state["user"]
+    st.session_state.clear()
     st.rerun()
 
 pages = [
