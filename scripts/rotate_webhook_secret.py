@@ -71,7 +71,9 @@ def main() -> None:
         raise SystemExit(1) from exc
 
     print(f"✓ Rotated webhook secret for organization '{org.name}' (id={org.id})")
-    print(f"  New webhook secret (save this now — it will not be shown again): {org.webhook_secret}")
+    print(
+        f"  New webhook secret (save this now — it will not be shown again): {org.webhook_secret}"
+    )
     print(
         "  Any integration still signing with the old secret will start "
         "receiving 401s until reconfigured."

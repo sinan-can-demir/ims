@@ -161,6 +161,10 @@ def _webhook_payload(sku):
     }
 
 
+_ORG1_WEBHOOK_SECRET = "org1-secret"  # noqa: S105 -- test fixture value, not a real credential
+_ORG2_WEBHOOK_SECRET = "org2-secret"  # noqa: S105 -- test fixture value, not a real credential
+
+
 def test_webhook_rate_limit_is_isolated_per_org(client, client_org2, db, second_org):
     """
     One org flooding its webhook route must not exhaust the bucket for a
@@ -168,19 +172,19 @@ def test_webhook_rate_limit_is_isolated_per_org(client, client_org2, db, second_
     (organization_id path param, not client IP) actually isolates them,
     the whole point of not reusing the client-IP-keyed `limiter` here.
     """
-    _set_webhook_secret(db, 1, "org1-secret")
-    _set_webhook_secret(db, second_org.id, "org2-secret")
+    _set_webhook_secret(db, 1, _ORG1_WEBHOOK_SECRET)
+    _set_webhook_secret(db, second_org.id, _ORG2_WEBHOOK_SECRET)
     org1_product = create_product(client, "Org1 Widget")
     org2_product = create_product(client_org2, "Org2 Widget")
 
     with _tight_webhook_limit("1/minute"):
         first = _signed_webhook_request(
-            client, 1, _webhook_payload(org1_product["sku"]), secret="org1-secret"
+            client, 1, _webhook_payload(org1_product["sku"]), secret=_ORG1_WEBHOOK_SECRET
         )
         assert first.status_code == 200
 
         flooded = _signed_webhook_request(
-            client, 1, _webhook_payload(org1_product["sku"]), secret="org1-secret"
+            client, 1, _webhook_payload(org1_product["sku"]), secret=_ORG1_WEBHOOK_SECRET
         )
         assert flooded.status_code == 429
 
@@ -189,6 +193,6 @@ def test_webhook_rate_limit_is_isolated_per_org(client, client_org2, db, second_
             client_org2,
             second_org.id,
             _webhook_payload(org2_product["sku"]),
-            secret="org2-secret",
+            secret=_ORG2_WEBHOOK_SECRET,
         )
         assert other_org.status_code == 200

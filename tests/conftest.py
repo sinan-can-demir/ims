@@ -57,7 +57,11 @@ def db():
     # routes; tests that do (tests/test_webhook.py,
     # tests/test_multi_tenancy.py) override it via utils.set_webhook_secret.
     session.add(
-        Organization(id=1, name="Default Organization", webhook_secret="test-bootstrap-secret")
+        Organization(
+            id=1,
+            name="Default Organization",
+            webhook_secret="test-bootstrap-secret",  # noqa: S106 -- test fixture value, not a real credential
+        )
     )
     session.commit()
     if TEST_DATABASE_URL:
@@ -169,7 +173,10 @@ def second_org(db):
     "different org" test fixture needs an actual Organization row to point
     at, same as org 1's bootstrap row the `db` fixture itself creates.
     """
-    org = Organization(name="Second Org", webhook_secret="test-second-org-secret")
+    org = Organization(
+        name="Second Org",
+        webhook_secret="test-second-org-secret",  # noqa: S106 -- test fixture value, not a real credential
+    )
     db.add(org)
     db.commit()
     db.refresh(org)
