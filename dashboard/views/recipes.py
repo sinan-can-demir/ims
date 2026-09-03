@@ -16,7 +16,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from app.core.exceptions import DomainError
 from dashboard.auth import require_login
-from dashboard.data import load_products, load_recipe_items
+from dashboard.data import (
+    invalidate_products,
+    invalidate_recipe_items,
+    load_products,
+    load_recipe_items,
+)
 from dashboard.recipe_actions import add_recipe_item, remove_recipe_item, update_recipe_item
 
 current_user = require_login()
@@ -43,7 +48,8 @@ with col_select:
 with col_refresh:
     st.write("")
     if st.button("🔄 Refresh"):
-        st.cache_data.clear()
+        invalidate_products(current_user["organization_id"])
+        invalidate_recipe_items(selected_dish_id, current_user["organization_id"])
         st.rerun()
 
 st.divider()
@@ -79,7 +85,7 @@ if recipe_items:
                 except DomainError as e:
                     st.error(str(e))
                 else:
-                    st.cache_data.clear()
+                    invalidate_recipe_items(selected_dish_id, current_user["organization_id"])
                     st.rerun()
 
         with col_delete:
@@ -89,7 +95,7 @@ if recipe_items:
                 except DomainError as e:
                     st.error(str(e))
                 else:
-                    st.cache_data.clear()
+                    invalidate_recipe_items(selected_dish_id, current_user["organization_id"])
                     st.rerun()
 else:
     st.info("This dish has no recipe yet — selling it won't consume any other product.")
@@ -119,5 +125,5 @@ else:
         except DomainError as e:
             st.error(str(e))
         else:
-            st.cache_data.clear()
+            invalidate_recipe_items(selected_dish_id, current_user["organization_id"])
             st.rerun()
