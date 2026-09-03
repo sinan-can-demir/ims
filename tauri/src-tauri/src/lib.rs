@@ -87,9 +87,17 @@ pub fn run() {
         .run(|_app_handle, _event| {
             #[cfg(desktop)]
             if let tauri::RunEvent::Exit = _event {
-                let root = docker::project_root(_app_handle);
-                if let Err(err) = docker::compose_down(&root) {
-                    eprintln!("failed to run docker compose down: {err}");
+                // Shutdown path, not launch -- there's no LaunchPhase UI to
+                // surface a failure to at this point, so log-and-skip is the
+                // right behavior here (unlike launch_stack below, which
+                // always emits LaunchPhase::Failed on this same error).
+                match docker::project_root(_app_handle) {
+                    Ok(root) => {
+                        if let Err(err) = docker::compose_down(&root) {
+                            eprintln!("failed to run docker compose down: {err}");
+                        }
+                    }
+                    Err(err) => eprintln!("failed to resolve project root on exit: {err}"),
                 }
             }
         });
@@ -144,7 +152,13 @@ fn launch_stack(handle: AppHandle) {
         docker::DaemonStatus::Running => {}
     }
 
-    let root = docker::project_root(&handle);
+    let root = match docker::project_root(&handle) {
+        Ok(root) => root,
+        Err(err) => {
+            emit_phase(&handle, LaunchPhase::Failed(err));
+            return;
+        }
+    };
 
     // Checked before compose_build, not just before compose_up, so a real
     // conflict fails fast -- no reason to make the user sit through a
