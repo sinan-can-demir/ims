@@ -26,7 +26,7 @@ msgpack==1.2.2
 joblib==1.6.0
 prophet==1.4.0
 streamlit==1.62.0
-plotly==6.9.0
+plotly==7.0.0
 
 # Dev tooling
 ruff==0.16.5
