@@ -73,12 +73,24 @@ org's own `organizations.webhook_secret` column (`app/core/auth.py`'s
 `require_webhook_signature`) — not a single global env var. A shared secret
 across every org would let any one org's webhook credential post events
 into any other org, so each org's secret only ever authenticates requests
-to that org's own `{organization_id}` in the path. Like the old global
-`WEBHOOK_SECRET`, this one *can* be disabled — it's a no-op if that org's
-`webhook_secret` is NULL (local dev only; logged loudly on every unsigned
-request let through, since there's no boot-time env-var check anymore to
-surface it once at startup), same constant-time comparison via
-`hmac.compare_digest`.
+to that org's own `{organization_id}` in the path. `webhook_secret` is
+`NOT NULL` — every org is provisioned with a real random secret at
+creation time (`scripts/create_organization.py`, `secrets.token_hex(32)`),
+and the endpoint fails closed (`401`) if it's ever unset, rather than
+treating that as "verification disabled." (Before 2026-09, `NULL` was
+treated as disabled and no provisioning path ever set the value — every
+org in every deployment had unauthenticated ingest by default. See the
+migration that backfilled existing rows and `scripts/rotate_webhook_secret.py`
+for issuing a new secret if the original is lost.) Same constant-time
+comparison via `hmac.compare_digest` either way.
+
+Also rate-limited independently of the `/api` limit below —
+`enforce_webhook_rate_limit` (`app/core/rate_limit.py`), keyed by the
+target `organization_id` rather than client IP, since webhook senders
+(POS/e-commerce platforms) commonly deliver from a shared pool of egress
+IPs across many merchants and IP-keying would let one busy org exhaust
+the bucket for an unrelated org. Default `60/minute`, configurable via
+`WEBHOOK_RATE_LIMIT`.
 
 ## Rate limiting
 
@@ -86,8 +98,10 @@ surface it once at startup), same constant-time comparison via
 `require_current_user`) are rate-limited via `slowapi`
 (`app/core/rate_limit.py`), keyed by client IP. Default limit is
 `100/minute`, configurable via the `RATE_LIMIT` env var. Limit exceeded
-returns `429`. `/health`, `/metrics`, and `/api/webhooks/{organization_id}/ingest`
-(signature-verified, separate trust boundary — see below) are exempt.
+returns `429`. `/health` and `/metrics` are exempt.
+`/api/webhooks/{organization_id}/ingest` has its own separate, per-org rate
+limit instead (see "Webhook signature verification" above) — not exempt,
+just a different `Limiter` instance with different keying.
 
 Keying is by IP only, deliberately — not by the authenticated user. Partly
 because `POST /api/auth/login` itself has no user identity to key on yet
@@ -116,9 +130,11 @@ wasn't an error, rate limiting just silently stopped applying to every
 (`enforce_rate_limit`, `app/core/rate_limit.py`) attached alongside the
 auth dependency instead of a middleware — dependencies run *after*
 routing has already resolved the endpoint, so there's no route-matching to
-get wrong. `/health`, `/metrics`, and `/api/webhooks/{organization_id}/ingest` are exempt
-structurally now (the dependency simply isn't attached to those routes)
-rather than via slowapi's `@limiter.exempt` name-based lookup.
+get wrong. `/health` and `/metrics` are exempt structurally now (the
+dependency simply isn't attached to those routes) rather than via
+slowapi's `@limiter.exempt` name-based lookup. `/api/webhooks/{organization_id}/ingest`
+gets its own separate per-org-keyed dependency instead of this one — see
+"Webhook signature verification" above.
 
 **`rate_limit_key` now trusts a real client IP behind a proxy, instead of
 always keying on the raw TCP peer.** Every documented deployment path puts
@@ -167,11 +183,11 @@ now cap the size of a single request, independent of the rate limits above:
   memory before parsing. Capped at 10MB (rejected with `413` before pandas
   ever touches the body) and 50,000 rows (checked after parsing, catches a
   compact-but-huge-row-count file that's small in bytes).
-- `POST /api/webhooks/{organization_id}/ingest` — this route is rate-limit-exempt (it has its
-  own HMAC trust boundary, see above), so there's no secondary throttle on
-  it. `WebhookIngestPayload.events` is capped at 1000 items per request —
-  generous for a near-real-time delta, not a bulk history dump (that's what
-  the CSV path above is for).
+- `POST /api/webhooks/{organization_id}/ingest` — has its own HMAC trust
+  boundary and per-org rate limit (see "Webhook signature verification"
+  above), plus `WebhookIngestPayload.events` capped at 1000 items per
+  request — generous for a near-real-time delta, not a bulk history dump
+  (that's what the CSV path above is for).
 
 ## Audit trail
 
