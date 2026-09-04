@@ -18,6 +18,7 @@
 #   - Postgres must be reachable at DATABASE_URL (make up)
 
 import argparse
+import secrets
 import sys
 from pathlib import Path
 
@@ -31,7 +32,13 @@ from app.models.organization import Organization  # noqa: E402
 def create_organization(name: str) -> Organization:
     db = SessionLocal()
     try:
-        org = Organization(name=name)
+        # webhook_secret is NOT NULL (see app/models/organization.py) —
+        # every org needs a real one from the moment it exists, since
+        # require_webhook_signature() now fails closed on NULL rather
+        # than treating it as "verification disabled". This is the only
+        # time this value is ever generated fresh; if it's lost, use
+        # scripts/rotate_webhook_secret.py to issue a new one.
+        org = Organization(name=name, webhook_secret=secrets.token_hex(32))
         db.add(org)
         db.commit()
         db.refresh(org)
@@ -53,6 +60,11 @@ def main() -> None:
 
     org = create_organization(args.name)
     print(f"✓ Created organization '{org.name}' (id={org.id})")
+    print(f"  Webhook secret (save this now — it will not be shown again): {org.webhook_secret}")
+    print(
+        "  Sign X-Webhook-Signature as hex(HMAC-SHA256(secret, raw request body)) "
+        f"for POST /api/webhooks/{org.id}/ingest."
+    )
 
 
 if __name__ == "__main__":

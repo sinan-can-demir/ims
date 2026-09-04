@@ -43,12 +43,16 @@ async def require_webhook_signature(
     API_KEY check, applied to a computed digest instead of a shared
     string.
 
-    Signature check is a no-op when the org's webhook_secret is NULL —
-    same "unset = disabled" shape the old env var had, now per-org
-    instead of per-deployment. Logged loudly on every such request
-    (rather than a boot-time env-var scan, which can't see per-org state
-    and would've meant scanning every org on every startup) so an
-    operator running with it off doesn't lose visibility into that fact.
+    Fails closed (401) when the org's webhook_secret is NULL. Every org
+    is provisioned with a real random secret at creation time now (see
+    scripts/create_organization.py), so a NULL here means a genuinely
+    misconfigured org, not "signature verification intentionally
+    disabled" — that state used to silently accept unsigned requests,
+    which is exactly the shape of an unauthenticated ingest endpoint on
+    every org in every deployment, since the only real provisioning
+    path never set the secret. Uses the same 401 detail as an
+    actually-wrong signature, not a distinct message, so a caller can't
+    use the response to tell "unconfigured" apart from "wrong secret."
 
     Reads the raw body via request.body() before the route handler parses
     it as JSON — Starlette caches the body after the first read, so the
@@ -59,11 +63,11 @@ async def require_webhook_signature(
         raise HTTPException(status_code=404, detail="Organization not found")
 
     if org.webhook_secret is None:
-        logger.warning(
-            "webhook_auth_disabled",
+        logger.error(
+            "webhook_secret_not_configured",
             extra={"organization_id": organization_id},
         )
-        return
+        raise HTTPException(status_code=401, detail="Invalid or missing webhook signature")
 
     signature = request.headers.get("X-Webhook-Signature")
     body = await request.body()

@@ -15,9 +15,12 @@ class AuditLog(Base):
     # those rows. No UniqueConstraint(organization_id, id) here — unlike
     # products/suppliers/users, nothing composite-FKs to audit_log as a
     # parent, it's only ever a child (Epoch 10). server_default="1" kept
-    # permanently — audit_service.log_action() doesn't thread
-    # organization_id through until a later Epoch 10 PR, and every
-    # existing call site relies on this default until then.
+    # permanently for the pre-Epoch-10 backfill and as a DB-level safety
+    # net — audit_service.log_action() itself requires organization_id
+    # explicitly at every call site now (no Python-level default), after
+    # a real misattribution bug where several call sites silently fell
+    # through to a `organization_id: int = 1` default that used to exist
+    # there instead.
     organization_id = Column(
         Integer, ForeignKey("organizations.id"), nullable=False, server_default="1", index=True
     )

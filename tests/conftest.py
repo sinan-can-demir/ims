@@ -52,7 +52,17 @@ def db():
     # Bootstrap org (id=1), same as the real Epoch 10 migration's seed row
     # — every table with organization_id is a NOT NULL FK to this, so
     # anything the test suite creates needs it to exist first.
-    session.add(Organization(id=1, name="Default Organization"))
+    # webhook_secret is NOT NULL (see app/models/organization.py) — any
+    # fixed test value works, since most tests never touch the webhook
+    # routes; tests that do (tests/test_webhook.py,
+    # tests/test_multi_tenancy.py) override it via utils.set_webhook_secret.
+    session.add(
+        Organization(
+            id=1,
+            name="Default Organization",
+            webhook_secret="test-bootstrap-secret",  # noqa: S106 -- test fixture value, not a real credential
+        )
+    )
     session.commit()
     if TEST_DATABASE_URL:
         # Same resync the real migration does (see
@@ -163,7 +173,10 @@ def second_org(db):
     "different org" test fixture needs an actual Organization row to point
     at, same as org 1's bootstrap row the `db` fixture itself creates.
     """
-    org = Organization(name="Second Org")
+    org = Organization(
+        name="Second Org",
+        webhook_secret="test-second-org-secret",  # noqa: S106 -- test fixture value, not a real credential
+    )
     db.add(org)
     db.commit()
     db.refresh(org)
@@ -232,6 +245,20 @@ def set_user_role_db(dashboard_db, monkeypatch):
     actually looked up: scripts.set_user_role's own module namespace.
     """
     monkeypatch.setattr("scripts.set_user_role.SessionLocal", dashboard_db)
+    return dashboard_db
+
+
+@pytest.fixture
+def create_organization_db(dashboard_db, monkeypatch):
+    """Same independent-name patch as set_user_role_db, for scripts/create_organization.py."""
+    monkeypatch.setattr("scripts.create_organization.SessionLocal", dashboard_db)
+    return dashboard_db
+
+
+@pytest.fixture
+def rotate_webhook_secret_db(dashboard_db, monkeypatch):
+    """Same independent-name patch as set_user_role_db, for scripts/rotate_webhook_secret.py."""
+    monkeypatch.setattr("scripts.rotate_webhook_secret.SessionLocal", dashboard_db)
     return dashboard_db
 
 

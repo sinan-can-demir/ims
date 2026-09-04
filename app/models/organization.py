@@ -12,10 +12,14 @@ class Organization(Base):
     name = Column(String, nullable=False)
 
     # Per-org webhook signing secret (see app/core/auth.py's
-    # require_webhook_signature, wired up in Epoch 10 PR 12) — nullable
-    # mirrors today's single global WEBHOOK_SECRET's "unset = signature
-    # verification disabled" shape, per-org instead of per-deployment.
-    webhook_secret = Column(String, nullable=True)
+    # require_webhook_signature, wired up in Epoch 10 PR 12). Every org is
+    # provisioned with a real random secret at creation time
+    # (scripts/create_organization.py) — NOT NULL, not nullable, since a
+    # NULL value used to mean "signature verification disabled" and that
+    # was silently true for every org (the provisioning path never set
+    # it). See the migration that backfilled existing rows before this
+    # constraint landed.
+    webhook_secret = Column(String, nullable=False)
 
     # Deactivate-without-delete, same idiom as User.is_active — preserves
     # FK integrity for every row this org's users/products/etc. created,
