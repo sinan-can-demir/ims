@@ -41,9 +41,14 @@ CANONICAL_LIB_ROOTS = ["/usr/lib64", "/usr/lib", "/lib64", "/lib"]
 
 
 def has_origin_runpath(path: Path) -> bool:
+    readelf = shutil.which("readelf")
+    if readelf is None:
+        return False
     try:
-        out = subprocess.run(
-            ["readelf", "-d", str(path)], capture_output=True, text=True, check=True
+        # Fixed local binary path (resolved above) + a Path from our own
+        # AppDir scan, not attacker input -- safe despite S603/S607.
+        out = subprocess.run(  # noqa: S603
+            [readelf, "-d", str(path)], capture_output=True, text=True, check=True
         ).stdout
     except (subprocess.CalledProcessError, OSError):
         return False
@@ -54,9 +59,14 @@ def has_origin_runpath(path: Path) -> bool:
 
 
 def ldconfig_lookup(name: str) -> Path | None:
+    ldconfig = shutil.which("ldconfig")
+    if ldconfig is None:
+        return None
     try:
-        out = subprocess.run(
-            ["ldconfig", "-p"], capture_output=True, text=True, check=True
+        # Fixed local binary path (resolved above), no arguments at all --
+        # safe despite S603/S607.
+        out = subprocess.run(  # noqa: S603
+            [ldconfig, "-p"], capture_output=True, text=True, check=True
         ).stdout
     except (subprocess.CalledProcessError, OSError):
         return None
@@ -85,13 +95,18 @@ def find_lookup(name: str) -> Path | None:
 
 
 def verify_owned_by_package(path: Path) -> bool:
-    if shutil.which("rpm"):
-        result = subprocess.run(
-            ["rpm", "-qf", str(path)], capture_output=True, text=True
+    rpm = shutil.which("rpm")
+    if rpm:
+        # Fixed local binary path (resolved above) + a Path this function
+        # already resolved to a real file, not attacker input -- safe
+        # despite S603/S607.
+        result = subprocess.run(  # noqa: S603
+            [rpm, "-qf", str(path)], capture_output=True, text=True
         )
         return result.returncode == 0 and "is not owned" not in result.stdout
-    if shutil.which("dpkg"):
-        result = subprocess.run(["dpkg", "-S", str(path)], capture_output=True, text=True)
+    dpkg = shutil.which("dpkg")
+    if dpkg:
+        result = subprocess.run([dpkg, "-S", str(path)], capture_output=True, text=True)  # noqa: S603
         return result.returncode == 0
     # No package manager available to verify ownership -- never trust a
     # bare filename match with no way to confirm it's a real system file.
