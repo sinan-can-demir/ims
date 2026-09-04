@@ -58,10 +58,19 @@ route requires `Authorization: Bearer <token>`, validated by
   writes an `audit_log` entry (`action="role_changed"`) — the one
   account-related action that's audited, since it's a
   privilege-escalation event, unlike account creation.
-- **Login failures are generic.** Unknown email, wrong password, and a
-  deactivated account all return the same `401 Invalid email or password`
-  — no signal about which case occurred, so an attacker can't use the
-  login endpoint to enumerate valid emails.
+- **Login failures are generic — in both the response and its timing.**
+  Unknown email, wrong password, and a deactivated account all return the
+  same `401 Invalid email or password`, so the response body gives no
+  signal about which case occurred. **Resolved:** response *latency* used
+  to leak the same information anyway — an unknown email or a locked-out
+  account short-circuited before ever calling bcrypt (~few ms), while a
+  known email with a wrong password paid the full bcrypt cost
+  (~100ms-1s), letting an attacker enumerate valid emails purely from
+  timing, without reading the body. `authenticate_user()`
+  (`app/services/auth_service.py`) now calls `verify_password_or_dummy()`
+  unconditionally, before any branch, on every path — a genuinely unknown
+  email is checked against a fixed dummy hash so the bcrypt cost is paid
+  either way.
 - **`JWT_SECRET` can't be "disabled" the way the old `API_KEY` could.**
   Signing a JWT always requires a key, so an unset `JWT_SECRET` falls back
   to a fixed, publicly-known dev-only string instead of turning auth off —
@@ -211,6 +220,17 @@ now cap the size of a single request, independent of the rate limits above:
 actions — replay, export, role changes, login failures — via
 `app/services/audit_service.py::log_action`, the only code path that
 ever writes to the table, and it only ever inserts.
+
+`log_action`'s `organization_id` parameter is required, not defaulted.
+**Resolved:** it used to default to `1`, which silently misattributed
+every call site that forgot to pass it explicitly (`login_failed` for a
+known user, `po_submitted`/`po_received`, `role_changed`) to org 1
+regardless of the actual actor's real organization — a real
+multi-tenancy audit-trail integrity gap, not just a login-specific one.
+Every call site now passes the real `organization_id` explicitly; the
+one legitimate `organization_id=1` fallback left in
+`authenticate_user()` is for a genuinely unknown email with no user row
+to attribute the failed attempt to, not a missed value.
 
 That was previously true only by *code convention*: the single shared
 Postgres role the app connects as has full `UPDATE`/`DELETE` on every
