@@ -151,7 +151,10 @@ leaving an implicit assumption undocumented in the code.
   left this API route alone — closing it too would have meant rewriting
   existing RBAC/audit-logging test coverage that wasn't part of that
   PR's scope. Flagged, not silently left; a reasonable follow-up if it
-  ever matters in practice.
+  ever matters in practice. Also documented in `SECURITY.md`'s auth
+  model section — that file is the one a reader auditing access control
+  is more likely to check first, and it previously said nothing about
+  this specific gap.
 - `app/scripts/build_features.py` / `train_model.py` (and therefore
   `scripts/retrain_cron.sh`) only ever build/train **org 1**. Both
   underlying service functions are genuinely org-scoped now (PR 15,
