@@ -18,6 +18,7 @@ correct, at the address the section header table already reports.
 Usage:
     python3 fix_appimage_dtinit.py <AppDir> [--dry-run]
 """
+
 import struct
 import sys
 from pathlib import Path

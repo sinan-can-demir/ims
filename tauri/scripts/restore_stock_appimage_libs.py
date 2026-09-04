@@ -30,6 +30,7 @@ still-broken AppImage.
 Usage:
     python3 restore_stock_appimage_libs.py <AppDir> [--dry-run]
 """
+
 import shutil
 import subprocess
 import sys
@@ -141,9 +142,7 @@ def main():
     # system library -- there's nothing to restore it from, and unlike
     # the libraries, it isn't actually corrupted (its DT_INIT already
     # matches .init -- verified via fix_appimage_dtinit.py --dry-run).
-    all_libs = [
-        p for p in appdir.rglob("*.so*") if p.is_file() and not p.is_symlink()
-    ]
+    all_libs = [p for p in appdir.rglob("*.so*") if p.is_file() and not p.is_symlink()]
 
     patched_targets = [p for p in all_libs if has_origin_runpath(p)]
     print(f"scanned {len(all_libs)} libraries, {len(patched_targets)} carry a $ORIGIN RUNPATH")
