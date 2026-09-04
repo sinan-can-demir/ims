@@ -24,6 +24,7 @@ RECIPES_PAGE = str(_REPO_ROOT / "dashboard" / "views" / "recipes.py")
 PURCHASE_ORDERS_PAGE = str(_REPO_ROOT / "dashboard" / "views" / "purchase_orders.py")
 FLEET_OVERVIEW_PAGE = str(_REPO_ROOT / "dashboard" / "views" / "fleet_overview.py")
 PRODUCT_DETAIL_PAGE = str(_REPO_ROOT / "dashboard" / "views" / "product_detail.py")
+WASTE_ENTRY_PAGE = str(_REPO_ROOT / "dashboard" / "views" / "waste_entry.py")
 
 
 def _make_dashboard_user(
@@ -445,6 +446,82 @@ def test_recipes_page_add_ingredient_then_shows_it(client, dashboard_db):
     assert not at.exception
     assert not any("no recipe yet" in i.value for i in at.info)
     assert any("Bun" in md.value for md in at.markdown)
+
+
+# ---------------------------------------------------------------------------
+# Waste quick-entry (docs/product/food-cost-visibility-discovery.md,
+# ROADMAP.md's "Food Cost Visibility" Phase 1) — a product picker + a
+# quantity input, hardcoded to EventType.WASTE, no free-text field.
+# ---------------------------------------------------------------------------
+
+
+def test_waste_entry_page_renders_without_exception(client, dashboard_db):
+    create_product(client, "Tomatoes")
+    user = _make_dashboard_user(dashboard_db)
+
+    # Same cross-test cache-isolation reasoning as the recipes/PO tests
+    # above — load_products() is @st.cache_data'd with no per-test key.
+    st.cache_data.clear()
+
+    at = AppTest.from_file(WASTE_ENTRY_PAGE)
+    _signed_in(at, user)
+    at.run()
+
+    assert not at.exception
+
+
+def test_waste_entry_page_logs_waste_and_decrements_stock(client, dashboard_db):
+    tomatoes = create_product(client, "Tomatoes")
+    purchase(client, tomatoes["id"], 50)
+    user = _make_dashboard_user(dashboard_db)
+
+    st.cache_data.clear()
+    at = AppTest.from_file(WASTE_ENTRY_PAGE)
+    _signed_in(at, user)
+    at.run()
+
+    product_select = next(s for s in at.selectbox if s.label == "Product")
+    product_select.select(tomatoes["id"]).run()
+
+    quantity_input = next(n for n in at.number_input if n.label == "Quantity")
+    quantity_input.set_value(12).run()
+
+    submit = next(b for b in at.button if b.label == "Log waste")
+    submit.click().run()
+
+    assert not at.exception
+    assert any("Logged 12" in s.value for s in at.success)
+
+    inventory = client.get(f"/api/inventory/{tomatoes['id']}")
+    assert inventory.status_code == 200
+    assert inventory.json()["quantity"] == 38
+
+
+def test_waste_entry_page_rejects_waste_exceeding_current_stock(client, dashboard_db):
+    tomatoes = create_product(client, "Tomatoes")
+    purchase(client, tomatoes["id"], 5)
+    user = _make_dashboard_user(dashboard_db)
+
+    st.cache_data.clear()
+    at = AppTest.from_file(WASTE_ENTRY_PAGE)
+    _signed_in(at, user)
+    at.run()
+
+    product_select = next(s for s in at.selectbox if s.label == "Product")
+    product_select.select(tomatoes["id"]).run()
+
+    quantity_input = next(n for n in at.number_input if n.label == "Quantity")
+    quantity_input.set_value(999).run()
+
+    submit = next(b for b in at.button if b.label == "Log waste")
+    submit.click().run()
+
+    assert not at.exception
+    assert any(e.value for e in at.error)
+
+    inventory = client.get(f"/api/inventory/{tomatoes['id']}")
+    assert inventory.status_code == 200
+    assert inventory.json()["quantity"] == 5
 
 
 # ---------------------------------------------------------------------------
