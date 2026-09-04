@@ -2,6 +2,13 @@
 
 import json
 import uuid
+from unittest.mock import MagicMock
+
+import pytest
+from fastapi import HTTPException
+
+from app.core.auth import require_webhook_signature
+from app.models.organization import Organization
 
 from .utils import create_product, signed_webhook_request
 from .utils import set_webhook_secret as _set_webhook_secret
@@ -66,15 +73,28 @@ def test_webhook_wrong_signature_returns_401(client, db):
     assert response.status_code == 401
 
 
-def test_webhook_no_secret_configured_allows_unsigned_requests(client, db):
-    # Org 1's webhook_secret is NULL by default (the `db` fixture's
-    # bootstrap row) — no _set_webhook_secret call needed here.
-    product = create_product(client)
-    payload = _payload(product["sku"])
+async def test_require_webhook_signature_rejects_null_secret():
+    """
+    webhook_secret is NOT NULL at the schema level, so this state can't
+    be reached through the running app or even a raw SQL UPDATE — but
+    require_webhook_signature() must still fail closed (401) if it's
+    ever called against an org whose secret is unset, rather than
+    silently treating that as "verification disabled" (the behavior
+    this whole fix replaces). Exercises the function directly with a
+    mocked db/Organization since the real schema can't produce this row.
+    """
+    fake_org = Organization(id=1, name="Fake Org", webhook_secret=None)
+    fake_db = MagicMock()
+    fake_db.query.return_value.filter.return_value.first.return_value = fake_org
 
-    response = client.post("/api/webhooks/1/ingest", json=payload)
+    fake_request = MagicMock()
+    fake_request.headers.get.return_value = None
 
-    assert response.status_code == 200
+    with pytest.raises(HTTPException) as exc_info:
+        await require_webhook_signature(organization_id=1, request=fake_request, db=fake_db)
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.detail == "Invalid or missing webhook signature"
 
 
 def test_webhook_event_id_namespaced_by_source(client, db):
@@ -100,9 +120,10 @@ def test_webhook_event_id_namespaced_by_source(client, db):
 
 def test_webhook_too_many_events_returns_422(client, db):
     """
-    events has a max_length=1000 (app/schemas/webhook.py) — this route is
-    explicitly rate-limit-exempt, so schema validation is the only thing
-    bounding how much a single call can force ingest_events() to process.
+    events has a max_length=1000 (app/schemas/webhook.py) — a single call
+    is still bounded by this schema validation regardless of the route's
+    own per-org rate limit (enforce_webhook_rate_limit), which caps
+    request *count*, not payload size per request.
     """
     _set_webhook_secret(db, 1, _SECRET)
     payload = {

@@ -331,12 +331,13 @@ def test_cross_org_webhook_signature_does_not_authenticate(client, db, second_or
 
 def test_webhook_secret_state_is_independent_per_org(client, client_org2, db, second_org):
     """
-    Epoch 10 PR 12 (#148): org 1 requiring a signature and org 2 having
-    none configured must be two genuinely independent per-org states,
-    not one global toggle — proves both directions in the same test.
+    Epoch 10 PR 12 (#148): org 1's and org 2's webhook_secret must be
+    genuinely independent per-org state, not one global toggle — each
+    org's own secret authenticates only that org's route, and neither
+    org's unsigned requests succeed regardless of the other org's state.
     """
     _set_webhook_secret(db, 1, _ORG1_WEBHOOK_SECRET)
-    # second_org's webhook_secret is left NULL (unset) on purpose.
+    _set_webhook_secret(db, second_org.id, _ORG2_WEBHOOK_SECRET)
 
     org1_product = create_product(client, "Org1 Widget")
     org2_product = create_product(client_org2, "Org2 Widget")
@@ -355,7 +356,12 @@ def test_webhook_secret_state_is_independent_per_org(client, client_org2, db, se
     unsigned_to_org2 = client_org2.post(
         f"/api/webhooks/{second_org.id}/ingest", json=_payload(org2_product["sku"])
     )
-    assert unsigned_to_org2.status_code == 200
+    assert unsigned_to_org2.status_code == 401
+
+    signed_to_org2 = _signed_webhook_request(
+        client_org2, second_org.id, _payload(org2_product["sku"]), secret=_ORG2_WEBHOOK_SECRET
+    )
+    assert signed_to_org2.status_code == 200
 
 
 def test_export_partitions_by_org_from_single_checkpoint_run(

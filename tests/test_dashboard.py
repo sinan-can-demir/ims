@@ -119,6 +119,39 @@ def test_dashboard_shows_inventory_metric(client, dashboard_db, monkeypatch):
     assert "Current Inventory" in metric_labels
 
 
+def test_dashboard_sign_out_clears_session_state(client, dashboard_db, monkeypatch):
+    product = create_product(client)
+    purchase(client, product["id"], 50)
+    user = _make_dashboard_user(dashboard_db)
+
+    _mock_forecast(monkeypatch)
+
+    at = AppTest.from_file(DASHBOARD_APP)
+    _signed_in(at, user)
+    at.run()
+    assert not at.exception
+
+    # Simulate stale keys left over from prior browsing (form widgets,
+    # per-row keys, etc.) that a narrow allowlist/denylist could miss.
+    at.session_state["some_leftover_widget_key"] = "stale-value"
+    at.session_state["line_qty_42"] = 7
+
+    sign_out = next(b for b in at.button if b.label == "Sign out")
+    sign_out.click().run()
+
+    assert not at.exception
+    # None of the pre-sign-out keys (auth, stale widget keys, dynamic
+    # per-row keys) survive — only whatever the login form itself
+    # freshly creates on this render is left.
+    remaining = at.session_state.filtered_state
+    assert "user" not in remaining
+    assert "some_leftover_widget_key" not in remaining
+    assert "line_qty_42" not in remaining
+    assert "product_detail_selected_product" not in remaining
+    # Signed-out visitor sees the login form again, not gated content.
+    assert any("Sign in" in b.value for b in at.subheader)
+
+
 def test_dashboard_blocks_unauthenticated_visitor(client, dashboard_db, monkeypatch):
     product = create_product(client)
     purchase(client, product["id"], 50)

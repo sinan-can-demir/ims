@@ -1,12 +1,17 @@
 # tests/test_rate_limit.py
 
+import uuid
 from contextlib import contextmanager
 
 from slowapi.wrappers import LimitGroup
 from starlette.requests import Request
 
-from app.core.rate_limit import rate_limit_key
+from app.core.rate_limit import rate_limit_key, webhook_limiter
 from app.main import app
+
+from .utils import create_product
+from .utils import set_webhook_secret as _set_webhook_secret
+from .utils import signed_webhook_request as _signed_webhook_request
 
 
 @contextmanager
@@ -125,3 +130,69 @@ def test_key_func_uses_leftmost_forwarded_for_entry():
 def test_key_func_falls_back_to_peer_when_no_forwarded_for_header():
     scope = {"type": "http", "headers": [], "client": ("172.18.0.5", 1234)}
     assert rate_limit_key(Request(scope)) == "172.18.0.5"
+
+
+@contextmanager
+def _tight_webhook_limit(limit_string: str):
+    """Same idiom as _tight_limit above, but for the separate webhook_limiter instance."""
+    original = webhook_limiter._default_limits
+    webhook_limiter._default_limits = [
+        LimitGroup(limit_string, webhook_limiter._key_func, None, False, None, None, None, 1, False)
+    ]
+    webhook_limiter.reset()
+    try:
+        yield webhook_limiter
+    finally:
+        webhook_limiter._default_limits = original
+        webhook_limiter.reset()
+
+
+def _webhook_payload(sku):
+    return {
+        "source": "generic",
+        "events": [
+            {
+                "sku": sku,
+                "event_type": "PURCHASE",
+                "quantity": 1,
+                "external_id": f"txn-{uuid.uuid4()}",
+            }
+        ],
+    }
+
+
+_ORG1_WEBHOOK_SECRET = "org1-secret"  # noqa: S105 -- test fixture value, not a real credential
+_ORG2_WEBHOOK_SECRET = "org2-secret"  # noqa: S105 -- test fixture value, not a real credential
+
+
+def test_webhook_rate_limit_is_isolated_per_org(client, client_org2, db, second_org):
+    """
+    One org flooding its webhook route must not exhaust the bucket for a
+    different org — proves enforce_webhook_rate_limit's per-org keying
+    (organization_id path param, not client IP) actually isolates them,
+    the whole point of not reusing the client-IP-keyed `limiter` here.
+    """
+    _set_webhook_secret(db, 1, _ORG1_WEBHOOK_SECRET)
+    _set_webhook_secret(db, second_org.id, _ORG2_WEBHOOK_SECRET)
+    org1_product = create_product(client, "Org1 Widget")
+    org2_product = create_product(client_org2, "Org2 Widget")
+
+    with _tight_webhook_limit("1/minute"):
+        first = _signed_webhook_request(
+            client, 1, _webhook_payload(org1_product["sku"]), secret=_ORG1_WEBHOOK_SECRET
+        )
+        assert first.status_code == 200
+
+        flooded = _signed_webhook_request(
+            client, 1, _webhook_payload(org1_product["sku"]), secret=_ORG1_WEBHOOK_SECRET
+        )
+        assert flooded.status_code == 429
+
+        # Org 2's own bucket is untouched by org 1's flood.
+        other_org = _signed_webhook_request(
+            client_org2,
+            second_org.id,
+            _webhook_payload(org2_product["sku"]),
+            secret=_ORG2_WEBHOOK_SECRET,
+        )
+        assert other_org.status_code == 200

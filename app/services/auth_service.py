@@ -27,7 +27,15 @@ def authenticate_user(db: Session, email: str, password: str) -> User:
     one exists (wrong password, deactivated account, locked out), or None
     for a genuinely unknown email, since there's no user row to reference.
     """
-    user = db.query(User).filter(User.email == email).first()
+    # with_for_update() serializes every branch below (locked check,
+    # attempt-counter increment, lockout-set, success-reset) against
+    # concurrent login attempts for the same email — same idiom as
+    # register_first_user()'s row lock, for the identical race: without
+    # it, N concurrent wrong-password requests can all read the same
+    # failed_login_attempts value before any of them commits an
+    # increment, undercounting the streak and letting an attacker who
+    # fires requests in parallel dodge the lockout threshold entirely.
+    user = db.query(User).filter(User.email == email).with_for_update().first()
 
     # Still-locked check only — an *expired* lockout is left as-is here
     # (not proactively cleared) so a wrong attempt right after expiry still
@@ -38,6 +46,8 @@ def authenticate_user(db: Session, email: str, password: str) -> User:
         and user.locked_until is not None
         and user.locked_until > datetime.now(timezone.utc)
     ):
+        # log_action() commits internally (see its own docstring) — that
+        # commit is also what releases this row's FOR UPDATE lock.
         log_action(db, user.id, "login_failed", organization_id=user.organization_id, detail=email)
         raise InvalidCredentialsError()
 
@@ -46,7 +56,7 @@ def authenticate_user(db: Session, email: str, password: str) -> User:
             user.failed_login_attempts += 1
             if user.failed_login_attempts >= _MAX_FAILED_ATTEMPTS:
                 user.locked_until = datetime.now(timezone.utc) + _LOCKOUT_DURATION
-            db.commit()
+        # The increment above rides along in log_action()'s own commit.
         # A genuinely unknown email has no user row, and therefore no
         # real org to attribute this to — organization_id=1 here is a
         # deliberate fallback, not a missed value (same category as the
@@ -64,10 +74,19 @@ def authenticate_user(db: Session, email: str, password: str) -> User:
         log_action(db, user.id, "login_failed", organization_id=user.organization_id, detail=email)
         raise InvalidCredentialsError()
 
+    # No log_action() call on the success path to ride a commit on —
+    # commit unconditionally so the FOR UPDATE lock is always released
+    # here rather than left dangling until the caller's session closes.
+    # db.commit() expires user's attributes (expire_on_commit default);
+    # both callers (app/api/auth.py, dashboard/auth.py) read user.id/
+    # .email/.role/etc. *after* closing this same db session, so those
+    # attributes must be refreshed back in while the session is still
+    # open — same as register_first_user()'s existing db.refresh() below.
     if user.failed_login_attempts or user.locked_until is not None:
         user.failed_login_attempts = 0
         user.locked_until = None
-        db.commit()
+    db.commit()
+    db.refresh(user)
 
     return user
 
