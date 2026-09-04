@@ -32,7 +32,12 @@ def add_supplier(name: str, contact_email: str | None, organization_id: int) -> 
 
 
 def create_po(
-    supplier_id: int, product_id: int, quantity: int, actor_id: int, organization_id: int
+    supplier_id: int,
+    product_id: int,
+    quantity: int,
+    actor_id: int,
+    organization_id: int,
+    unit_cost: float | None = None,
 ) -> None:
     db = SessionLocal()
     try:
@@ -40,22 +45,48 @@ def create_po(
             db,
             supplier_id,
             actor_id,
-            [PurchaseOrderLineCreate(product_id=product_id, quantity=quantity)],
+            [
+                PurchaseOrderLineCreate(
+                    product_id=product_id, quantity=quantity, unit_cost=unit_cost
+                )
+            ],
             organization_id,
         )
     finally:
         db.close()
 
 
-def add_line(po_id: int, product_id: int, quantity: int, organization_id: int) -> None:
+def add_line(
+    po_id: int,
+    product_id: int,
+    quantity: int,
+    organization_id: int,
+    unit_cost: float | None = None,
+) -> dict:
+    """
+    Returns a plain dict (not the ORM object) built while the session is
+    still open -- previous_unit_cost/price_increased are transient
+    attributes add_purchase_order_line() sets, not mapped columns, and
+    the caller (the dashboard view, to decide whether to show a
+    price-creep warning) needs them after this function's own session is
+    already closed.
+    """
     db = SessionLocal()
     try:
-        add_purchase_order_line(
+        line = add_purchase_order_line(
             db,
             po_id,
-            PurchaseOrderLineCreate(product_id=product_id, quantity=quantity),
+            PurchaseOrderLineCreate(product_id=product_id, quantity=quantity, unit_cost=unit_cost),
             organization_id,
         )
+        return {
+            "product_id": line.product_id,
+            "unit_cost": float(line.unit_cost) if line.unit_cost is not None else None,
+            "previous_unit_cost": (
+                float(line.previous_unit_cost) if line.previous_unit_cost is not None else None
+            ),
+            "price_increased": line.price_increased,
+        }
     finally:
         db.close()
 

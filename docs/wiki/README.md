@@ -19,3 +19,4 @@ Each page should be short (a page or less) and follow the same shape:
 - [gitignore doesn't match new `org_id=` nesting in `feature_store`, `models`](gitignore-org-id-nesting.md)
 - [Tauri plugin JS packages need a bundler — this frontend doesn't have one](tauri-plugin-bare-imports-dont-resolve.md)
 - [Android release builds silently block all cleartext HTTP](android-release-blocks-cleartext-http.md)
+- [PO dashboard forms never collect `unit_cost`](po-dashboard-never-collects-unit-cost.md)

@@ -1038,12 +1038,22 @@ downstream nice-to-have gated on the others being perfect.
       `invalidate_fleet_status` (already built for exactly this shape,
       see issue #283/PR #295).
 
-**Phase 2 — Purchase Order price-creep flag (must-have, cheap):**
-- [ ] At `add_purchase_order_line()` (`app/services/purchase_order_service.py`),
+**Phase 2 — Purchase Order price-creep flag (must-have, cheap).**
+**Shipped 2026-09-04.**
+- [x] At `add_purchase_order_line()` (`app/services/purchase_order_service.py`),
       compare the new line's `unit_cost` against the most recent prior
-      line for the same `product_id` (optionally same `supplier_id`);
-      surface a simple flag if higher. `unit_cost` is already a tracked
-      field — no schema change needed.
+      line for the same `product_id`; surface a simple flag if higher.
+      `unit_cost` is already a tracked field — no schema change needed.
+      Scoped to `product_id` only, not also `supplier_id` — Maria's own
+      framing ("this item cost more than last time") was product-general,
+      not supplier-specific, and a price jump from switching suppliers is
+      still worth flagging, not excluded as noise.
+- [x] **Real pre-existing bug found and fixed along the way** (see
+      `docs/wiki/po-dashboard-never-collects-unit-cost.md`): neither
+      dashboard PO form (`create_po_form` or `add_line_form`) had a
+      `unit_cost` input at all — every dashboard-created PO line had
+      `unit_cost = None`, making this phase's flag meaningless without
+      also fixing that.
 
 **Phase 3 — Toast POS connector (must-have, largest lift):**
 - [ ] Credential-based "Connect to Toast" flow — a real login-style

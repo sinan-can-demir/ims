@@ -395,6 +395,59 @@ def test_purchase_orders_page_create_manual_draft_and_submit(client, dashboard_d
     assert any("SUBMITTED" in e.label for e in at.expander)
 
 
+def test_purchase_orders_page_shows_price_creep_warning(client, dashboard_db):
+    """
+    ROADMAP.md's "Food Cost Visibility" Phase 2 — Add line should flag a
+    unit cost higher than this product's most recent prior cost, via a
+    warning that survives the view's own st.rerun() (stashed in
+    session_state, not a plain st.warning() call right before the rerun —
+    see purchase_orders.py's comment on why that would otherwise flash
+    and vanish, same as the pre-existing st.success() case above).
+    """
+    chicken = create_product(client, "Chicken Thigh")
+    user = _make_dashboard_user(dashboard_db)
+
+    supplier_resp = client.post("/api/suppliers", json={"name": "Acme Foods"})
+    assert supplier_resp.status_code == 201
+
+    st.cache_data.clear()
+    at = AppTest.from_file(PURCHASE_ORDERS_PAGE)
+    _signed_in(at, user)
+    at.run()
+
+    # First PO, establishing a $2.00 baseline cost for Chicken Thigh, then
+    # submitted so only the second PO stays DRAFT -- keeps exactly one
+    # "Add line" form on the page, avoiding a same-label widget collision
+    # between two simultaneously-open drafts.
+    next(s for s in at.selectbox if s.label == "Product (manual)").select(chicken["id"]).run()
+    next(n for n in at.number_input if n.label == "Quantity").set_value(10).run()
+    next(n for n in at.number_input if n.label == "Unit cost (optional)").set_value(2.00).run()
+    next(b for b in at.button if b.label == "Create draft").click().run()
+    next(b for b in at.button if b.label == "Submit purchase order").click().run()
+    assert not at.exception
+
+    # Second PO, same product, same $2.00 cost again -- no flag expected
+    # from this creation path (create_purchase_order's initial line is
+    # deliberately out of scope for price-creep flagging, only
+    # add_purchase_order_line is).
+    next(s for s in at.selectbox if s.label == "Product (manual)").select(chicken["id"]).run()
+    next(n for n in at.number_input if n.label == "Quantity").set_value(5).run()
+    next(n for n in at.number_input if n.label == "Unit cost (optional)").set_value(2.00).run()
+    next(b for b in at.button if b.label == "Create draft").click().run()
+    assert not at.exception
+    assert not at.warning
+
+    # Now add a line to that still-DRAFT second PO at a higher cost.
+    next(n for n in at.number_input if n.label == "Qty").set_value(8).run()
+    next(n for n in at.number_input if n.label == "Unit cost").set_value(3.50).run()
+    next(b for b in at.button if b.label == "Add line").click().run()
+
+    assert not at.exception
+    assert any(
+        "Chicken Thigh" in w.value and "3.50" in w.value and "2.00" in w.value for w in at.warning
+    )
+
+
 def test_recipes_page_shows_no_recipe_message_for_new_dish(client, dashboard_db):
     create_product(client, "Burger")
     user = _make_dashboard_user(dashboard_db)

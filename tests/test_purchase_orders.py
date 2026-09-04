@@ -102,6 +102,118 @@ def test_add_line_to_draft_po(client):
     assert response.json()["quantity"] == 20
 
 
+# ---------------------------------------------------------------------------
+# Price-creep flagging (ROADMAP.md's "Food Cost Visibility" Phase 2)
+# ---------------------------------------------------------------------------
+
+
+def test_add_line_flags_price_increase_against_most_recent_prior_cost(client):
+    supplier = _create_supplier(client)
+    chicken = create_product(client, "Chicken Thigh")
+
+    po1 = client.post(
+        "/api/purchase-orders", json={"supplier_id": supplier["id"], "lines": []}
+    ).json()
+    first_line = client.post(
+        f"/api/purchase-orders/{po1['id']}/lines",
+        json={"product_id": chicken["id"], "quantity": 50, "unit_cost": 2.00},
+    ).json()
+    assert first_line["previous_unit_cost"] is None
+    assert first_line["price_increased"] is False
+
+    po2 = client.post(
+        "/api/purchase-orders", json={"supplier_id": supplier["id"], "lines": []}
+    ).json()
+    second_line = client.post(
+        f"/api/purchase-orders/{po2['id']}/lines",
+        json={"product_id": chicken["id"], "quantity": 50, "unit_cost": 2.75},
+    ).json()
+    assert second_line["previous_unit_cost"] == 2.00
+    assert second_line["price_increased"] is True
+
+
+def test_add_line_does_not_flag_price_decrease_or_same_price(client):
+    supplier = _create_supplier(client)
+    chicken = create_product(client, "Chicken Thigh")
+
+    po1 = client.post(
+        "/api/purchase-orders", json={"supplier_id": supplier["id"], "lines": []}
+    ).json()
+    client.post(
+        f"/api/purchase-orders/{po1['id']}/lines",
+        json={"product_id": chicken["id"], "quantity": 50, "unit_cost": 3.00},
+    )
+
+    po2 = client.post(
+        "/api/purchase-orders", json={"supplier_id": supplier["id"], "lines": []}
+    ).json()
+    same_price_line = client.post(
+        f"/api/purchase-orders/{po2['id']}/lines",
+        json={"product_id": chicken["id"], "quantity": 50, "unit_cost": 3.00},
+    ).json()
+    assert same_price_line["price_increased"] is False
+
+    po3 = client.post(
+        "/api/purchase-orders", json={"supplier_id": supplier["id"], "lines": []}
+    ).json()
+    cheaper_line = client.post(
+        f"/api/purchase-orders/{po3['id']}/lines",
+        json={"product_id": chicken["id"], "quantity": 50, "unit_cost": 2.50},
+    ).json()
+    assert cheaper_line["previous_unit_cost"] == 3.00
+    assert cheaper_line["price_increased"] is False
+
+
+def test_add_line_with_no_unit_cost_is_never_flagged(client):
+    supplier = _create_supplier(client)
+    chicken = create_product(client, "Chicken Thigh")
+
+    po1 = client.post(
+        "/api/purchase-orders", json={"supplier_id": supplier["id"], "lines": []}
+    ).json()
+    client.post(
+        f"/api/purchase-orders/{po1['id']}/lines",
+        json={"product_id": chicken["id"], "quantity": 50, "unit_cost": 5.00},
+    )
+
+    po2 = client.post(
+        "/api/purchase-orders", json={"supplier_id": supplier["id"], "lines": []}
+    ).json()
+    no_cost_line = client.post(
+        f"/api/purchase-orders/{po2['id']}/lines",
+        json={"product_id": chicken["id"], "quantity": 50},
+    ).json()
+    assert no_cost_line["unit_cost"] is None
+    assert no_cost_line["previous_unit_cost"] is None
+    assert no_cost_line["price_increased"] is False
+
+
+def test_price_creep_flag_is_scoped_per_product(client):
+    supplier = _create_supplier(client)
+    chicken = create_product(client, "Chicken Thigh")
+    rice = create_product(client, "Rice")
+
+    po1 = client.post(
+        "/api/purchase-orders", json={"supplier_id": supplier["id"], "lines": []}
+    ).json()
+    client.post(
+        f"/api/purchase-orders/{po1['id']}/lines",
+        json={"product_id": chicken["id"], "quantity": 50, "unit_cost": 10.00},
+    )
+
+    po2 = client.post(
+        "/api/purchase-orders", json={"supplier_id": supplier["id"], "lines": []}
+    ).json()
+    rice_line = client.post(
+        f"/api/purchase-orders/{po2['id']}/lines",
+        json={"product_id": rice["id"], "quantity": 50, "unit_cost": 1.00},
+    ).json()
+    # Rice's first-ever line, unrelated to chicken's $10 cost -- must not
+    # inherit an unrelated product's baseline.
+    assert rice_line["previous_unit_cost"] is None
+    assert rice_line["price_increased"] is False
+
+
 def test_submit_requires_at_least_one_line(client):
     supplier = _create_supplier(client)
     po = client.post(
