@@ -2,6 +2,12 @@
 
 [![CI](https://github.com/sinan-can-demir/ims/actions/workflows/ci.yml/badge.svg)](https://github.com/sinan-can-demir/ims/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![IMS Desktop](https://img.shields.io/github/v/release/sinan-can-demir/ims?label=IMS%20Desktop)](https://github.com/sinan-can-demir/ims/releases/latest)
+
+**IMS Desktop v0.1.0 is out** — a native, GPG-signed `.rpm` installer for
+Linux. No terminal use required beyond the initial install; the app
+manages its own Docker stack. [Download it here](https://github.com/sinan-can-demir/ims/releases/tag/v0.1.0)
+— setup guide at [docs/deployment/desktop-app.md](docs/deployment/desktop-app.md).
 
 An event-driven inventory platform with a full analytics pipeline and ML-powered demand forecasting. Started as a learning project covering data engineering, backend systems, and machine learning — it's since grown into a portfolio-scale build with real production hardening (auth, audit logging, rate limiting, a verified self-hosted deployment) and a shipped multi-tenancy rework.
 
@@ -118,6 +124,17 @@ single-org by default (`ALLOW_MULTIPLE_ORGS=false`), see
 [docs/multi-tenancy.md](docs/multi-tenancy.md) for the full architecture
 writeup and what's deliberately still deferred (Postgres RLS as a
 second DB-enforced isolation layer).
+
+**IMS Desktop (Linux, `v0.1.0`):** a native [Tauri](https://tauri.app/)
+app that wraps the same Docker Compose stack in a real installable
+program — install the GPG-signed `.rpm`, open it, create an account,
+done. Manages Docker image builds/container lifecycle from Rust with
+live launch-phase progress, bootstrap-gated first-account creation (no
+open self-registration), and a real signed release artifact. See
+[docs/deployment/desktop-app.md](docs/deployment/desktop-app.md) and
+[ROADMAP.md](ROADMAP.md)'s "IMS Desktop" section for what shipped vs.
+what's still open (Windows and mobile are both in progress, not yet
+officially released — see ROADMAP.md for the honest state of each).
 
 ## Deferred
 
@@ -304,7 +321,7 @@ Three paths, depending on what you're running this for:
   Linux only) — a native installer (`.rpm`) that wraps the Docker Compose
   stack in a real app: install it, open it, create an account, done. No
   terminal use required beyond the initial install. Written for a real
-  end user, not a developer.
+  end user, not a developer. **[Download the latest release](https://github.com/sinan-can-demir/ims/releases/latest).**
 - **[Self-hosted](docs/deployment/self-hosted.md)** (recommended default for
   running your own server) — any VPS, ~$5-20/month, no cloud account, fully
   open-source tooling (Docker Compose + optional
@@ -601,6 +618,7 @@ Copy `.env.example` to `.env` and adjust as needed.
 | 7.1 | Dashboard UX Overhaul — multi-page nav, Fleet Overview, Product Detail enhancements, theming | ✅ Complete |
 | Path A | Restaurant deployment — recipes/BOM, `WASTE` events, real POs, forecasting tuning, CLI wrapper, backups | ✅ Complete |
 | 10 | Multi-Tenancy (Path B) | ✅ Complete — shipped as 16 sequential PRs, see [docs/multi-tenancy.md](docs/multi-tenancy.md) |
+| — | IMS Desktop (native installers) | ✅ Linux shipped (`v0.1.0`, GPG-signed `.rpm`) — Windows/Mobile in progress, see [ROADMAP.md](ROADMAP.md) |
 | 11-15 | General small/mid-business platform (Path B) | Scoped in detail, not started — whether to start at all is an open decision |
 
 ---

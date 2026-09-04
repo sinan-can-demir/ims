@@ -26,7 +26,9 @@ own app you can open, when it's active.
 
 ## Installing IMS Desktop
 
-1. Download the IMS Desktop installer file (it ends in `.rpm`).
+1. Download the `.rpm` file from the
+   [latest release](https://github.com/sinan-can-demir/ims/releases/latest)
+   (as of this writing, `v0.1.0`).
 2. Double-click the downloaded file. Your system's normal app installer
    should open and offer to install it — click through that like you would
    for any other program.

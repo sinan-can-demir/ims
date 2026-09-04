@@ -886,7 +886,7 @@ cached results across orgs viewed in the same process).
 - [x] Cross-org isolation test suite (same-SKU/same-event_id-different-org,
       cross-org 404s on PO/recipe mutation, fleet/forecast/restock
       scoping, webhook→org resolution) consolidated in
-      `tests/test_multi_tenancy.py`, plus [docs/multi-tenancy.md](../docs/multi-tenancy.md)
+      `tests/test_multi_tenancy.py`, plus [docs/multi-tenancy.md](docs/multi-tenancy.md)
       matching `docs/model-registry.md`'s style (PR 16, #152)
 - [ ] Explicitly deferred to a later hardening pass, not required for exit
       criteria: Postgres RLS as a second, DB-enforced layer on top of the
@@ -903,7 +903,7 @@ stage. A real live bug was found and fixed along the way (`replay`
 wiping every org's inventory projection, not just the caller's), along
 with several real IDOR gaps (bare id-only lookups with zero ownership
 check) — both categories confirmed via direct regression tests, not
-just inferred from a code read. See [docs/multi-tenancy.md](../docs/multi-tenancy.md)
+just inferred from a code read. See [docs/multi-tenancy.md](docs/multi-tenancy.md)
 for the architecture summary and what's still deliberately deferred.
 
 Original rough phased estimate (re-derived 2026-07-27 from the actual
@@ -917,6 +917,77 @@ Epochs 10-15 estimate.
 
 Exit criteria (met): two unrelated businesses could run on the same
 instance without either seeing the other's data, even under a bug.
+
+------------------------------------------------------------
+IMS DESKTOP — Native Installers (Linux shipped, Windows/Mobile in progress)
+------------------------------------------------------------
+
+Not a Path A/B epoch — a separate track (`#174`, filed 2026-07-31) for
+distributing IMS as an installable native app instead of a
+docker-compose-and-a-terminal deployment, aimed at non-technical
+end users. Built on [Tauri](https://tauri.app/), wrapping the same
+Docker Compose stack (desktop) or connecting to a remote one over
+Tailscale (mobile) — see [docs/multi-tenancy.md](docs/multi-tenancy.md)-style
+architecture notes in [docs/deployment/desktop-app.md](docs/deployment/desktop-app.md).
+
+**Linux desktop — shipped.** `#189-195` (account bootstrap via a
+bootstrap-gated `POST /api/auth/register`, Docker lifecycle management
+from Rust with live launch-phase events, first-run wizard, GPG-signed
+`.rpm` packaging). **First public release: `v0.1.0`**
+(https://github.com/sinan-can-demir/ims/releases/tag/v0.1.0) — real
+signed `.rpm`, verified end-to-end (built, launched, signature
+independently re-verified against the published download, not just the
+local file).
+
+**AppImage packaging — fixed, unofficial.** `#212` tracked a real
+linuxdeploy bundling bug (RUNPATH patching corrupting bundled libraries,
+eventually root-caused to a stale-`DT_INIT`-then-NX-violation chain —
+see the issue's own comment history for the full investigation). Fixed
+by skipping RUNPATH patching entirely and restoring stock system
+libraries post-build (`tauri/scripts/restore_stock_appimage_libs.py`,
+`make desktop-build-appimage`). Deliberately **not** an official
+release target — excluded from CI and not chained into `desktop-build`,
+since the fix embeds the *build host's own* system libraries as
+replacements. `.rpm` remains the only officially distributed Linux
+format.
+
+**Windows — partially shipped, not yet fully verified.** `#225`
+(extracted Tauri out of `desktop/` into its own `tauri/` directory,
+prerequisite for both Windows and mobile) and `#226` (Windows bundle
+target, `.msi`/`.exe`) shipped. **Real gap:** the actual
+Windows-hardware verification pass for `#226` never happened — it was
+merged via a batch "merge all green" before a promised real-machine test
+ran, so several Windows-specific concerns (named-pipe Docker
+communication, MSI vs. NSIS installer choice, `resource_dir()` path
+resolution, TIME_WAIT socket behavior) are reasoned-about, not verified.
+`#228` (CI job to build the Windows artifact), `#229` (Authenticode
+code-signing, parity with the `.rpm`'s GPG signing), `#230` (Windows-specific
+first-run/error-state UX), and `#231` (end-user setup docs for Windows)
+are open, not started. `#268` (Docker Desktop's admin/UAC friction for
+non-technical Windows users) is blocked on real Windows hardware — a VM/Wine-based
+verification route was explored and correctly ruled out as untrustworthy
+signal.
+
+**Mobile — architecture decided, core pieces shipping incrementally.**
+`#227` resolved the fundamental constraint (Docker can't run on
+iOS/Android) as: native Tauri Mobile wrapping the *existing* dashboard
+UI (not a from-scratch native rewrite, not a PWA), reached over a
+Tailscale VPN connection rather than a public tunnel. `#232` (configurable
+backend server address, since mobile has no local Docker to default to)
+and `#234` (full Android SDK/NDK toolchain + a real working APK, verified
+via `unzip -l`/`aapt2`, not just a build-success message) shipped.
+`#269` (Android's cleartext-HTTP block, correctly scoped to `*.ts.net`
+domain matching rather than the original CGNAT-range framing, since
+Android's Network Security Config has no CIDR primitive) shipped. `#233`
+(login/session handling) resolved a wrong premise in the issue itself —
+the dashboard's login is a server-side Streamlit session, not a client-held
+token, so there's no native Keychain/Keystore work needed — and shipped the
+actual missing piece (webview navigation into the dashboard once a host is
+configured). Remaining open: `#235` (Android/iOS CI), `#236` (touch/UI
+responsiveness audit), `#237` (app store packaging), `#238` (end-user
+docs), `#245`/`#246` (first-run polish: loading states, a way back to
+the settings screen, connection/auth error handling) — iOS specifically
+is deferred indefinitely (no Mac available to build/test on).
 
 ------------------------------------------------------------
 EPOCH 11 — Real Integrations (Path B, highest leverage once started)
@@ -1051,8 +1122,14 @@ ML Platform               ✅ Complete
         ↓
 Application Layer         ✅ Complete
         ↓
-Production Hardening      ← Next
+Production Hardening      ✅ Complete (self-hosted + AWS-Terraform-written; see Epoch 7 above)
         ↓
-Kafka Streaming           ← Optional
+Multi-Tenancy (Path B)    ✅ Complete — see Epoch 10 above
         ↓
-ML-Driven Intelligence    ← Future
+Native Desktop/Mobile     ✅ Linux shipped (v0.1.0) — Windows/Mobile in progress, see "IMS Desktop" above
+        ↓
+Kafka Streaming           ← Deferred indefinitely (#76) — no real-time-processing demand signal
+        ↓
+ML-Driven Intelligence    ← Future — see Epoch 9 above (scoped into 2 cheap do-anytime items,
+                             1 re-scoped optional item, and 1 deferred-indefinitely item; none
+                             started yet)
