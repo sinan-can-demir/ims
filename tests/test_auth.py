@@ -344,6 +344,72 @@ def test_bootstrap_status_false_after_registration(db):
     assert response.json() == {"needs_registration": False}
 
 
+def test_verify_password_or_dummy_none_hash_returns_false():
+    from app.core.security import verify_password_or_dummy
+
+    assert verify_password_or_dummy("whatever", None) is False
+
+
+def test_verify_password_or_dummy_matching_real_hash_returns_true():
+    from app.core.security import hash_password, verify_password_or_dummy
+
+    real_hash = hash_password("correct-password")
+    assert verify_password_or_dummy("correct-password", real_hash) is True
+
+
+def test_verify_password_or_dummy_wrong_real_hash_returns_false():
+    from app.core.security import hash_password, verify_password_or_dummy
+
+    real_hash = hash_password("correct-password")
+    assert verify_password_or_dummy("wrong-password", real_hash) is False
+
+
+def test_authenticate_user_calls_bcrypt_exactly_once_per_branch(db, monkeypatch):
+    """
+    Regression guard for the timing side-channel fix: every branch through
+    authenticate_user() (unknown email, locked account, wrong password,
+    deactivated account, success) must call verify_password_or_dummy
+    exactly once, not zero (the original leak) or twice (a doubled cost
+    that would just move the leak elsewhere).
+    """
+    from app.services import auth_service
+
+    call_count = 0
+    real_fn = auth_service.verify_password_or_dummy
+
+    def counting(plain, hashed):
+        nonlocal call_count
+        call_count += 1
+        return real_fn(plain, hashed)
+
+    monkeypatch.setattr(auth_service, "verify_password_or_dummy", counting)
+
+    locked_user = _make_user(db, "timing-locked@example.com", "right-password")
+    locked_user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=15)
+    db.commit()
+
+    _make_user(db, "timing-wrongpw@example.com", "right-password")
+    _make_user(db, "timing-deactivated@example.com", "right-password", is_active=False)
+    _make_user(db, "timing-success@example.com", "right-password")
+
+    branches = [
+        ("timing-unknown@example.com", "whatever", InvalidCredentialsError),
+        ("timing-locked@example.com", "whatever", InvalidCredentialsError),
+        ("timing-wrongpw@example.com", "wrong-password", InvalidCredentialsError),
+        ("timing-deactivated@example.com", "right-password", InvalidCredentialsError),
+        ("timing-success@example.com", "right-password", None),
+    ]
+
+    for email, password, expected_error in branches:
+        call_count = 0
+        if expected_error is not None:
+            with pytest.raises(expected_error):
+                auth_service.authenticate_user(db, email, password)
+        else:
+            auth_service.authenticate_user(db, email, password)
+        assert call_count == 1, f"expected exactly 1 bcrypt call for {email}, got {call_count}"
+
+
 def test_login_lockout_after_max_failed_attempts(client, db):
     """
     5 wrong passwords in a row lock the account even on the 6th attempt

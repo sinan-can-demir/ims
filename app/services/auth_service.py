@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import InvalidCredentialsError, RegistrationClosedError
-from app.core.security import hash_password, verify_password
+from app.core.security import hash_password, verify_password_or_dummy
 from app.models.enums import UserRole
 from app.models.organization import Organization
 from app.models.user import User
@@ -26,6 +26,14 @@ def authenticate_user(db: Session, email: str, password: str) -> User:
     response, does distinguish them: actor_id is the found user's id when
     one exists (wrong password, deactivated account, locked out), or None
     for a genuinely unknown email, since there's no user row to reference.
+
+    Exactly one bcrypt call happens on every path through this function
+    (verify_password_or_dummy, called unconditionally right after the
+    lookup, before any branch) — closing a timing side-channel: unknown
+    email and locked-out account used to short-circuit past bcrypt
+    entirely (~100ms-1s depending on hardware/bcrypt cost, vs. a few ms
+    for the DB-only branches), so response latency alone told an attacker
+    which case they'd hit without needing the response body.
     """
     # with_for_update() serializes every branch below (locked check,
     # attempt-counter increment, lockout-set, success-reset) against
@@ -36,6 +44,11 @@ def authenticate_user(db: Session, email: str, password: str) -> User:
     # increment, undercounting the streak and letting an attacker who
     # fires requests in parallel dodge the lockout threshold entirely.
     user = db.query(User).filter(User.email == email).with_for_update().first()
+
+    # Unconditional and first, before any branch below reads or acts on
+    # it — see the docstring above. Runs even when user is None or the
+    # account is locked, both of which used to skip bcrypt entirely.
+    password_ok = verify_password_or_dummy(password, user.password_hash if user else None)
 
     # Still-locked check only — an *expired* lockout is left as-is here
     # (not proactively cleared) so a wrong attempt right after expiry still
@@ -51,7 +64,7 @@ def authenticate_user(db: Session, email: str, password: str) -> User:
         log_action(db, user.id, "login_failed", detail=email)
         raise InvalidCredentialsError()
 
-    if user is None or not verify_password(password, user.password_hash):
+    if user is None or not password_ok:
         if user is not None:
             user.failed_login_attempts += 1
             if user.failed_login_attempts >= _MAX_FAILED_ATTEMPTS:
