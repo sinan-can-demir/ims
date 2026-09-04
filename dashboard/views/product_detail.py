@@ -25,7 +25,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from app.models.enums import EventType
 from dashboard.admin_actions import run_replay
 from dashboard.auth import require_login
-from dashboard.data import load_events, load_forecast, load_inventory, load_products, load_restock
+from dashboard.data import (
+    invalidate_fleet_status,
+    invalidate_product_views,
+    invalidate_products,
+    load_events,
+    load_forecast,
+    load_inventory,
+    load_products,
+    load_restock,
+)
 
 EVENTS_PAGE_SIZE = 20
 PRODUCT_SELECT_KEY = "product_detail_selected_product"
@@ -57,7 +66,8 @@ selected_product = st.sidebar.selectbox(
 )
 
 if st.sidebar.button("🔄 Refresh"):
-    st.cache_data.clear()
+    invalidate_products(current_user["organization_id"])
+    invalidate_product_views(selected_product, current_user["organization_id"])
     st.rerun()
 
 # ---------------------------------------------------------------
@@ -243,7 +253,12 @@ if current_user["role"] == "admin":
     if st.button("Rebuild inventory projection", disabled=not confirm_replay):
         with st.spinner("Replaying events..."):
             summary = run_replay(current_user["id"], current_user["organization_id"])
-        st.cache_data.clear()
+        # Replay recomputes every product's inventory_state, not just the
+        # one selected above -- invalidate every product's cached views,
+        # not just this page's currently-selected one.
+        for p in products:
+            invalidate_product_views(p["id"], current_user["organization_id"])
+        invalidate_fleet_status(current_user["organization_id"])
         st.success(
             f"Rebuilt state for {summary['products_rebuilt']} products from "
             f"{summary['events_processed']} events."
