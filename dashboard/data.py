@@ -216,3 +216,90 @@ def load_suppliers(organization_id: int) -> list[dict]:
 @st.cache_data(ttl=CACHE_TTL)
 def load_purchase_orders(status: str | None, organization_id: int) -> list[dict]:
     return _list_purchase_orders(status, organization_id)
+
+
+# ---------------------------------------------------------------
+# Targeted cache invalidation.
+#
+# A bare `st.cache_data.clear()` flushes every cached entry for every org
+# on the deployment, not just the one org whose data just changed — a
+# noisy-neighbor perf bug (not a data leak: every loader already filters
+# by organization_id, so a stale cache entry never crosses orgs). One
+# helper per loader below, called instead of the bare clear() at each
+# mutation call site.
+#
+# Not a single generic invalidate_org_cache(org_id, *loaders) helper —
+# different loaders need structurally different args (e.g.
+# load_fleet_status(org_id) vs. load_inventory(product_id, org_id) vs.
+# load_purchase_orders needing all 4 status values enumerated vs.
+# load_events's 5-arg-exact-match requirement below). Baking the correct
+# arg shape into a per-loader helper means a call site can't get it wrong.
+#
+# `<loader>.clear(*args)` (the per-function cache object's own method, not
+# `st.cache_data.clear(fn, *args)` -- that overload doesn't exist in the
+# installed streamlit version) only evicts the exact call-site arg *shape*
+# it's given -- confirmed empirically: a cache entry created by calling
+# load_events(pid, org_id, None, 20, 0) with all 5 args explicit is NOT
+# invalidated by load_events.clear(pid, org_id) (implicit defaults for the
+# rest), even though the resolved values are identical. Every helper below
+# must therefore mirror each real call site's actual explicit-args shape,
+# not rely on the loader's own Python-level defaults.
+# ---------------------------------------------------------------
+
+
+def invalidate_inventory(product_id: int, organization_id: int) -> None:
+    load_inventory.clear(product_id, organization_id)
+
+
+def invalidate_restock(product_id: int, organization_id: int) -> None:
+    load_restock.clear(product_id, organization_id)
+
+
+def invalidate_events(product_id: int, organization_id: int) -> None:
+    """
+    Only the default/page-1/unfiltered view is invalidated -- product_
+    detail.py's one call site always passes all 5 args explicit
+    (selected_product, organization_id, event_type_arg, EVENTS_PAGE_SIZE,
+    offset), and event_type/offset are open-ended (unbounded filter +
+    pagination state), so every possible combination can't be enumerated
+    here. A non-default filtered/paginated view self-corrects via the
+    existing CACHE_TTL instead of being precisely invalidated -- an
+    accepted tradeoff, not a bug. 20 mirrors product_detail.py's
+    EVENTS_PAGE_SIZE constant (not imported from there -- that module
+    imports this one, not the reverse).
+    """
+    load_events.clear(product_id, organization_id, None, 20, 0)
+
+
+def invalidate_product_views(product_id: int, organization_id: int) -> None:
+    """Bundles the 3 per-product loaders a purchase/replay/etc. mutation typically affects."""
+    invalidate_inventory(product_id, organization_id)
+    invalidate_restock(product_id, organization_id)
+    invalidate_events(product_id, organization_id)
+
+
+def invalidate_fleet_status(organization_id: int) -> None:
+    load_fleet_status.clear(organization_id)
+
+
+def invalidate_products(organization_id: int) -> None:
+    load_products.clear(organization_id)
+
+
+def invalidate_suppliers(organization_id: int) -> None:
+    load_suppliers.clear(organization_id)
+
+
+def invalidate_recipe_items(finished_product_id: int, organization_id: int) -> None:
+    load_recipe_items.clear(finished_product_id, organization_id)
+
+
+def invalidate_purchase_orders(organization_id: int) -> None:
+    """
+    purchase_orders.py's status filter selectbox drives load_purchase_orders'
+    first arg (None or one of the 3 PurchaseOrderStatus values) -- any of
+    the 4 could be cached depending on what a viewer had selected, so all
+    4 are cleared rather than guessing which one is stale.
+    """
+    for status in (None, "DRAFT", "SUBMITTED", "RECEIVED"):
+        load_purchase_orders.clear(status, organization_id)
