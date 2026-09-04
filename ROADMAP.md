@@ -990,6 +990,106 @@ the settings screen, connection/auth error handling) — iOS specifically
 is deferred indefinitely (no Mac available to build/test on).
 
 ------------------------------------------------------------
+FOOD COST VISIBILITY — Waste Entry, Toast Connector, Cost Alerts (Path A continuation)
+------------------------------------------------------------
+
+Goal: close a real, structurally-confirmed gap — as a packaged desktop
+app, IMS gives a non-technical user no obvious way to get day-to-day data
+in at all (confirmed via a direct codebase check: the only mutating form
+anywhere in `dashboard/views/*.py` is Purchase Orders; there's no manual
+"log a sale/waste/adjustment" screen).
+
+**Scoped 2026-09-04** via a structured two-persona discovery simulation
+(no real user exists yet to interview for real) — see
+[docs/product/food-cost-visibility-discovery.md](docs/product/food-cost-visibility-discovery.md)
+for the full findings, methodology, and direct quotes. Distinct from
+Epoch 11 below: this is Path A (restaurant-specific, Toast POS) driven by
+concrete discovery findings, not Path B's general small/mid-business
+e-commerce connectors (Shopify/QuickBooks/WooCommerce) — different
+integration category, don't conflate the two.
+
+**The reframe that drives sequencing:** the discovery's own persona
+didn't want more data-entry screens — she wanted **food cost percentage
+(COGS ÷ revenue)** visible and updating regularly, currently only
+available quarterly from an accountant. Every item below is plumbing
+toward that number; the last item is the actual deliverable, not a
+downstream nice-to-have gated on the others being perfect.
+
+**Phase 1 — Waste quick-entry (must-have, cheapest, highest-leverage):**
+- [ ] New `dashboard/views/waste_entry.py` page (`st.Page`, registered in
+      `dashboard/app.py`'s `st.navigation()`) + `dashboard/waste_actions.py`
+      (mutating service calls via `SessionLocal()`, same pattern as the
+      existing `po_actions.py`/`recipe_actions.py`) — product picker +
+      event-type picker (defaulting to WASTE) + a quantity number input,
+      calling the existing `record_event()` service function directly.
+      Tap/pick-list/number only — no free-text field, per the discovery's
+      explicit finding that anything requiring a composed sentence doesn't
+      survive a rush shift.
+- [ ] No new auth work needed for the "stays logged in" requirement — the
+      dashboard's session is already server-side (Streamlit, not a
+      client-held token) and already has no time-based expiry on a
+      disconnected-but-not-closed session (confirmed against the
+      installed Streamlit source this session, see PR #305's discussion
+      on #233). Verify this holds for the actual mobile webview
+      (background the app for an extended period, confirm no re-login) as
+      a real device test — not yet done live, per PR #305's own disclosed
+      gap.
+- [ ] Cache invalidation: reuse `invalidate_product_views`/
+      `invalidate_fleet_status` (already built for exactly this shape,
+      see issue #283/PR #295).
+
+**Phase 2 — Purchase Order price-creep flag (must-have, cheap):**
+- [ ] At `add_purchase_order_line()` (`app/services/purchase_order_service.py`),
+      compare the new line's `unit_cost` against the most recent prior
+      line for the same `product_id` (optionally same `supplier_id`);
+      surface a simple flag if higher. `unit_cost` is already a tracked
+      field — no schema change needed.
+
+**Phase 3 — Toast POS connector (must-have, largest lift):**
+- [ ] Credential-based "Connect to Toast" flow — a real login-style
+      OAuth/credential handshake, explicitly **not** a raw API-key paste
+      (the discovery was specific that the latter is a non-starter for a
+      non-technical owner).
+- [ ] One-time UI to map Toast menu items to IMS products — reuses the
+      existing `Product` table as-is (a "finished dish" is already just a
+      `Product` row with `recipe_items`, same concept Recipes/BOM already
+      uses); no new schema concept required.
+- [ ] Periodic sync job translating Toast's sales report into the
+      existing generic ingestion shape (`{sku, event_type: "SALE",
+      quantity, event_id}`) and calling the already-built, already-shared
+      `app/services/ingestion_service.py::ingest_events()` — the same
+      core the CSV importer and webhook receiver already use. Batch
+      (daily or weekly), not real-time — the discovery was explicit that
+      real-time isn't needed and a nightly cadence already stretches what
+      a busy owner would tolerate.
+- [ ] No in-app scheduler exists in this codebase (confirmed, see Epoch 9
+      above) — follow the same proportionate pattern already established
+      for automated retraining: a plain host cron entry calling a new
+      sync script (`scripts/sync_toast_sales.sh`, mirroring
+      `scripts/retrain_cron.sh`'s shape), not new scheduling
+      infrastructure.
+
+**Phase 4 — Food-cost % dashboard tile (the actual deliverable):**
+- [ ] Real blocker found while scoping, not from the interview: **IMS has
+      no revenue data today.** `Product` has no `selling_price`, and
+      IMS-native `SALE` events carry only quantity, never a dollar
+      amount. This phase cannot ship for any org before Phase 3 (Toast
+      carries per-item sale price) — unless a manual `selling_price`
+      fallback field is scoped in for POS-less orgs, a decision not yet
+      made.
+- [ ] Once a revenue source exists: a dashboard tile computing
+      COGS-vs-revenue from whatever data streams are live so far (even a
+      partial, improving number matters more here than a complete one —
+      per the discovery's own framing) — and this tile, not a form,
+      should be the thing a first-time user sees, addressing the
+      "blank dashboard, no obvious action" first-run confusion the
+      discovery surfaced.
+
+**Deliberately not in this scope (see discovery doc for reasoning):**
+real-time POS sync, dedicated kitchen hardware/kiosk, any free-text entry
+field, returns/credit tracking.
+
+------------------------------------------------------------
 EPOCH 11 — Real Integrations (Path B, highest leverage once started)
 ------------------------------------------------------------
 
