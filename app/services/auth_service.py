@@ -48,7 +48,7 @@ def authenticate_user(db: Session, email: str, password: str) -> User:
     ):
         # log_action() commits internally (see its own docstring) — that
         # commit is also what releases this row's FOR UPDATE lock.
-        log_action(db, user.id, "login_failed", detail=email)
+        log_action(db, user.id, "login_failed", organization_id=user.organization_id, detail=email)
         raise InvalidCredentialsError()
 
     if user is None or not verify_password(password, user.password_hash):
@@ -57,11 +57,21 @@ def authenticate_user(db: Session, email: str, password: str) -> User:
             if user.failed_login_attempts >= _MAX_FAILED_ATTEMPTS:
                 user.locked_until = datetime.now(timezone.utc) + _LOCKOUT_DURATION
         # The increment above rides along in log_action()'s own commit.
-        log_action(db, user.id if user else None, "login_failed", detail=email)
+        # A genuinely unknown email has no user row, and therefore no
+        # real org to attribute this to — organization_id=1 here is a
+        # deliberate fallback, not a missed value (same category as the
+        # export call site in app/api/inventory.py).
+        log_action(
+            db,
+            user.id if user else None,
+            "login_failed",
+            organization_id=user.organization_id if user else 1,
+            detail=email,
+        )
         raise InvalidCredentialsError()
 
     if not user.is_active:
-        log_action(db, user.id, "login_failed", detail=email)
+        log_action(db, user.id, "login_failed", organization_id=user.organization_id, detail=email)
         raise InvalidCredentialsError()
 
     # No log_action() call on the success path to ride a commit on —

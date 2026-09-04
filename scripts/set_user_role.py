@@ -46,6 +46,7 @@ def set_user_role(email: str, role: str) -> User:
             db,
             actor_id=None,
             action="role_changed",
+            organization_id=user.organization_id,
             detail=f"user_id={user.id} email={email} {old_role.value}->{role}",
         )
         # log_action() commits internally, which expires every object

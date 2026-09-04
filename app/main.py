@@ -98,8 +98,10 @@ app.include_router(purchase_orders_router, prefix="/api", dependencies=_auth)
 app.include_router(recipes_router, prefix="/api", dependencies=_auth)
 # Signed with each org's own webhook_secret (see require_webhook_signature),
 # not the bearer token used by the routers above — different trust
-# boundary. No router-level dependency here: the signature check needs the
-# {organization_id} path param, which only a per-route dependency can see.
+# boundary. No router-level dependency here: both the signature check
+# and its own per-org rate limit (enforce_webhook_rate_limit) need the
+# {organization_id} path param, which only a per-route dependency can
+# see — they're attached directly on the route in app/api/webhooks.py.
 app.include_router(webhooks_router, prefix="/api")
 # No require_current_user — this *is* the login endpoint, nothing to
 # authenticate against yet. Still rate-limited: unauthenticated and
