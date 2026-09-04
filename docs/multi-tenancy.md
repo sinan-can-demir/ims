@@ -61,11 +61,12 @@ context anywhere in the service layer.
 `POST /api/webhooks/{organization_id}/ingest` resolves org from the
 route path, not from any implicit context — the org is public (it's in
 the URL), but the request only authenticates if `X-Webhook-Signature`
-matches *that org's own* `organizations.webhook_secret` (nullable —
-`NULL` disables signature verification for that org only, same
-"unset = disabled" shape the old single global `WEBHOOK_SECRET` env var
-had). A leaked or brute-forced secret for one org authenticates
-requests to that org's ingestion endpoint only. See `SECURITY.md`.
+matches *that org's own* `organizations.webhook_secret` (`NOT NULL` —
+every org gets a real random secret at creation time, and the endpoint
+fails closed if it's ever unset, rather than treating that as
+"verification disabled"). A leaked or brute-forced secret for one org
+authenticates requests to that org's ingestion endpoint only. See
+`SECURITY.md`.
 
 ## Analytics pipeline
 

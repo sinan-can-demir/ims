@@ -331,12 +331,13 @@ def test_cross_org_webhook_signature_does_not_authenticate(client, db, second_or
 
 def test_webhook_secret_state_is_independent_per_org(client, client_org2, db, second_org):
     """
-    Epoch 10 PR 12 (#148): org 1 requiring a signature and org 2 having
-    none configured must be two genuinely independent per-org states,
-    not one global toggle — proves both directions in the same test.
+    Epoch 10 PR 12 (#148): org 1's and org 2's webhook_secret must be
+    genuinely independent per-org state, not one global toggle — each
+    org's own secret authenticates only that org's route, and neither
+    org's unsigned requests succeed regardless of the other org's state.
     """
     _set_webhook_secret(db, 1, _ORG1_WEBHOOK_SECRET)
-    # second_org's webhook_secret is left NULL (unset) on purpose.
+    _set_webhook_secret(db, second_org.id, _ORG2_WEBHOOK_SECRET)
 
     org1_product = create_product(client, "Org1 Widget")
     org2_product = create_product(client_org2, "Org2 Widget")
@@ -355,7 +356,12 @@ def test_webhook_secret_state_is_independent_per_org(client, client_org2, db, se
     unsigned_to_org2 = client_org2.post(
         f"/api/webhooks/{second_org.id}/ingest", json=_payload(org2_product["sku"])
     )
-    assert unsigned_to_org2.status_code == 200
+    assert unsigned_to_org2.status_code == 401
+
+    signed_to_org2 = _signed_webhook_request(
+        client_org2, second_org.id, _payload(org2_product["sku"]), secret=_ORG2_WEBHOOK_SECRET
+    )
+    assert signed_to_org2.status_code == 200
 
 
 def test_export_partitions_by_org_from_single_checkpoint_run(
@@ -525,6 +531,66 @@ def test_cross_org_create_purchase_order_rejects_other_orgs_supplier(client, cli
     )
 
     assert response.status_code == 404
+
+
+def test_purchase_order_audit_rows_attributed_to_acting_org(client_org2, db, second_org):
+    """
+    po_submitted/po_received audit rows must be attributed to the org
+    that actually acted, not silently misattributed to org 1 (the
+    log_action() default this used to fall through to when the call
+    site forgot to pass organization_id).
+    """
+    from app.models.audit_log import AuditLog
+
+    supplier = _create_supplier(client_org2, "Org2 Supplier")
+    product = create_product(client_org2, "Org2 Widget")
+    po = _create_draft_po(client_org2, supplier["id"], product["id"])
+
+    client_org2.post(f"/api/purchase-orders/{po['id']}/submit")
+    client_org2.post(f"/api/purchase-orders/{po['id']}/receive")
+
+    for action in ("po_submitted", "po_received"):
+        entry = (
+            db.query(AuditLog)
+            .filter(AuditLog.action == action)
+            .order_by(AuditLog.id.desc())
+            .first()
+        )
+        assert entry is not None
+        assert entry.organization_id == second_org.id
+
+
+def test_role_change_audit_row_attributed_to_users_org(set_user_role_db, second_org, db):
+    """Same misattribution class as the PO test above, for scripts/set_user_role.py."""
+    from app.core.security import hash_password
+    from app.models.audit_log import AuditLog
+    from app.models.enums import UserRole
+    from app.models.user import User
+    from scripts.set_user_role import set_user_role
+
+    session = set_user_role_db()
+    try:
+        user = User(
+            email="promote-org2@example.com",
+            password_hash=hash_password("pw"),
+            display_name="Org2 Promote",
+            organization_id=second_org.id,
+        )
+        session.add(user)
+        session.commit()
+    finally:
+        session.close()
+
+    set_user_role("promote-org2@example.com", UserRole.ADMIN.value)
+
+    entry = (
+        db.query(AuditLog)
+        .filter(AuditLog.action == "role_changed")
+        .order_by(AuditLog.id.desc())
+        .first()
+    )
+    assert entry is not None
+    assert entry.organization_id == second_org.id
 
 
 def test_cross_org_create_purchase_order_rejects_other_orgs_product(client, client_org2):

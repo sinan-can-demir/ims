@@ -152,5 +152,15 @@ def export_inventory(
     current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     result = export_inventory_events(db, incremental=True)
-    log_action(db, current_user.id, "export", detail=f"rows_exported={result['rows_exported']}")
+    # export is deliberately whole-deployment, not scoped to one org (see
+    # docs/multi-tenancy.md) — there's no single "the" org this action
+    # touches, so the audit row is attributed to the acting admin's own
+    # org, same as actor_id already identifies who ran it.
+    log_action(
+        db,
+        current_user.id,
+        "export",
+        organization_id=current_user.organization_id,
+        detail=f"rows_exported={result['rows_exported']}",
+    )
     return result

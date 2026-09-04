@@ -80,3 +80,39 @@ def enforce_rate_limit(request: Request) -> None:
     calls the same check slowapi's own @limiter.limit(...) decorator uses.
     """
     limiter._check_request_limit(request, None, True)
+
+
+_WEBHOOK_DEFAULT_RATE_LIMIT = os.getenv("WEBHOOK_RATE_LIMIT", "60/minute")
+
+
+def webhook_rate_limit_key(request: Request) -> str:
+    """
+    Keyed on the target organization_id path param, not client IP.
+    Webhook senders (POS/e-commerce platforms) commonly deliver from a
+    shared pool of egress IPs across many merchants — IP-keying here
+    would let one busy org's traffic exhaust the bucket for an unrelated
+    org whose sender happens to share the same egress infrastructure.
+    Per-org keying isolates each org's own rate limit from every other
+    org's, matching this app's general multi-tenancy posture elsewhere.
+    """
+    return str(request.path_params.get("organization_id", "unknown"))
+
+
+# Separate Limiter instance (own bucket namespace) from `limiter` above —
+# a shared instance would mix webhook traffic into the same keyspace as
+# authenticated /api requests, and the two need different keying
+# entirely (org id vs. client IP).
+webhook_limiter = Limiter(
+    key_func=webhook_rate_limit_key, default_limits=[_WEBHOOK_DEFAULT_RATE_LIMIT]
+)
+
+
+def enforce_webhook_rate_limit(request: Request) -> None:
+    """
+    Same per-route Depends() idiom as enforce_rate_limit — see its
+    docstring for why middleware doesn't work here. Applied directly on
+    the webhook route (not router-level like `_auth` in app/main.py)
+    because the key function needs {organization_id}, which is only
+    resolved once FastAPI has matched this specific route.
+    """
+    webhook_limiter._check_request_limit(request, None, True)

@@ -14,14 +14,14 @@ import streamlit as st
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from dashboard.auth import require_login
-from dashboard.data import load_fleet_status
+from dashboard.data import invalidate_fleet_status, load_fleet_status
 
 current_user = require_login()
 
 st.title("🚦 Fleet Overview")
 
 if st.button("🔄 Refresh"):
-    st.cache_data.clear()
+    invalidate_fleet_status(current_user["organization_id"])
     st.rerun()
 
 fleet = load_fleet_status(current_user["organization_id"])

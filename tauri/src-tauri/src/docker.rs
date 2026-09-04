@@ -34,18 +34,18 @@ pub enum DaemonStatus {
 /// Both branches build the path via `Path`/`PathBuf` (`.join`,
 /// `.canonicalize`), which use the platform separator automatically, so
 /// this needs no Windows-specific handling (#226).
-pub fn project_root(handle: &AppHandle) -> PathBuf {
+pub fn project_root(handle: &AppHandle) -> Result<PathBuf, String> {
     if cfg!(debug_assertions) {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
             .canonicalize()
-            .expect("tauri/src-tauri/../.. should resolve to the repo root")
+            .map_err(|e| format!("tauri/src-tauri/../.. did not resolve to the repo root: {e}"))
     } else {
         handle
             .path()
             .resource_dir()
-            .expect("packaged app should have a resolvable resource directory")
-            .join("repo")
+            .map_err(|e| format!("could not resolve the app's resource directory: {e}"))
+            .map(|dir| dir.join("repo"))
     }
 }
 

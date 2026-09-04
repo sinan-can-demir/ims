@@ -18,7 +18,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from app.core.exceptions import DomainError
 from dashboard.auth import require_login
-from dashboard.data import load_products, load_purchase_orders, load_suppliers
+from dashboard.data import (
+    invalidate_fleet_status,
+    invalidate_product_views,
+    invalidate_products,
+    invalidate_purchase_orders,
+    invalidate_suppliers,
+    load_products,
+    load_purchase_orders,
+    load_suppliers,
+)
 from dashboard.po_actions import (
     add_line,
     add_supplier,
@@ -33,7 +42,9 @@ current_user = require_login()
 st.title("📦 Purchase Orders")
 
 if st.button("🔄 Refresh"):
-    st.cache_data.clear()
+    invalidate_products(current_user["organization_id"])
+    invalidate_suppliers(current_user["organization_id"])
+    invalidate_purchase_orders(current_user["organization_id"])
     st.rerun()
 
 products = load_products(current_user["organization_id"])
@@ -75,7 +86,7 @@ if submitted_supplier:
         except DomainError as e:
             st.error(str(e))
         else:
-            st.cache_data.clear()
+            invalidate_suppliers(current_user["organization_id"])
             st.rerun()
 
 st.divider()
@@ -115,7 +126,7 @@ else:
             except DomainError as e:
                 st.error(str(e))
             else:
-                st.cache_data.clear()
+                invalidate_purchase_orders(current_user["organization_id"])
                 st.success("Draft purchase order created.")
                 st.rerun()
 
@@ -149,7 +160,7 @@ else:
             except DomainError as e:
                 st.error(str(e))
             else:
-                st.cache_data.clear()
+                invalidate_purchase_orders(current_user["organization_id"])
                 st.success("Draft purchase order created.")
                 st.rerun()
 
@@ -217,7 +228,7 @@ for po in orders:
                 except DomainError as e:
                     st.error(str(e))
                 else:
-                    st.cache_data.clear()
+                    invalidate_purchase_orders(current_user["organization_id"])
                     st.rerun()
 
             if st.button("Submit purchase order", key=f"submit_{po['id']}"):
@@ -226,7 +237,7 @@ for po in orders:
                 except DomainError as e:
                     st.error(str(e))
                 else:
-                    st.cache_data.clear()
+                    invalidate_purchase_orders(current_user["organization_id"])
                     st.rerun()
 
         elif po["status"] == "SUBMITTED":
@@ -237,7 +248,15 @@ for po in orders:
                 except DomainError as e:
                     st.error(str(e))
                 else:
-                    st.cache_data.clear()
+                    # receive_purchase_order() creates one PURCHASE
+                    # InventoryEvent per line -- invalidate every line's
+                    # product, not just the PO list itself.
+                    invalidate_purchase_orders(current_user["organization_id"])
+                    for line in po["lines"]:
+                        invalidate_product_views(
+                            line["product_id"], current_user["organization_id"]
+                        )
+                    invalidate_fleet_status(current_user["organization_id"])
                     st.success(f"PO #{po['id']} received — inventory updated.")
                     st.rerun()
 
