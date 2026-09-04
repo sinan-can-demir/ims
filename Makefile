@@ -2,7 +2,7 @@
 
 .PHONY: up down reset rebuild logs seed export warehouse dbt-run dbt-test dbt-docs \
         features train train-deps test test-e2e test-all test-clean migrate shell dashboard lint format \
-        desktop-dev desktop-build desktop-sign desktop-release
+        desktop-dev desktop-build desktop-build-appimage desktop-sign desktop-release
 
 # Prefer the project's own venv so these don't silently break (dbt/joblib
 # "not found") when it exists but isn't activated — but fall back to bare
@@ -176,6 +176,16 @@ desktop-dev:
 
 desktop-build:
 	cd tauri && npm run tauri build
+
+# Not chained into desktop-build/desktop-release -- the default rpm/msi/nsis
+# flow (tauri.conf.json's bundle.targets) stays untouched. AppImage needs
+# its own wrapper because a plain `tauri build --bundles appimage` produces
+# a build that segfaults on launch (see issue #212); build-appimage.sh
+# works around that by restoring stock system libraries linuxdeploy would
+# otherwise corrupt. Local-only like desktop-sign -- the fix embeds the
+# build host's own libraries, so it isn't safe to run in CI.
+desktop-build-appimage:
+	./tauri/scripts/build-appimage.sh
 
 # Finds the most recently built .rpm rather than hardcoding a version, so
 # this doesn't need editing every release. Signing is a manual, local-only
