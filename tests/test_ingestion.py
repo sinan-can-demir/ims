@@ -42,6 +42,26 @@ def test_ingest_events_mixed_success_and_failure(client, db):
     assert "nonexistent-sku" in result["results"][1]["error"]
 
 
+def test_ingest_events_unit_price_flows_through_to_the_stored_event(client, db):
+    """
+    ROADMAP.md's "Food Cost Visibility" Phase 3 -- this is the exact core
+    a POS connector will call (translate external sale data into this
+    generic row shape, then ingest_events()). Confirms unit_price isn't
+    silently dropped anywhere between the row dict and the persisted
+    InventoryEvent.
+    """
+    product = create_product(client)
+    row = _row(product["sku"], event_type="PURCHASE", quantity=2)
+    row["unit_price"] = 14.50
+
+    result = ingest_events(db, [row])
+    assert result["rows_succeeded"] == 1
+
+    event = db.query(InventoryEvent).filter(InventoryEvent.event_id == row["event_id"]).first()
+    assert event is not None
+    assert float(event.unit_price) == 14.50
+
+
 def test_ingest_events_duplicate_event_id_is_idempotent(client, db):
     product = create_product(client)
     shared_event_id = f"evt-{uuid.uuid4()}"

@@ -48,6 +48,7 @@ def create_inventory_event(
         event.event_id,
         current_user.id,
         organization_id,
+        event.unit_price,
     )
 
 

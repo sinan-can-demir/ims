@@ -41,6 +41,43 @@ def test_inventory_flow(client):
     assert response.json()["quantity"] == 40
 
 
+def test_event_unit_price_is_optional_and_round_trips(client):
+    """
+    ROADMAP.md's "Food Cost Visibility" Phase 3 prerequisite -- unit_price
+    is new, nullable, and additive. Confirms both halves: an event with no
+    unit_price still works exactly as before (existing callers unaffected),
+    and one that does set it gets the real value back, not silently
+    dropped.
+    """
+    product = create_product(client)
+    product_id = product["id"]
+
+    no_price = client.post(
+        "/api/inventory/events",
+        json={
+            "product_id": product_id,
+            "event_type": "PURCHASE",
+            "quantity": 10,
+            "event_id": "evt-no-price",
+        },
+    )
+    assert no_price.status_code == 201
+    assert no_price.json()["unit_price"] is None
+
+    with_price = client.post(
+        "/api/inventory/events",
+        json={
+            "product_id": product_id,
+            "event_type": "SALE",
+            "quantity": 2,
+            "event_id": "evt-with-price",
+            "unit_price": 14.50,
+        },
+    )
+    assert with_price.status_code == 201
+    assert with_price.json()["unit_price"] == 14.50
+
+
 @pytest.mark.postgres
 def test_oversell_protection(client):
 

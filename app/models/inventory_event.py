@@ -6,6 +6,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Integer,
+    Numeric,
     String,
     UniqueConstraint,
 )
@@ -59,6 +60,14 @@ class InventoryEvent(Base):
     event_type = Column(Enum(EventType, name="event_type_enum"), nullable=False)
 
     quantity = Column(Integer, nullable=False)
+
+    # Nullable, additive — no existing caller (CSV import, webhook, manual
+    # dashboard entry) sets this, and none are required to. Exists so a
+    # POS connector (ROADMAP.md's "Food Cost Visibility" Phase 3) has
+    # somewhere to record the actual per-unit sale price it already has,
+    # which nothing else in this table ever tracked before. Same type as
+    # PurchaseOrderLine.unit_cost.
+    unit_price = Column(Numeric(10, 2), nullable=True)
 
     # Permanently nullable by design, not a migration-in-progress state —
     # webhook-sourced events have no human actor, and NULL is honest here;

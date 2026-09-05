@@ -1097,14 +1097,17 @@ even once it arrives. This means Phase 3 is *not* a pure reuse of
 `ingest_events()` as originally scoped; it needs a real (small) schema
 change first — see the new prerequisite item below, shared with Phase 4.
 
-- [ ] **Prerequisite (blocks both this phase and Phase 4):** add a
-      nullable `unit_price` column to `inventory_events` (new Alembic
-      migration, `Numeric(10,2)` — same type `PurchaseOrderLine.unit_cost`
-      already uses), threaded through `IngestRowInput`/
-      `InventoryEventCreate` and `record_event()`/`ingest_events()` as an
-      optional parameter. Existing call sites (CSV import, webhook,
-      manual dashboard entry) are unaffected — this is purely additive,
-      nullable, no behavior change for anything that doesn't pass it.
+- [x] **Prerequisite (blocks both this phase and Phase 4). Shipped
+      2026-09-04.** Nullable `unit_price` column added to
+      `inventory_events` (`Numeric(10,2)` — same type
+      `PurchaseOrderLine.unit_cost` already uses), threaded through
+      `IngestRowInput`/`InventoryEventCreate` and
+      `record_event()`/`ingest_events()`/the `POST /api/inventory/events`
+      route as an optional parameter. Existing call sites (CSV import,
+      webhook, manual dashboard entry) unaffected — purely additive,
+      verified via the full test suite (271 passed) against real
+      Postgres, not just SQLite. Migration verified both directions
+      (upgrade/downgrade/upgrade), not just applied once.
 - [ ] Credential-based "Connect to Square" flow (OAuth authorization-code,
       `ORDERS_READ` scope only) + token storage with a renewal job (not
       just a one-time connect-and-forget).
