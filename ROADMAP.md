@@ -1046,6 +1046,17 @@ downstream nice-to-have gated on the others being perfect.
       field — no schema change needed.
 
 **Phase 3 — Toast POS connector (must-have, largest lift):**
+
+**On hold as of 2026-09-04, decided explicitly, not just stalled:** this
+phase needs a real Toast developer/partner account before any real
+integration code can be written against it — Toast's API access isn't
+self-serve like a typical REST API, it requires going through their
+partner program, and building against a stub/mock first was considered
+and declined in favor of holding until real account access exists. Real
+credential-storage security decisions (encryption at rest, rotation) also
+need agreement before this is built, not after. Pick this up once Toast
+partner access is actually in hand.
+
 - [ ] Credential-based "Connect to Toast" flow — a real login-style
       OAuth/credential handshake, explicitly **not** a raw API-key paste
       (the discovery was specific that the latter is a non-starter for a
