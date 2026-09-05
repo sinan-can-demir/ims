@@ -1047,15 +1047,22 @@ downstream nice-to-have gated on the others being perfect.
 
 **Phase 3 — Toast POS connector (must-have, largest lift):**
 
-**On hold as of 2026-09-04, decided explicitly, not just stalled:** this
-phase needs a real Toast developer/partner account before any real
-integration code can be written against it — Toast's API access isn't
-self-serve like a typical REST API, it requires going through their
-partner program, and building against a stub/mock first was considered
-and declined in favor of holding until real account access exists. Real
-credential-storage security decisions (encryption at rest, rotation) also
-need agreement before this is built, not after. Pick this up once Toast
-partner access is actually in hand.
+**Deferred indefinitely as of 2026-09-04**, decided explicitly (same
+category as Epoch 8/Kafka above), not just stalled. Researched what
+Toast's API access actually requires before deferring, rather than
+assuming: Toast has two real tiers, not one. **Standard API access**
+(read-only — sufficient for this phase's actual need, pulling a sales
+report) is self-serve *in the sense that it needs no partner-approval
+process*, but it's only available bundled into a paid "Restaurant
+Management Essentials" subscription add-on, not a free standalone
+developer/sandbox account — Toast doesn't publish pricing, it's quoted
+per-business. **Partner API access** (write-capable, OAuth) does require
+Toast's Integrations/Partner Program approval process on top of that.
+Either way, this needs whoever runs IMS to already have a real paid Toast
+account — there's no free tier to prototype against. Building against a
+stub/mock first was considered and declined too. Revisit only if real
+Toast account access exists, or demand for POS integration becomes
+concrete enough to justify the account cost itself.
 
 - [ ] Credential-based "Connect to Toast" flow — a real login-style
       OAuth/credential handshake, explicitly **not** a raw API-key paste
@@ -1081,13 +1088,18 @@ partner access is actually in hand.
       infrastructure.
 
 **Phase 4 — Food-cost % dashboard tile (the actual deliverable):**
+
+**Blocked as of 2026-09-04**, following directly from Phase 3's deferral.
 - [ ] Real blocker found while scoping, not from the interview: **IMS has
       no revenue data today.** `Product` has no `selling_price`, and
       IMS-native `SALE` events carry only quantity, never a dollar
       amount. This phase cannot ship for any org before Phase 3 (Toast
       carries per-item sale price) — unless a manual `selling_price`
-      fallback field is scoped in for POS-less orgs, a decision not yet
-      made.
+      fallback field is scoped in for POS-less orgs, **a decision
+      deliberately not made yet** (raised, not resolved, while recording
+      Phase 3's deferral). If that fallback is wanted, it unblocks this
+      phase without needing Phase 3 at all — revisit as its own scoping
+      pass if/when prioritized.
 - [ ] Once a revenue source exists: a dashboard tile computing
       COGS-vs-revenue from whatever data streams are live so far (even a
       partial, improving number matters more here than a complete one —
