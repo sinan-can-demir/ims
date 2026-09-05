@@ -1137,13 +1137,34 @@ change first — see the new prerequisite item below, shared with Phase 4.
       endpoint — sent a deliberately-invalid authorization code and got
       back `"Authorization code not found for app ..."` (an
       app-authenticated response rejecting only the fake code), not a
-      client-authentication error, which would look different. **Still
-      not done:** a full real login → callback → stored-token round trip
-      — that needs an actual browser walking through Square's real login
-      page, which in turn needs the sandbox seller test account manually
-      "launched" once from the Developer Console first (see the finding
-      above). Do that next before trusting the full connect flow works
-      end-to-end.
+      client-authentication error, which would look different.
+      **Update 2026-09-05, full round trip verified end-to-end for
+      real:** the actual blocker wasn't a sandbox seller "launch" step
+      (there is no such control in the Developer Console for this app
+      type) — it was that the app's **Sandbox Redirect URL was unset
+      ("None")** on Square's OAuth settings page, so Square would have
+      rejected any real callback regardless of code correctness. Set it
+      to `SQUARE_REDIRECT_URI` (`http://localhost:8000/api/square/callback`
+      in dev), then drove a real browser through Square's actual sandbox
+      login/consent page via the dashboard's "Connect to Square" button.
+      Confirmed in Postgres afterward, not just from the success message:
+      `organizations.square_merchant_id` (`ML62QZENZ9YC1`),
+      `square_access_token`/`square_refresh_token` both populated, and
+      `square_token_expires_at` set to exactly 30 days out, matching
+      Square's documented token lifetime.
+      **Real gap found and still open:** the dashboard's login session
+      lives entirely in Streamlit's `st.session_state["user"]` — in-memory,
+      tied to one browser connection, no cookie or persisted token (see
+      `dashboard/auth.py`). The connect flow requires a full off-domain
+      navigation (dashboard → Square's real login page → this API's
+      `/api/square/callback` → back to the dashboard,
+      `app/api/square.py`'s `_DASHBOARD_URL` redirect). Streamlit treats
+      the return as a brand-new connection, so the admin's login is lost
+      and they're forced to sign in again right after connecting — jarring
+      but not silently broken, since `square_connected=true` still reaches
+      them post-login. Not fixed yet; would need a persistent
+      (cookie- or token-backed) dashboard session to avoid, which is a
+      bigger change than this phase's scope.
       A renewal job doesn't exist yet — `needs_token_refresh()` is
       implemented and tested, but nothing calls it on a schedule; that's
       the sync-job item below.
