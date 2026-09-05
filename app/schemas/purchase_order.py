@@ -28,6 +28,12 @@ class PurchaseOrderLineResponse(BaseModel):
     quantity: int
     unit_cost: float | None
     created_at: datetime
+    # Set only by add_purchase_order_line() -- transient attributes on the
+    # ORM object, not mapped columns (see that function's docstring).
+    # Absent (default None/False) on every other response that reuses
+    # this same model, e.g. GET /purchase-orders/{id}.
+    previous_unit_cost: float | None = None
+    price_increased: bool = False
 
 
 class PurchaseOrderCreate(BaseModel):

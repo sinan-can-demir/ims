@@ -146,6 +146,9 @@ else:
                 key="manual_supplier",
             )
             manual_quantity = st.number_input("Quantity", min_value=1, value=1)
+            manual_unit_cost = st.number_input(
+                "Unit cost (optional)", min_value=0.0, value=0.0, step=0.01
+            )
             create_submitted = st.form_submit_button("Create draft")
 
         if create_submitted:
@@ -156,6 +159,7 @@ else:
                     int(manual_quantity),
                     current_user["id"],
                     current_user["organization_id"],
+                    unit_cost=manual_unit_cost or None,
                 )
             except DomainError as e:
                 st.error(str(e))
@@ -195,9 +199,24 @@ for po in orders:
         else:
             st.caption("No lines yet.")
 
+        # Set just before the st.rerun() below, on the price-increase path
+        # -- session_state survives the rerun, unlike a plain st.warning()
+        # call right before it (which would flash and vanish, same as the
+        # st.success() case the PO-creation test above documents). Popped
+        # (not just read) so it only shows once, immediately after the
+        # add that triggered it.
+        price_flag_key = f"price_flag_{po['id']}"
+        price_flag = st.session_state.pop(price_flag_key, None)
+        if price_flag:
+            st.warning(
+                f"Heads up: {product_labels.get(price_flag['product_id'], 'this product')} "
+                f"now costs {price_flag['unit_cost']:.2f}, up from "
+                f"{price_flag['previous_unit_cost']:.2f} last time."
+            )
+
         if po["status"] == "DRAFT":
             with st.form(f"add_line_form_{po['id']}", clear_on_submit=True):
-                col_product, col_qty, col_add = st.columns([3, 2, 1])
+                col_product, col_qty, col_cost, col_add = st.columns([3, 2, 2, 1])
                 with col_product:
                     line_product_id = st.selectbox(
                         "Add product",
@@ -214,20 +233,37 @@ for po in orders:
                         key=f"line_qty_{po['id']}",
                         label_visibility="collapsed",
                     )
+                with col_cost:
+                    line_unit_cost = st.number_input(
+                        "Unit cost",
+                        min_value=0.0,
+                        value=0.0,
+                        step=0.01,
+                        key=f"line_unit_cost_{po['id']}",
+                        label_visibility="collapsed",
+                        placeholder="Unit cost (optional)",
+                    )
                 with col_add:
                     add_line_submitted = st.form_submit_button("Add line")
 
             if add_line_submitted:
                 try:
-                    add_line(
+                    new_line = add_line(
                         po["id"],
                         line_product_id,
                         int(line_qty),
                         current_user["organization_id"],
+                        unit_cost=line_unit_cost or None,
                     )
                 except DomainError as e:
                     st.error(str(e))
                 else:
+                    if new_line["price_increased"]:
+                        st.session_state[price_flag_key] = {
+                            "product_id": new_line["product_id"],
+                            "unit_cost": new_line["unit_cost"],
+                            "previous_unit_cost": new_line["previous_unit_cost"],
+                        }
                     invalidate_purchase_orders(current_user["organization_id"])
                     st.rerun()
 

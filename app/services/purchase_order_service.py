@@ -118,12 +118,43 @@ def _require_draft(po: PurchaseOrder, action: str) -> None:
         raise InvalidPurchaseOrderStateError(po.id, po.status.value, action)
 
 
+def _get_last_unit_cost(db: Session, product_id: int, organization_id: int) -> float | None:
+    """
+    Most recent prior PO line for this product with a real (non-null) unit
+    cost — the baseline `add_purchase_order_line` flags a new line's cost
+    against (see `ROADMAP.md`'s "Food Cost Visibility" Phase 2). Ordered
+    by id, not created_at: created_at's `server_default=func.now()` only
+    has second-resolution and isn't populated until a refresh, so it's a
+    weaker tiebreaker than the monotonically-increasing PK for lines
+    created close together.
+    """
+    last_line = (
+        db.query(PurchaseOrderLine)
+        .filter(
+            PurchaseOrderLine.product_id == product_id,
+            PurchaseOrderLine.organization_id == organization_id,
+            PurchaseOrderLine.unit_cost.isnot(None),
+        )
+        .order_by(PurchaseOrderLine.id.desc())
+        .first()
+    )
+    return last_line.unit_cost if last_line else None
+
+
 def add_purchase_order_line(
     db: Session, purchase_order_id: int, line: PurchaseOrderLineCreate, organization_id: int = 1
 ) -> PurchaseOrderLine:
     po = get_purchase_order(db, purchase_order_id, organization_id)
     _require_draft(po, "add a line to")
     _get_product_or_raise(db, line.product_id, organization_id)
+
+    # Queried before inserting the new line, so this is genuinely the
+    # prior line -- never the one about to be created.
+    previous_unit_cost = (
+        _get_last_unit_cost(db, line.product_id, organization_id)
+        if line.unit_cost is not None
+        else None
+    )
 
     new_line = PurchaseOrderLine(
         purchase_order_id=purchase_order_id,
@@ -135,6 +166,18 @@ def add_purchase_order_line(
     db.add(new_line)
     db.commit()
     db.refresh(new_line)
+
+    # Transient, not a mapped column -- deliberately not persisted, just
+    # carried on the returned object for this one request/response so the
+    # caller (API route, dashboard) can surface a "cost went up" flag
+    # without a second query. See PurchaseOrderLineResponse.
+    new_line.previous_unit_cost = previous_unit_cost
+    new_line.price_increased = (
+        previous_unit_cost is not None
+        and new_line.unit_cost is not None
+        and new_line.unit_cost > previous_unit_cost
+    )
+
     return new_line
 
 
