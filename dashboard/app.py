@@ -39,6 +39,7 @@ pages = [
     st.Page("views/fleet_overview.py", title="Fleet Overview", icon="🚦"),
     st.Page("views/recipes.py", title="Recipes / BOM", icon="🍳"),
     st.Page("views/purchase_orders.py", title="Purchase Orders", icon="📦"),
+    st.Page("views/square_connect.py", title="Square Connector", icon="🟩"),
 ]
 
 pg = st.navigation(pages)

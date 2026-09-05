@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pandas as pd
+import pytest
 import streamlit as st
 from streamlit.testing.v1 import AppTest
 
@@ -25,6 +26,7 @@ PURCHASE_ORDERS_PAGE = str(_REPO_ROOT / "dashboard" / "views" / "purchase_orders
 FLEET_OVERVIEW_PAGE = str(_REPO_ROOT / "dashboard" / "views" / "fleet_overview.py")
 PRODUCT_DETAIL_PAGE = str(_REPO_ROOT / "dashboard" / "views" / "product_detail.py")
 WASTE_ENTRY_PAGE = str(_REPO_ROOT / "dashboard" / "views" / "waste_entry.py")
+SQUARE_CONNECT_PAGE = str(_REPO_ROOT / "dashboard" / "views" / "square_connect.py")
 
 
 def _make_dashboard_user(
@@ -575,6 +577,81 @@ def test_waste_entry_page_rejects_waste_exceeding_current_stock(client, dashboar
     inventory = client.get(f"/api/inventory/{tomatoes['id']}")
     assert inventory.status_code == 200
     assert inventory.json()["quantity"] == 5
+
+
+# ---------------------------------------------------------------------------
+# Square POS connector (ROADMAP.md's "Food Cost Visibility" Phase 3) --
+# admin-only "Connect to Square" page. get_authorize_url() (called via
+# dashboard/square_actions.py) requires SQUARE_APPLICATION_ID to be set,
+# so these tests set it via monkeypatch rather than relying on any real
+# value being present in the test environment.
+# ---------------------------------------------------------------------------
+
+
+def test_square_connect_page_member_sees_admin_only_message(client, dashboard_db):
+    member = _make_dashboard_user(dashboard_db, email="square-member@example.com")
+
+    at = AppTest.from_file(SQUARE_CONNECT_PAGE)
+    _signed_in(at, member)
+    at.run()
+
+    assert not at.exception
+    assert any("admin-only setting" in i.value for i in at.info)
+
+
+def test_square_connect_page_admin_sees_connect_link_when_not_connected(
+    client, dashboard_db, monkeypatch
+):
+    from app.services import square_service
+
+    monkeypatch.setattr(square_service, "SQUARE_APPLICATION_ID", "sandbox-sq0idb-test")
+    admin = _make_dashboard_user(
+        dashboard_db, email="square-admin@example.com", role=UserRole.ADMIN
+    )
+
+    at = AppTest.from_file(SQUARE_CONNECT_PAGE)
+    _signed_in(at, admin)
+    at.run()
+
+    assert not at.exception
+    assert any("Not connected to Square" in i.value for i in at.info)
+    # AppTest has no dedicated .link_button accessor (confirmed: not in
+    # streamlit.testing.v1.AppTest's element types) -- .get() is the
+    # generic lookup for element types without one.
+    assert any(lb.label == "Connect to Square" for lb in at.get("link_button"))
+
+
+@pytest.mark.postgres
+def test_square_connect_page_admin_sees_disconnect_when_connected(
+    client, dashboard_db, monkeypatch
+):
+    from app.services import square_service
+
+    admin = _make_dashboard_user(
+        dashboard_db, email="square-admin2@example.com", role=UserRole.ADMIN
+    )
+    db_session = dashboard_db()
+    try:
+        square_service.save_connection(
+            db_session,
+            organization_id=admin.organization_id,
+            token_response={
+                "access_token": "EAAA-fake",  # noqa: S106 -- fake test value
+                "refresh_token": "EQAA-fake",  # noqa: S106 -- fake test value
+                "merchant_id": "M-fake-merchant",
+                "expires_at": "2026-12-05T00:00:00+00:00",
+            },
+        )
+    finally:
+        db_session.close()
+
+    at = AppTest.from_file(SQUARE_CONNECT_PAGE)
+    _signed_in(at, admin)
+    at.run()
+
+    assert not at.exception
+    assert any("M-fake-merchant" in s.value for s in at.success)
+    assert any(cb.label.startswith("I understand") for cb in at.checkbox)
 
 
 # ---------------------------------------------------------------------------

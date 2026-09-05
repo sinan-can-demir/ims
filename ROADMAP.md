@@ -1108,9 +1108,39 @@ change first — see the new prerequisite item below, shared with Phase 4.
       verified via the full test suite (271 passed) against real
       Postgres, not just SQLite. Migration verified both directions
       (upgrade/downgrade/upgrade), not just applied once.
-- [ ] Credential-based "Connect to Square" flow (OAuth authorization-code,
-      `ORDERS_READ` scope only) + token storage with a renewal job (not
-      just a one-time connect-and-forget).
+- [x] **Credential-based "Connect to Square" flow — shipped 2026-09-04,
+      partially verified.** OAuth authorization-code flow,
+      `ORDERS_READ`+`MERCHANT_PROFILE_READ` scopes only (confirmed never
+      requests write access). `app/services/square_service.py` (state
+      signing/verification, authorize-URL construction, token exchange/
+      refresh, DB persistence) + `app/api/square.py` (the callback route,
+      public/unauthenticated like the webhook route) +
+      `dashboard/views/square_connect.py` (admin-only connect/disconnect
+      page). Token storage is plaintext on `Organization`, same posture as
+      `webhook_secret` — flagged explicitly in the model as a known
+      limitation, not silently accepted.
+      **What's real and verified:** the authorize-URL step was checked
+      against Square's actual sandbox endpoint (a live HTTP request,
+      302-redirects to a genuine Square-hosted login page) — this
+      surfaced a real, useful finding: Square's sandbox requires the
+      seller test account to be manually "launched" once from the
+      Developer Console before OAuth login against it will work at all.
+      State signing/verification and DB persistence are tested directly
+      (14 tests, `tests/test_square_service.py`) and the dashboard page
+      is tested end-to-end via `AppTest` (3 tests, real Postgres for the
+      one that touches `square_token_expires_at` — see
+      `docs/wiki/sqlite-drops-timezone-awareness.md`, a second real
+      instance of the same SQLite-tz gap that hit `auth_service.py`).
+      **What's not yet verified:** the actual token exchange
+      (`exchange_code_for_token`) has only run against a mocked Square
+      response — no `SQUARE_APPLICATION_SECRET` exists yet to test it
+      against the real endpoint, so a full real login → callback →
+      stored-token round trip has not happened. Do that first once the
+      Application Secret is available, before trusting this is fully
+      working.
+      A renewal job doesn't exist yet — `needs_token_refresh()` is
+      implemented and tested, but nothing calls it on a schedule; that's
+      the sync-job item below.
 - [ ] One-time UI to map Square catalog items (`catalog_object_id`) to
       IMS products — reuses the existing `Product` table as-is (a
       "finished dish" is already just a `Product` row with
