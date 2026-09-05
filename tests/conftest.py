@@ -114,6 +114,17 @@ def dashboard_db(db, monkeypatch):
 
 @pytest.fixture(scope="function")
 def client(db):
+    # app.state.limiter's in-memory bucket is keyed by client IP
+    # (rate_limit_key) and never expires within a single pytest process --
+    # every test using this fixture shares one "testclient" bucket. A
+    # suite that's fast enough (as CI's runner is, more consistently than
+    # a local run) accumulates enough requests across unrelated test files
+    # to trip the real 100/minute default limit, failing tests that have
+    # nothing to do with rate limiting. Reset before each test so this
+    # fixture's isolation guarantee (a fresh `db` per test) extends to
+    # rate-limit state too, not just the database.
+    app.state.limiter.reset()
+
     def override_get_db():
         yield db
 

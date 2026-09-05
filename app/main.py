@@ -15,6 +15,7 @@ from app.api.inventory import router as inventory_router
 from app.api.products import router as products_router
 from app.api.purchase_orders import router as purchase_orders_router
 from app.api.recipes import router as recipes_router
+from app.api.square import router as square_router
 from app.api.suppliers import router as suppliers_router
 from app.api.webhooks import router as webhooks_router
 from app.core.auth import require_current_user
@@ -103,6 +104,9 @@ app.include_router(recipes_router, prefix="/api", dependencies=_auth)
 # {organization_id} path param, which only a per-route dependency can
 # see — they're attached directly on the route in app/api/webhooks.py.
 app.include_router(webhooks_router, prefix="/api")
+# Public/unauthenticated, same reasoning as webhooks_router above --
+# Square's own redirect carries no IMS bearer token (see app/api/square.py).
+app.include_router(square_router, prefix="/api")
 # No require_current_user — this *is* the login endpoint, nothing to
 # authenticate against yet. Still rate-limited: unauthenticated and
 # repeatedly guessable, a natural brute-force target.
