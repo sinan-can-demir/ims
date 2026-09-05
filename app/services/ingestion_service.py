@@ -58,6 +58,7 @@ def ingest_events(
                 row.event_id,
                 created_by_id,
                 organization_id,
+                row.unit_price,
             )
 
             results.append(

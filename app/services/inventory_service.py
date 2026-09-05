@@ -64,6 +64,7 @@ def _apply_event(
     event_id: str,
     created_by_id: int | None,
     organization_id: int,
+    unit_price: float | None = None,
 ) -> tuple[InventoryEvent, bool]:
     """
     Core event application — idempotency check, oversell guard, insert
@@ -139,6 +140,7 @@ def _apply_event(
         event_id=event_id,
         created_by_id=created_by_id,
         organization_id=organization_id,
+        unit_price=unit_price,
     )
 
     db.add(event)
@@ -210,10 +212,18 @@ def record_event(
     event_id: str,
     created_by_id: int | None = None,
     organization_id: int = 1,
+    unit_price: float | None = None,
 ) -> InventoryEvent:
     try:
         event, created = _apply_event(
-            db, product_id, event_type, quantity, event_id, created_by_id, organization_id
+            db,
+            product_id,
+            event_type,
+            quantity,
+            event_id,
+            created_by_id,
+            organization_id,
+            unit_price,
         )
 
         if created and event_type == EventType.SALE:

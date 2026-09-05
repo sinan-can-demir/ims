@@ -13,6 +13,9 @@ class InventoryEventCreate(BaseModel):
     event_type: EventType
     quantity: int
     event_id: str = Field(min_length=1, max_length=100)
+    # Optional, additive -- see InventoryEvent.unit_price's model comment.
+    # No existing caller needs to set this.
+    unit_price: float | None = Field(default=None, ge=0)
 
     @field_validator("quantity")
     @classmethod
@@ -29,5 +32,6 @@ class InventoryEventResponse(BaseModel):
     event_type: EventType
     quantity: int
     event_id: str
+    unit_price: float | None
     created_by_id: int | None
     created_at: datetime
