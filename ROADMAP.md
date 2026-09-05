@@ -1049,61 +1049,106 @@ downstream nice-to-have gated on the others being perfect.
       surface a simple flag if higher. `unit_cost` is already a tracked
       field — no schema change needed.
 
-**Phase 3 — Toast POS connector (must-have, largest lift):**
+**Phase 3 — Square POS connector (must-have, largest lift):**
 
-**Deferred indefinitely as of 2026-09-04**, decided explicitly (same
-category as Epoch 8/Kafka above), not just stalled. Researched what
-Toast's API access actually requires before deferring, rather than
-assuming: Toast has two real tiers, not one. **Standard API access**
-(read-only — sufficient for this phase's actual need, pulling a sales
-report) is self-serve *in the sense that it needs no partner-approval
-process*, but it's only available bundled into a paid "Restaurant
-Management Essentials" subscription add-on, not a free standalone
-developer/sandbox account — Toast doesn't publish pricing, it's quoted
-per-business. **Partner API access** (write-capable, OAuth) does require
-Toast's Integrations/Partner Program approval process on top of that.
-Either way, this needs whoever runs IMS to already have a real paid Toast
-account — there's no free tier to prototype against. Building against a
-stub/mock first was considered and declined too. Revisit only if real
-Toast account access exists, or demand for POS integration becomes
-concrete enough to justify the account cost itself.
+**Re-scoped from Toast to Square, 2026-09-04.** Toast's deferral (below)
+stands for Toast specifically — a real developer/partner account is
+still required there, with no free tier. Square is a genuinely different
+situation, confirmed by research before committing to it:
 
-- [ ] Credential-based "Connect to Toast" flow — a real login-style
-      OAuth/credential handshake, explicitly **not** a raw API-key paste
-      (the discovery was specific that the latter is a non-starter for a
-      non-technical owner).
-- [ ] One-time UI to map Toast menu items to IMS products — reuses the
-      existing `Product` table as-is (a "finished dish" is already just a
-      `Product` row with `recipe_items`, same concept Recipes/BOM already
-      uses); no new schema concept required.
-- [ ] Periodic sync job translating Toast's sales report into the
-      existing generic ingestion shape (`{sku, event_type: "SALE",
-      quantity, event_id}`) and calling the already-built, already-shared
-      `app/services/ingestion_service.py::ingest_events()` — the same
-      core the CSV importer and webhook receiver already use. Batch
-      (daily or weekly), not real-time — the discovery was explicit that
-      real-time isn't needed and a nightly cadence already stretches what
-      a busy owner would tolerate.
+- **Free developer account + free Sandbox** — no partner approval, no
+  paid Square subscription required at all to build and test against
+  (confirmed via Square's own developer docs). This is the actual unblock
+  Toast couldn't offer.
+- **Real OAuth authorization-code flow** — the seller is redirected to
+  Square's own login/consent page and never hands a credential to IMS
+  directly, exactly the "bank-app-style login" the discovery required
+  (not a raw API-key paste). Request the least-privilege scope needed
+  (`ORDERS_READ`, not write access).
+- **Access tokens expire in 30 days**, Square recommends renewing every
+  ≤7 days rather than waiting near expiry; refresh tokens (code flow) are
+  valid until revoked. The periodic sync job (below) needs to renew the
+  token on its own schedule, not just pull sales data — a real piece of
+  work the original Toast-scoped plan hadn't accounted for either.
+- **Orders API line items carry real dollar amounts**
+  (`base_price_money` × `quantity`), plus `catalog_object_id` (Square's
+  own menu-item id) — everything needed for both the ingredient-depletion
+  side and the revenue side of food-cost %, once the schema gap below is
+  fixed.
+
+**Real schema gap found while grounding this in Square's actual API,
+not assumed from the Toast-era scoping:** the existing generic ingestion
+shape (`IngestRowInput`: `sku`/`event_type`/`quantity`/`event_id`) and
+`InventoryEvent` itself have **no field anywhere to store a dollar
+amount**. The original Toast-era Phase 4 note said "Toast carries
+per-item sale price" as if that alone unblocked the food-cost tile — it
+doesn't, because nothing in this codebase has anywhere to put that price
+even once it arrives. This means Phase 3 is *not* a pure reuse of
+`ingest_events()` as originally scoped; it needs a real (small) schema
+change first — see the new prerequisite item below, shared with Phase 4.
+
+- [ ] **Prerequisite (blocks both this phase and Phase 4):** add a
+      nullable `unit_price` column to `inventory_events` (new Alembic
+      migration, `Numeric(10,2)` — same type `PurchaseOrderLine.unit_cost`
+      already uses), threaded through `IngestRowInput`/
+      `InventoryEventCreate` and `record_event()`/`ingest_events()` as an
+      optional parameter. Existing call sites (CSV import, webhook,
+      manual dashboard entry) are unaffected — this is purely additive,
+      nullable, no behavior change for anything that doesn't pass it.
+- [ ] Credential-based "Connect to Square" flow (OAuth authorization-code,
+      `ORDERS_READ` scope only) + token storage with a renewal job (not
+      just a one-time connect-and-forget).
+- [ ] One-time UI to map Square catalog items (`catalog_object_id`) to
+      IMS products — reuses the existing `Product` table as-is (a
+      "finished dish" is already just a `Product` row with
+      `recipe_items`, same concept Recipes/BOM already uses); no new
+      schema concept required for the mapping itself.
+- [ ] Periodic sync job: pull Square orders, translate each line item
+      into the (now dollar-amount-carrying) generic ingestion shape
+      (`{sku, event_type: "SALE", quantity, event_id, unit_price}`), call
+      `app/services/ingestion_service.py::ingest_events()` — still the
+      same shared core the CSV importer and webhook receiver use, just
+      with one new optional field flowing through it. Batch (daily or
+      weekly), not real-time — the discovery was explicit that real-time
+      isn't needed and a nightly cadence already stretches what a busy
+      owner would tolerate.
 - [ ] No in-app scheduler exists in this codebase (confirmed, see Epoch 9
       above) — follow the same proportionate pattern already established
       for automated retraining: a plain host cron entry calling a new
-      sync script (`scripts/sync_toast_sales.sh`, mirroring
+      sync script (`scripts/sync_square_sales.sh`, mirroring
       `scripts/retrain_cron.sh`'s shape), not new scheduling
-      infrastructure.
+      infrastructure. Same script/cron entry should also handle the
+      30-day token renewal.
+
+**Toast itself: still deferred indefinitely as of 2026-09-04**, decided
+explicitly (same category as Epoch 8/Kafka above), not just stalled.
+Toast has two real tiers, not one. **Standard API access** (read-only)
+is self-serve *in the sense that it needs no partner-approval process*,
+but it's only available bundled into a paid "Restaurant Management
+Essentials" subscription add-on, not a free standalone developer/sandbox
+account — Toast doesn't publish pricing, it's quoted per-business.
+**Partner API access** (write-capable, OAuth) does require Toast's
+Integrations/Partner Program approval process on top of that. Either
+way, Toast needs whoever runs IMS to already have a real paid Toast
+account — there's no free tier to prototype against, unlike Square.
+Revisit only if real Toast account access exists, or demand becomes
+concrete enough to justify a second connector.
 
 **Phase 4 — Food-cost % dashboard tile (the actual deliverable):**
 
-**Blocked as of 2026-09-04**, following directly from Phase 3's deferral.
-- [ ] Real blocker found while scoping, not from the interview: **IMS has
-      no revenue data today.** `Product` has no `selling_price`, and
-      IMS-native `SALE` events carry only quantity, never a dollar
-      amount. This phase cannot ship for any org before Phase 3 (Toast
-      carries per-item sale price) — unless a manual `selling_price`
-      fallback field is scoped in for POS-less orgs, **a decision
-      deliberately not made yet** (raised, not resolved, while recording
-      Phase 3's deferral). If that fallback is wanted, it unblocks this
-      phase without needing Phase 3 at all — revisit as its own scoping
-      pass if/when prioritized.
+**Unblocked in principle by the Square re-scope above**, but still gated
+on Phase 3's `unit_price` prerequisite actually landing first.
+- [ ] Once a revenue source exists (Square, via the `unit_price` field
+      above): a dashboard tile computing COGS-vs-revenue from whatever
+      data streams are live so far (even a partial, improving number
+      matters more here than a complete one — per the discovery's own
+      framing) — and this tile, not a form, should be the thing a
+      first-time user sees, addressing the "blank dashboard, no obvious
+      action" first-run confusion the discovery surfaced.
+- [ ] A manual `selling_price` fallback field (for POS-less orgs, so this
+      phase doesn't strictly require Square either) was raised while
+      scoping and is still a deliberately undecided option, not resolved
+      here — revisit if wanted.
 - [ ] Once a revenue source exists: a dashboard tile computing
       COGS-vs-revenue from whatever data streams are live so far (even a
       partial, improving number matters more here than a complete one —
