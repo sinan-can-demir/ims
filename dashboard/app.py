@@ -35,6 +35,7 @@ if st.sidebar.button("Sign out"):
 
 pages = [
     st.Page("views/product_detail.py", title="Product Detail", icon="📊", default=True),
+    st.Page("views/waste_entry.py", title="Log Waste", icon="🗑️"),
     st.Page("views/fleet_overview.py", title="Fleet Overview", icon="🚦"),
     st.Page("views/recipes.py", title="Recipes / BOM", icon="🍳"),
     st.Page("views/purchase_orders.py", title="Purchase Orders", icon="📦"),

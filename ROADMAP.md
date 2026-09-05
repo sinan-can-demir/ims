@@ -1016,25 +1016,29 @@ toward that number; the last item is the actual deliverable, not a
 downstream nice-to-have gated on the others being perfect.
 
 **Phase 1 — Waste quick-entry (must-have, cheapest, highest-leverage):**
-- [ ] New `dashboard/views/waste_entry.py` page (`st.Page`, registered in
+**Shipped 2026-09-04.**
+- [x] New `dashboard/views/waste_entry.py` page (`st.Page`, registered in
       `dashboard/app.py`'s `st.navigation()`) + `dashboard/waste_actions.py`
       (mutating service calls via `SessionLocal()`, same pattern as the
-      existing `po_actions.py`/`recipe_actions.py`) — product picker +
-      event-type picker (defaulting to WASTE) + a quantity number input,
-      calling the existing `record_event()` service function directly.
-      Tap/pick-list/number only — no free-text field, per the discovery's
-      explicit finding that anything requiring a composed sentence doesn't
-      survive a rush shift.
-- [ ] No new auth work needed for the "stays logged in" requirement — the
+      existing `po_actions.py`/`recipe_actions.py`) — product picker + a
+      quantity number input, `event_type` hardcoded to WASTE (not a
+      generic event-type picker — the discovery's examples were all
+      spoilage, never breakage/DAMAGE; a broader picker is the "adjustment/
+      damage/return" nice-to-have-later item, not this phase), calling the
+      existing `record_event()` service function directly. Tap/pick-list/
+      number only — no free-text field, per the discovery's explicit
+      finding that anything requiring a composed sentence doesn't survive
+      a rush shift.
+- [x] No new auth work needed for the "stays logged in" requirement — the
       dashboard's session is already server-side (Streamlit, not a
       client-held token) and already has no time-based expiry on a
       disconnected-but-not-closed session (confirmed against the
       installed Streamlit source this session, see PR #305's discussion
-      on #233). Verify this holds for the actual mobile webview
-      (background the app for an extended period, confirm no re-login) as
-      a real device test — not yet done live, per PR #305's own disclosed
-      gap.
-- [ ] Cache invalidation: reuse `invalidate_product_views`/
+      on #233). **Still open, not this PR:** verify this holds for the
+      actual mobile webview (background the app for an extended period,
+      confirm no re-login) as a real device test — not yet done live, per
+      PR #305's own disclosed gap.
+- [x] Cache invalidation: reuse `invalidate_product_views`/
       `invalidate_fleet_status` (already built for exactly this shape,
       see issue #283/PR #295).
 
