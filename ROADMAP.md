@@ -1131,13 +1131,19 @@ change first — see the new prerequisite item below, shared with Phase 4.
       one that touches `square_token_expires_at` — see
       `docs/wiki/sqlite-drops-timezone-awareness.md`, a second real
       instance of the same SQLite-tz gap that hit `auth_service.py`).
-      **What's not yet verified:** the actual token exchange
-      (`exchange_code_for_token`) has only run against a mocked Square
-      response — no `SQUARE_APPLICATION_SECRET` exists yet to test it
-      against the real endpoint, so a full real login → callback →
-      stored-token round trip has not happened. Do that first once the
-      Application Secret is available, before trusting this is fully
-      working.
+      **Update 2026-09-05:** a real Sandbox Application Secret now exists
+      and is stored in `.env` (gitignored). Verified the client_id/secret
+      pair is genuinely valid against Square's real `/oauth2/token`
+      endpoint — sent a deliberately-invalid authorization code and got
+      back `"Authorization code not found for app ..."` (an
+      app-authenticated response rejecting only the fake code), not a
+      client-authentication error, which would look different. **Still
+      not done:** a full real login → callback → stored-token round trip
+      — that needs an actual browser walking through Square's real login
+      page, which in turn needs the sandbox seller test account manually
+      "launched" once from the Developer Console first (see the finding
+      above). Do that next before trusting the full connect flow works
+      end-to-end.
       A renewal job doesn't exist yet — `needs_token_refresh()` is
       implemented and tested, but nothing calls it on a schedule; that's
       the sync-job item below.
