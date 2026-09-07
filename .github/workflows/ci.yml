@@ -161,6 +161,48 @@ jobs:
       - name: dbt test
         run: make dbt-test
 
+  # Builds the Windows desktop bundle as a smoke test (#228) -- catches a
+  # Windows-specific build break (e.g. a Windows-only compile error in
+  # docker.rs, or a bundle.resources path that only resolves on Linux) at PR
+  # time instead of only when someone happens to build on real Windows
+  # hardware next. Produces UNSIGNED artifacts only, same as every other
+  # build here -- signing (#229) is a deliberate manual, local-only step
+  # (see tauri/README.md's "Signing a release"), never done in CI.
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: tauri
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # No @vN tag here on purpose, unlike the other actions in this file --
+      # dtolnay/rust-toolchain doesn't publish versioned releases; "stable"
+      # is this action's own supported way of tracking the current stable
+      # Rust channel, not an unpinned mutable ref by accident.
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tauri/src-tauri
+
+      - run: npm install
+
+      - name: Build Windows bundle (msi + nsis)
+        run: npm run tauri build -- --bundles msi,nsis
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ims-desktop-windows-unsigned
+          path: |
+            tauri/src-tauri/target/release/bundle/msi/*.msi
+            tauri/src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+
   scan:
     runs-on: ubuntu-latest
     steps:
