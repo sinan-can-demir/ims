@@ -142,10 +142,42 @@ fn launch_stack(handle: AppHandle) {
             emit_phase(&handle, LaunchPhase::Failed("Docker is not installed.".into()));
             return;
         }
+        docker::DaemonStatus::VirtualizationDisabled => {
+            emit_phase(
+                &handle,
+                LaunchPhase::Failed(
+                    "Docker needs hardware virtualization, which is turned off in this \
+                     computer's BIOS/UEFI firmware settings. Restart your computer, enter \
+                     BIOS/UEFI setup (often by pressing F2, F10, Del, or Esc right after \
+                     powering on), and enable virtualization (sometimes called \"Intel VT-x\", \
+                     \"AMD-V\", or \"SVM Mode\"). Your computer manufacturer's support site has \
+                     instructions specific to your model."
+                        .into(),
+                ),
+            );
+            return;
+        }
+        docker::DaemonStatus::Wsl2Missing => {
+            emit_phase(
+                &handle,
+                LaunchPhase::Failed(
+                    "Docker Desktop needs the Windows Subsystem for Linux (WSL2), which isn't \
+                     installed on this computer. Open Command Prompt, run `wsl --install`, \
+                     restart your computer, then reopen IMS Desktop."
+                        .into(),
+                ),
+            );
+            return;
+        }
         docker::DaemonStatus::NotRunning => {
             emit_phase(
                 &handle,
-                LaunchPhase::Failed("Docker is installed, but the daemon isn't running.".into()),
+                LaunchPhase::Failed(
+                    "Docker is installed, but the daemon isn't running. Open Docker Desktop \
+                     (or your Docker app) and wait for it to say it's running, then reopen IMS \
+                     Desktop."
+                        .into(),
+                ),
             );
             return;
         }

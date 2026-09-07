@@ -7,6 +7,18 @@ const HEALTH_URL: &str = "http://localhost:8000/health";
 
 pub enum DaemonStatus {
     NotInstalled,
+    /// Windows-only: `docker info` failed and the CPU's virtualization
+    /// firmware flag reads back positively disabled. Checked ahead of
+    /// `Wsl2Missing` below since it's the more fundamental cause when both
+    /// are true -- WSL2 itself can't install without it, so telling the user
+    /// to fix BIOS/UEFI settings first avoids sending them through a WSL2
+    /// install that's going to fail anyway (#262).
+    VirtualizationDisabled,
+    /// Windows-only: `docker info` failed and WSL2 (Docker Desktop's backend
+    /// on Windows) isn't installed. Collapsing this into `NotRunning` would
+    /// tell a non-technical user to "start Docker Desktop" when the actual
+    /// fix is a separate Windows feature install + reboot (#262).
+    Wsl2Missing,
     NotRunning,
     Running,
 }
@@ -49,6 +61,14 @@ pub fn project_root(handle: &AppHandle) -> Result<PathBuf, String> {
     }
 }
 
+// A few short retries before concluding the daemon is genuinely down --
+// right after boot/login, Docker Desktop can still be starting up, and
+// `docker info` failing in that window isn't the same problem as it being
+// down for good (#262). 3 attempts / 2s apart gives real startup a few
+// seconds of grace without making every launch wait on a fixed delay.
+const DAEMON_CHECK_ATTEMPTS: u32 = 3;
+const DAEMON_CHECK_RETRY_DELAY: Duration = Duration::from_secs(2);
+
 /// On Windows, Docker Desktop's daemon listens on a named pipe rather than
 /// a Unix socket, but the `docker` CLI itself abstracts that -- `docker
 /// info`'s exit code means the same thing on both platforms as long as
@@ -57,10 +77,81 @@ pub fn project_root(handle: &AppHandle) -> Result<PathBuf, String> {
 /// default and only recommended Windows mode) -- Windows containers mode
 /// is out of scope, see #226, since this stack's images are Linux-based.
 pub fn check_daemon() -> DaemonStatus {
-    match Command::new("docker").arg("info").output() {
-        Ok(output) if output.status.success() => DaemonStatus::Running,
-        Ok(_) => DaemonStatus::NotRunning,
-        Err(_) => DaemonStatus::NotInstalled,
+    for attempt in 0..DAEMON_CHECK_ATTEMPTS {
+        match Command::new("docker").arg("info").output() {
+            Ok(output) if output.status.success() => return DaemonStatus::Running,
+            Ok(_) if attempt + 1 < DAEMON_CHECK_ATTEMPTS => {
+                std::thread::sleep(DAEMON_CHECK_RETRY_DELAY);
+            }
+            Ok(_) => return classify_windows_failure(),
+            Err(_) => return DaemonStatus::NotInstalled,
+        }
+    }
+    unreachable!("loop above always returns before exhausting its attempts")
+}
+
+fn classify_windows_failure() -> DaemonStatus {
+    if virtualization_disabled_in_firmware() == Some(true) {
+        DaemonStatus::VirtualizationDisabled
+    } else if wsl2_missing() {
+        DaemonStatus::Wsl2Missing
+    } else {
+        DaemonStatus::NotRunning
+    }
+}
+
+/// Gated on `target_os = "windows"` -- `wsl` isn't a thing to check for on
+/// Linux/Mac, and `Command::new("wsl")` failing to spawn there would
+/// otherwise misread a genuine "daemon just isn't running" as "WSL2
+/// missing". On Windows, `wsl --status` exits non-zero (observed `1` on a
+/// genuinely WSL-less machine, via `wsl.exe`'s own built-in fallback shim
+/// that ships with Windows even when the "Windows Subsystem for Linux"
+/// feature itself is off) when WSL2 isn't set up.
+fn wsl2_missing() -> bool {
+    if !cfg!(target_os = "windows") {
+        return false;
+    }
+    !Command::new("wsl")
+        .arg("--status")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// Gated on `target_os = "windows"` for the same reason as `wsl2_missing`.
+/// `Win32_Processor.VirtualizationFirmwareEnabled` is the same CIM property
+/// Windows' own "Turn Windows features on or off" dialog and Hyper-V's
+/// compatibility check read -- queried directly (rather than via the much
+/// broader, ~5s-latency `Get-ComputerInfo`, measured on real hardware) since
+/// this only runs after `docker info` has already failed and shouldn't add
+/// much more delay on top of that.
+///
+/// Returns `None` -- "can't tell" -- for every case except a confirmed
+/// `False`: the property reads back empty once a hypervisor is already
+/// active (observed on this dev VM itself, where a *nested* hypervisor
+/// being absent from the guest's virtual firmware makes the flag read
+/// `False` even with an outer hypervisor clearly present) or on older
+/// Windows builds that don't expose it at all. A false "virtualization is
+/// off" would send a user hunting through their BIOS for a problem that
+/// doesn't exist, so treat anything ambiguous as "don't know" and fall
+/// through to the next check instead of asserting it.
+fn virtualization_disabled_in_firmware() -> Option<bool> {
+    if !cfg!(target_os = "windows") {
+        return None;
+    }
+    let output = Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-Command",
+            "(Get-CimInstance Win32_Processor -Property VirtualizationFirmwareEnabled \
+             -ErrorAction SilentlyContinue).VirtualizationFirmwareEnabled",
+        ])
+        .output()
+        .ok()?;
+    match String::from_utf8_lossy(&output.stdout).trim() {
+        "True" => Some(false),
+        "False" => Some(true),
+        _ => None,
     }
 }
 

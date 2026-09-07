@@ -24,6 +24,41 @@ Once installed, make sure Docker is actually **running** before you open
 IMS Desktop — it usually shows an icon somewhere on your screen, or has its
 own app you can open, when it's active.
 
+### Windows setup: Docker Desktop and WSL2
+
+If you're on Windows, Docker works a little differently than on Linux — it
+needs a Windows feature called **WSL2** (Windows Subsystem for Linux)
+installed alongside it. Docker Desktop's own installer sometimes sets this
+up for you automatically, but not always, so it's worth checking directly:
+
+1. Open **Command Prompt** (search for it in your Start menu) and run:
+
+   ```
+   wsl --install
+   ```
+
+   If it says WSL2 is already installed, you're done with this step. If it
+   installs something, **restart your computer** afterward — this step
+   doesn't take effect until you do.
+
+2. Download and install
+   [Docker Desktop](https://www.docker.com/products/docker-desktop/) for
+   Windows, if you haven't already.
+
+3. Open Docker Desktop from your Start menu and wait for it to say it's
+   running (this can take a minute or two, especially the first time).
+
+If your computer's virtualization setting is turned off in its BIOS/UEFI
+firmware, IMS Desktop can detect that too, and will tell you directly
+instead of just saying WSL2 is missing — this is usually on by default, but
+some computers (especially older ones, or ones set up by an IT department)
+have it turned off. Fixing it means restarting your computer, entering
+BIOS/UEFI setup (often by pressing a key like F2, F10, Del, or Esc right
+after powering on), and enabling virtualization (sometimes called "Intel
+VT-x", "AMD-V", or "SVM Mode"). This setting is outside of what IMS Desktop
+or Docker can fix for you directly; your computer manufacturer's support
+site will have instructions specific to your model.
+
 ## Installing IMS Desktop
 
 1. Download the `.rpm` file from the
@@ -103,6 +138,13 @@ confusing technical error:
 
 - **"Docker is not installed" / "Docker isn't running"** — go back to the
   [Before you start](#before-you-start-install-docker) step above.
+- **"Docker Desktop needs the Windows Subsystem for Linux (WSL2)..."** — see
+  [Windows setup: Docker Desktop and WSL2](#windows-setup-docker-desktop-and-wsl2)
+  above.
+- **"Docker needs hardware virtualization..."** — your computer's BIOS/UEFI
+  firmware has virtualization turned off; see the note at the end of
+  [Windows setup: Docker Desktop and WSL2](#windows-setup-docker-desktop-and-wsl2)
+  above.
 - **"Another application is already using port ___"** — some other program
   on your computer is using a resource IMS Desktop needs. Closing that
   other program and reopening IMS Desktop usually fixes this.
