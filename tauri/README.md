@@ -162,6 +162,41 @@ npm run tauri dev    # opens a native window, live-reloads on file changes
 npm run tauri build   # produces a release bundle under src-tauri/target/release/bundle
 ```
 
+## Cutting a release
+
+`.github/workflows/release.yml` (#247) coordinates version tagging across
+platforms, so "what's tagged in git" stays the single source of truth
+instead of each platform's artifact drifting independently.
+
+1. Bump the version in all three files that carry their own copy —
+   `tauri/src-tauri/tauri.conf.json` (the source of truth: it's the one
+   that directly controls the version number in every built installer),
+   `tauri/package.json`, and `tauri/src-tauri/Cargo.toml` — then confirm
+   they agree:
+   ```sh
+   make desktop-version-check
+   ```
+2. Commit that to `main`, then tag and push the tag:
+   ```sh
+   git tag v0.2.0
+   git push origin v0.2.0
+   ```
+3. The workflow re-checks the version files (failing loud if the tag
+   doesn't match, or if the three files disagree with each other), builds
+   **unsigned** artifacts for Linux (`.rpm`) and Windows (`.msi`/`.nsis`),
+   and opens a **draft** GitHub Release with them attached. It does not
+   sign anything and does not publish anything automatically — matching
+   the same manual, local-only, private-key-never-in-CI constraint as
+   `.rpm` GPG signing (#213) and Windows Authenticode signing (#229, not
+   yet implemented).
+4. Download the unsigned `.rpm` from the draft release, sign it locally
+   (see "Signing a release" below), and replace it on the draft release
+   with the signed file.
+5. Review/edit the auto-generated release notes, then publish the draft.
+
+Mobile (Android/iOS) isn't part of this workflow yet (#235 — no CI exists
+for it at all); Windows artifacts ship unsigned until #229 lands.
+
 ## Signing a release
 
 Every published `.rpm` should be signed before it's distributed (see #213).
