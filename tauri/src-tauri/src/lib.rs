@@ -55,9 +55,41 @@ fn get_launch_phase(state: tauri::State<LastLaunchPhase>) -> Option<LaunchPhase>
     state.0.lock().unwrap().clone()
 }
 
+/// Installs on top of Rust's default panic hook (still runs -- keeps the
+/// usual stderr backtrace for a dev running `cargo tauri dev`) so a panic
+/// also reaches the log target(s) registered below, since a packaged
+/// desktop/mobile build has no visible console for stderr to land on
+/// otherwise (#319) -- without this, a crash left no trace at all for a
+/// real user, only "the app closed".
+fn install_panic_log_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        log::error!("panic: {info}");
+        default_hook(info);
+    }));
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    install_panic_log_hook();
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                // Stdout for `cargo tauri dev`; LogDir persists across runs
+                // in a packaged build's platform log directory (Android:
+                // routed to logcat by the plugin's own android_logger
+                // integration instead, LogDir is a no-op there) -- the
+                // actual point of this plugin for a build with no visible
+                // console (#319).
+                .target(tauri_plugin_log::Target::new(
+                    tauri_plugin_log::TargetKind::Stdout,
+                ))
+                .target(tauri_plugin_log::Target::new(
+                    tauri_plugin_log::TargetKind::LogDir { file_name: None },
+                ))
+                .level(log::LevelFilter::Info)
+                .build(),
+        )
         .setup(|_app| {
             // Mobile has no local Docker daemon to launch -- the stack it
             // talks to runs on a remote desktop/server install (#227). Only
@@ -94,10 +126,10 @@ pub fn run() {
                 match docker::project_root(_app_handle) {
                     Ok(root) => {
                         if let Err(err) = docker::compose_down(&root) {
-                            eprintln!("failed to run docker compose down: {err}");
+                            log::error!("failed to run docker compose down: {err}");
                         }
                     }
-                    Err(err) => eprintln!("failed to resolve project root on exit: {err}"),
+                    Err(err) => log::error!("failed to resolve project root on exit: {err}"),
                 }
             }
         });
