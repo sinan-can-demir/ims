@@ -21,4 +21,6 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 ureq = { version = "2", default-features = false }
 serde = { version = "1", features = ["derive"] }
+tauri-plugin-log = "2"
+log = "0.4"
 
