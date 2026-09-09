@@ -15,6 +15,14 @@ _MAX_FAILED_ATTEMPTS = 5
 _LOCKOUT_DURATION = timedelta(minutes=15)
 
 
+def _as_aware_utc(dt: datetime) -> datetime:
+    """SQLite (the default test DB, see tests/conftest.py) silently drops
+    tzinfo on read even for a DateTime(timezone=True) column (User.locked_until,
+    app/models/user.py), so a value written with timezone.utc can come back
+    naive. Postgres round-trips it aware already, so this is a no-op there."""
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
+
 def authenticate_user(db: Session, email: str, password: str) -> User:
     """
     Looks up a user by email and verifies their password.
@@ -57,7 +65,7 @@ def authenticate_user(db: Session, email: str, password: str) -> User:
     if (
         user is not None
         and user.locked_until is not None
-        and user.locked_until > datetime.now(timezone.utc)
+        and _as_aware_utc(user.locked_until) > datetime.now(timezone.utc)
     ):
         # log_action() commits internally (see its own docstring) — that
         # commit is also what releases this row's FOR UPDATE lock.
