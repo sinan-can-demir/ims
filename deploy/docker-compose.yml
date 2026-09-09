@@ -1,7 +1,12 @@
 services:
 
   db:
-    image: postgres:15
+    # Digest-pinned (#285), same reasoning as docker/Dockerfile's
+    # PYTHON_BASE_IMAGE: a floating tag can silently resolve to different
+    # bits over time, and CI only scans what's pinned here (see
+    # .github/workflows/ci.yml's `scan` job) -- re-pin both together when a
+    # CVE lands, same as the API base image already does.
+    image: postgres:15@sha256:9b1d34adbce1dd07ee6e94b4a2cf698884b89bd44a6c9c12f5da8f3acbfe4957
     restart: always
     environment:
       POSTGRES_USER: postgres

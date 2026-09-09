@@ -251,6 +251,42 @@ jobs:
           exit-code: "1"
           ignore-unfixed: true
 
+      # postgres and minio also run in production (deploy/docker-compose*.yml)
+      # but, unlike the app image above, are pulled pre-built rather than
+      # built here -- so they're scanned directly by their pinned digest
+      # instead of needing their own `docker build` step first (#285). Keep
+      # these digests in sync with deploy/docker-compose.yml's db.image and
+      # deploy/docker-compose.prod.yml's minio.image -- re-pin all 3 places
+      # together when a CVE lands, same as the API base image.
+      #
+      # Report-only (exit-code 0), unlike the app image scan above --
+      # verified locally before wiring this in that both official upstream
+      # images currently ship real HIGH/CRITICAL CVEs of their own that
+      # aren't fixable by re-pinning to a different tag (postgres: a stale
+      # Go toolchain baked into the bundled `gosu` helper, present in both
+      # the debian and alpine variants; minio: findings in MinIO's own Go
+      # runtime, which is the whole image). Gating on exit-code 1 the same
+      # way as the app image would make this job permanently red for CVEs
+      # nobody here can fix by changing this repo's code -- report-only
+      # still gives the visibility #285 asked for (a future *new* CVE shows
+      # up in the CI log every run) without blocking every PR on upstream's
+      # timeline.
+      - name: Scan postgres image for vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: postgres:15@sha256:9b1d34adbce1dd07ee6e94b4a2cf698884b89bd44a6c9c12f5da8f3acbfe4957
+          severity: CRITICAL,HIGH
+          exit-code: "0"
+          ignore-unfixed: true
+
+      - name: Scan minio image for vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: minio/minio:latest@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+          severity: CRITICAL,HIGH
+          exit-code: "0"
+          ignore-unfixed: true
+
       # Code-level static analysis (OWASP Top 10 ruleset) — gitleaks/pip-audit/
       # Trivy above cover secrets and dependency/image CVEs, but nothing else
       # here catches injection or access-control patterns in the app's own
