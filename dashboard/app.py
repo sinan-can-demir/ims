@@ -6,6 +6,7 @@
 # auth gate live here, once, rather than being duplicated per page.
 
 import sys
+import traceback
 from pathlib import Path
 
 import streamlit as st
@@ -13,6 +14,7 @@ import streamlit as st
 # Add project root to path so app imports resolve correctly
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from app.core.logging import logger
 from dashboard.auth import require_login
 
 # ---------------------------------------------------------------
@@ -43,4 +45,22 @@ pages = [
 ]
 
 pg = st.navigation(pages)
-pg.run()
+
+# Unhandled exceptions in a page render used to only ever surface as
+# Streamlit's own in-browser traceback UI, with nothing logged server-side
+# — no org_id, no user, no record survives past the browser tab (#319).
+# Logged, then re-raised so Streamlit's own error UI still shows for the
+# user; this only adds a server-side record of what happened.
+try:
+    pg.run()
+except Exception:
+    logger.error(
+        "unhandled_dashboard_exception",
+        extra={
+            "page": pg.title,
+            "user_id": current_user["id"],
+            "organization_id": current_user["organization_id"],
+            "traceback": traceback.format_exc(),
+        },
+    )
+    raise
