@@ -1,0 +1,151 @@
+name: Release
+
+# Triggered by pushing a version tag (e.g. v0.2.0) -- builds unsigned
+# artifacts for every platform and drafts a GitHub Release from them.
+# workflow_dispatch exists to test the build pipeline itself (e.g. after
+# touching this file) without cutting a real tag; it skips the draft-release
+# step below since there's no tag to attach one to.
+#
+# Deliberately does NOT sign anything (#213/#229 are manual, local-only,
+# private-key-never-in-CI on purpose) and deliberately leaves the release as
+# a draft -- a human signs the built artifacts locally (see tauri/README.md)
+# and uploads the signed versions before publishing.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # Fails fast, before either slow platform build, if tauri.conf.json/
+  # package.json/Cargo.toml have drifted out of sync with each other, or (on
+  # an actual tag push) with the tag itself -- see #247 and
+  # scripts/check_desktop_version_sync.sh.
+  check-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Verify desktop version files
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            ./scripts/check_desktop_version_sync.sh "${GITHUB_REF_NAME#v}"
+          else
+            ./scripts/check_desktop_version_sync.sh
+          fi
+
+  build-linux:
+    needs: check-version
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tauri
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tauri/src-tauri
+
+      # Same package set as tauri/README.md's "Prerequisites (Linux)" --
+      # WebKitGTK is the native webview Tauri renders through here, not
+      # bundled, so it has to be present at build time same as it would on
+      # a dev machine.
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - run: npm install
+
+      # No --bundles flag, unlike build-windows below -- tauri.conf.json's
+      # bundle.targets (rpm/msi/nsis) already narrows itself to just rpm on
+      # a Linux host, matching the existing local `make desktop-build`.
+      # AppImage is deliberately excluded here too, same reasoning as the
+      # Makefile's desktop-build-appimage comment: its fix embeds the build
+      # host's own system libraries, which isn't safe/reproducible in CI.
+      - name: Build Linux bundle (rpm)
+        run: npm run tauri build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ims-desktop-linux-unsigned
+          path: tauri/src-tauri/target/release/bundle/rpm/*.rpm
+          if-no-files-found: error
+
+  # Steps mirror ci.yml's own build-windows job (#228) -- kept separate
+  # rather than shared/refactored into a reusable workflow, since that job
+  # is a per-PR smoke test with a different purpose (catch a Windows-only
+  # break early) from this one (produce the actual release artifact), and
+  # duplicating ~10 lines is cheaper here than the indirection of a
+  # reusable workflow for just two call sites.
+  build-windows:
+    needs: check-version
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: tauri
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tauri/src-tauri
+
+      - run: npm install
+
+      - name: Build Windows bundle (msi + nsis)
+        run: npm run tauri build -- --bundles msi,nsis
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ims-desktop-windows-unsigned
+          path: |
+            tauri/src-tauri/target/release/bundle/msi/*.msi
+            tauri/src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+
+  # Only on an actual tag push -- workflow_dispatch has no tag to attach a
+  # release to, and exists solely to exercise the two build jobs above.
+  draft-release:
+    if: github.event_name == 'push'
+    needs: [build-linux, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      # --generate-notes: auto from the commit log since the last tag,
+      # matching how this repo already writes commit messages (why-focused,
+      # one clean commit per PR via squash-merge) -- readable release notes
+      # with no separate changelog file to keep in sync. Left as --draft
+      # specifically so a human can edit those notes, sign the artifacts
+      # locally, swap in the signed versions, and only then publish.
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --draft \
+            --generate-notes \
+            --title "IMS Desktop ${GITHUB_REF_NAME}" \
+            artifacts/ims-desktop-linux-unsigned/*.rpm \
+            artifacts/ims-desktop-windows-unsigned/*.msi \
+            artifacts/ims-desktop-windows-unsigned/*.exe

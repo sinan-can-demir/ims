@@ -3,6 +3,7 @@
 .PHONY: up down reset rebuild logs seed export warehouse dbt-run dbt-test dbt-docs \
         features train train-deps test test-e2e test-all test-clean migrate shell dashboard lint format \
         desktop-dev desktop-build desktop-build-appimage desktop-sign desktop-release \
+        desktop-version-check \
         check-data-lake-schema
 
 # Prefer the project's own venv so these don't silently break (dbt/joblib
@@ -205,7 +206,15 @@ desktop-build-appimage:
 desktop-sign:
 	./tauri/sign-release.sh "$$(ls -t tauri/src-tauri/target/release/bundle/rpm/*.rpm | head -1)"
 
-# Chains build -> sign, matching how `test-all` already chains test -> test-e2e.
+# Checks tauri.conf.json/package.json/Cargo.toml agree on the desktop app's
+# version (#247) -- run standalone, and as the first step of desktop-release
+# below, so a mismatch fails fast instead of after a slow build+sign.
+desktop-version-check:
+	./scripts/check_desktop_version_sync.sh
+
+# Chains version-check -> build -> sign, matching how `test-all` already
+# chains test -> test-e2e.
 desktop-release:
+	make desktop-version-check
 	make desktop-build
 	make desktop-sign
