@@ -16,6 +16,14 @@ DATA_LAKE_ROOT = os.getenv("DATA_LAKE_ROOT", str(BASE_DIR / "data_lake"))
 INVENTORY_EVENTS_ROOT = f"{DATA_LAKE_ROOT.rstrip('/')}/inventory_events"
 CHECKPOINT_FILE = f"{DATA_LAKE_ROOT.rstrip('/')}/checkpoints.json"
 
+# The current shape of everything written under DATA_LAKE_ROOT (parquet
+# columns, partition layout). Bump this whenever that shape changes, and
+# register a migration in app/pipeline_migrations/ — see
+# app/core/schema_version.py. A missing on-disk marker is treated as
+# version 1, since every pre-existing install predates this system and is
+# on the only shape that's ever existed.
+DATA_LAKE_SCHEMA_VERSION = 1
+
 # ------------------
 # Warehouse
 # ------------------

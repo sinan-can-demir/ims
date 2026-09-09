@@ -2,7 +2,8 @@
 
 .PHONY: up down reset rebuild logs seed export warehouse dbt-run dbt-test dbt-docs \
         features train train-deps test test-e2e test-all test-clean migrate shell dashboard lint format \
-        desktop-dev desktop-build desktop-build-appimage desktop-sign desktop-release
+        desktop-dev desktop-build desktop-build-appimage desktop-sign desktop-release \
+        check-data-lake-schema
 
 # Prefer the project's own venv so these don't silently break (dbt/joblib
 # "not found") when it exists but isn't activated — but fall back to bare
@@ -91,9 +92,19 @@ export:
 	$(PYTHON) -m app.scripts.export_events
 
 # -------------------------
+# Data lake schema guard
+# -------------------------
+# Prerequisite of both warehouse and dbt-run below (see
+# app/scripts/check_data_lake_schema.py and #210/#223) — fails loud, before
+# either one touches data_lake/, if the on-disk parquet shape doesn't match
+# what this app version expects and no migration bridges the gap.
+check-data-lake-schema:
+	$(PYTHON) -m app.scripts.check_data_lake_schema
+
+# -------------------------
 # Warehouse
 # -------------------------
-warehouse:
+warehouse: check-data-lake-schema
 	$(PYTHON) -m app.scripts.build_warehouse
 
 # -------------------------
@@ -102,7 +113,7 @@ warehouse:
 # --profiles-dir . points at the profiles.yml committed alongside this
 # project instead of the ~/.dbt/ default, so this works on a fresh clone
 # and in CI without any per-machine setup.
-dbt-run:
+dbt-run: check-data-lake-schema
 	cd warehouse/ims_warehouse && $(DBT) run --profiles-dir .
 
 dbt-test:
