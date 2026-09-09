@@ -1,6 +1,7 @@
 # app/main.py
 
 import os
+import traceback
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Request
@@ -116,6 +117,34 @@ app.include_router(auth_router, prefix="/api", dependencies=[Depends(enforce_rat
 @app.exception_handler(DomainError)
 async def domain_error_handler(request: Request, exc: DomainError):
     return JSONResponse(status_code=exc.status_code, content={"detail": str(exc)})
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Catch-all for anything not already turned into a DomainError/
+    RateLimitExceeded — without this, an unhandled exception falls through
+    to Starlette's default 500 response, which never touches the `ims`
+    logger: no request_id correlation with the access log, no traceback in
+    the structured log stream, nothing searchable (#319). request_id may be
+    unset if the exception happened before RequestLoggingMiddleware ran
+    (app/core/logging.py), hence the getattr default.
+    """
+    request_id = getattr(request.state, "request_id", None)
+    logger.error(
+        "unhandled_exception",
+        extra={
+            "request_id": request_id,
+            "method": request.method,
+            "path": request.url.path,
+            "exception_type": type(exc).__name__,
+            "traceback": traceback.format_exc(),
+        },
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+        headers={"X-Request-ID": request_id} if request_id else None,
+    )
 
 
 @app.get("/health")
