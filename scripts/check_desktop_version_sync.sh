@@ -17,7 +17,13 @@ cd "$(dirname "$0")/.."
 
 TAURI_CONF_VERSION=$(python3 -c "import json; print(json.load(open('tauri/src-tauri/tauri.conf.json'))['version'])")
 PACKAGE_JSON_VERSION=$(python3 -c "import json; print(json.load(open('tauri/package.json'))['version'])")
-CARGO_TOML_VERSION=$(grep -m1 '^version' tauri/src-tauri/Cargo.toml | sed -E 's/version = "(.*)"/\1/')
+# tomllib (structural parse of the [package] table specifically), not a
+# `grep '^version'` -- a bare grep would match the *first* `version = "..."`
+# line in the file regardless of which table it's under, which could
+# silently pick up a dependency's version instead of the package's if one
+# were ever declared above [package] in the dotted-table form
+# (`[dependencies.foo]` / `version = "..."`).
+CARGO_TOML_VERSION=$(python3 -c "import tomllib; print(tomllib.load(open('tauri/src-tauri/Cargo.toml', 'rb'))['package']['version'])")
 
 fail=0
 if [ "$PACKAGE_JSON_VERSION" != "$TAURI_CONF_VERSION" ] || [ "$CARGO_TOML_VERSION" != "$TAURI_CONF_VERSION" ]; then
