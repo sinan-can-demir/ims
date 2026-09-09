@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from typing import Any
 
 import pandas as pd
@@ -9,47 +8,23 @@ from sqlalchemy.orm import Session
 from app.config import CHECKPOINT_FILE, INVENTORY_EVENTS_ROOT
 from app.core import storage
 from app.core.logging import logger
+from app.core.pipeline_state import load_json_marker, save_json_marker
 from app.models.inventory_event import InventoryEvent
 
 CHECKPOINT_KEY = "inventory_events"
 
 
-def _ensure_directories() -> None:
-    # A single mkdir suffices — CHECKPOINT_FILE always lives directly under
-    # DATA_LAKE_ROOT (app/config.py), which INVENTORY_EVENTS_ROOT is nested
-    # one level under, so creating the latter (with parents) also creates
-    # the former's parent. No-op entirely under S3 (see app/core/storage.py).
-    storage.mkdir(INVENTORY_EVENTS_ROOT)
-
-
-def _load_checkpoints() -> dict[str, Any]:
-    _ensure_directories()
-
-    if not storage.exists(CHECKPOINT_FILE):
-        return {}
-
-    with storage.open_read(CHECKPOINT_FILE, encoding="utf-8") as f:
-        return json.load(f)
-
-
-def _save_checkpoints(checkpoints: dict[str, Any]) -> None:
-    _ensure_directories()
-
-    with storage.open_write(CHECKPOINT_FILE, encoding="utf-8") as f:
-        json.dump(checkpoints, f, indent=2)
-
-
 def _get_checkpoint() -> dict[str, Any] | None:
-    checkpoints = _load_checkpoints()
+    checkpoints = load_json_marker(CHECKPOINT_FILE)
     return checkpoints.get(CHECKPOINT_KEY)
 
 
 def _update_checkpoint(last_id: int) -> None:
-    checkpoints = _load_checkpoints()
+    checkpoints = load_json_marker(CHECKPOINT_FILE)
     checkpoints[CHECKPOINT_KEY] = {
         "last_id": last_id,
     }
-    _save_checkpoints(checkpoints)
+    save_json_marker(CHECKPOINT_FILE, checkpoints)
 
 
 def _build_base_query(db: Session):
