@@ -292,13 +292,13 @@ def test_register_second_call_rejected(db):
     client = _unauthenticated_client(db)
     first = client.post(
         "/api/auth/register",
-        json={"email": "first@example.com", "password": "pw", "display_name": "First"},
+        json={"email": "first@example.com", "password": "password123", "display_name": "First"},
     )
     assert first.status_code == 201
 
     second = client.post(
         "/api/auth/register",
-        json={"email": "second@example.com", "password": "pw", "display_name": "Second"},
+        json={"email": "second@example.com", "password": "password123", "display_name": "Second"},
     )
     assert second.status_code == 409
 
@@ -335,13 +335,35 @@ def test_bootstrap_status_false_after_registration(db):
     client = _unauthenticated_client(db)
     register_response = client.post(
         "/api/auth/register",
-        json={"email": "bootstrap@example.com", "password": "pw", "display_name": "Bootstrap"},
+        json={
+            "email": "bootstrap@example.com",
+            "password": "password123",
+            "display_name": "Bootstrap",
+        },
     )
     assert register_response.status_code == 201
 
     response = client.get("/api/auth/bootstrap-status")
     assert response.status_code == 200
     assert response.json() == {"needs_registration": False}
+
+
+def test_register_rejects_short_password(db):
+    response = _unauthenticated_client(db).post(
+        "/api/auth/register",
+        json={"email": "short@example.com", "password": "abc123", "display_name": "Short"},
+    )
+    assert response.status_code == 422
+    assert db.query(User).filter(User.email == "short@example.com").first() is None
+
+
+def test_register_rejects_password_over_bcrypt_limit(db):
+    response = _unauthenticated_client(db).post(
+        "/api/auth/register",
+        json={"email": "long@example.com", "password": "a" * 73, "display_name": "Long"},
+    )
+    assert response.status_code == 422
+    assert db.query(User).filter(User.email == "long@example.com").first() is None
 
 
 def test_verify_password_or_dummy_none_hash_returns_false():
