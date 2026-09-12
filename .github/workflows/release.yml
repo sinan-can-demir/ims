@@ -57,21 +57,21 @@ jobs:
       # Same package set as tauri/README.md's "Prerequisites (Linux)" --
       # WebKitGTK is the native webview Tauri renders through here, not
       # bundled, so it has to be present at build time same as it would on
-      # a dev machine.
+      # a dev machine. libfuse2 is for the AppImage step below: linuxdeploy
+      # and its plugin are themselves AppImages, and this runner has no
+      # /dev/fuse (see #212/#336) -- APPIMAGE_EXTRACT_AND_RUN sidesteps that
+      # without needing a kernel FUSE module.
       - name: Install Linux build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
-            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libfuse2 xvfb
 
       - run: npm install
 
       # No --bundles flag, unlike build-windows below -- tauri.conf.json's
       # bundle.targets (rpm/msi/nsis) already narrows itself to just rpm on
       # a Linux host, matching the existing local `make desktop-build`.
-      # AppImage is deliberately excluded here too, same reasoning as the
-      # Makefile's desktop-build-appimage comment: its fix embeds the build
-      # host's own system libraries, which isn't safe/reproducible in CI.
       - name: Build Linux bundle (rpm)
         run: npm run tauri build
 
@@ -79,6 +79,25 @@ jobs:
         with:
           name: ims-desktop-linux-unsigned
           path: tauri/src-tauri/target/release/bundle/rpm/*.rpm
+          if-no-files-found: error
+
+      # scripts/build-appimage.sh applies the real fix from #212 (linuxdeploy's
+      # RUNPATH-patch corrupts bundled libraries; the script restores stock
+      # system libraries via rpm/dpkg lookup instead) and runs its own launch
+      # smoke test. Previously excluded from CI on the theory that this
+      # runner's own libraries might not reproduce the same fix -- restoring
+      # via `dpkg -S` (this runner has no `rpm`) is the same package-manager
+      # verification the script already does on Fedora, so it's expected to
+      # hold here too; this step is the actual proof, not a rewritten assumption.
+      - name: Build Linux AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: ./scripts/build-appimage.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ims-desktop-linux-appimage-unsigned
+          path: tauri/src-tauri/target/release/bundle/appimage/*.AppImage
           if-no-files-found: error
 
   # Steps mirror ci.yml's own build-windows job (#228) -- kept separate
@@ -147,5 +166,6 @@ jobs:
             --generate-notes \
             --title "IMS Desktop ${GITHUB_REF_NAME}" \
             artifacts/ims-desktop-linux-unsigned/*.rpm \
+            artifacts/ims-desktop-linux-appimage-unsigned/*.AppImage \
             artifacts/ims-desktop-windows-unsigned/*.msi \
             artifacts/ims-desktop-windows-unsigned/*.exe

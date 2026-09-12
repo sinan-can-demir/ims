@@ -87,7 +87,16 @@ chmod +x "$RESULT_APPIMAGE"
 echo "==> Built: $RESULT_APPIMAGE"
 
 echo "==> Launch smoke test (5s)"
-"$RESULT_APPIMAGE" &
+# A headless runner (no X11/Wayland session, e.g. CI) has no DISPLAY, and
+# GTK refuses to initialize without one -- that's an environment gap, not
+# the RUNPATH/launch bug this script exists to catch, so give it a virtual
+# framebuffer instead of skipping the smoke test. Local dev machines with
+# a real DISPLAY already set are unaffected.
+if [ -z "${DISPLAY:-}" ] && command -v xvfb-run >/dev/null 2>&1; then
+  xvfb-run --auto-servernum "$RESULT_APPIMAGE" &
+else
+  "$RESULT_APPIMAGE" &
+fi
 APP_PID=$!
 sleep 5
 if ! kill -0 "$APP_PID" 2>/dev/null; then
@@ -99,6 +108,11 @@ if ! kill -0 "$APP_PID" 2>/dev/null; then
 fi
 kill "$APP_PID" 2>/dev/null || true
 wait "$APP_PID" 2>/dev/null || true
+# Under the xvfb-run branch above, $APP_PID is xvfb-run's own wrapper PID,
+# not the AppImage/desktop process it launched -- xvfb-run doesn't reliably
+# forward signals to it, so killing the wrapper alone can leave the real
+# process running. Sweep for it by name too so nothing orphans.
+pkill -f "$(basename "$RESULT_APPIMAGE")" 2>/dev/null || true
 
 echo "==> Smoke test passed: $RESULT_APPIMAGE launched and stayed up for 5s"
 echo "==> This is NOT a full verification -- manually run the AppImage and drive it"

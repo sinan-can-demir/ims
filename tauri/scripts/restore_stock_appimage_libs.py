@@ -96,21 +96,34 @@ def find_lookup(name: str) -> Path | None:
 
 
 def verify_owned_by_package(path: Path) -> bool:
+    # Check every available package manager rather than preferring one --
+    # some hosts (e.g. GitHub Actions' ubuntu-latest runner) have `rpm`
+    # installed alongside `dpkg` even though the system is Debian-based,
+    # so an rpm-first check would always report "not owned" for a real,
+    # dpkg-installed file and reject every library (confirmed live in CI).
+    checked_any = False
     rpm = shutil.which("rpm")
     if rpm:
+        checked_any = True
         # Fixed local binary path (resolved above) + a Path this function
         # already resolved to a real file, not attacker input -- safe
         # despite S603/S607.
         result = subprocess.run(  # noqa: S603
             [rpm, "-qf", str(path)], capture_output=True, text=True
         )
-        return result.returncode == 0 and "is not owned" not in result.stdout
+        if result.returncode == 0 and "is not owned" not in result.stdout:
+            return True
     dpkg = shutil.which("dpkg")
     if dpkg:
+        checked_any = True
         result = subprocess.run([dpkg, "-S", str(path)], capture_output=True, text=True)  # noqa: S603
-        return result.returncode == 0
-    # No package manager available to verify ownership -- never trust a
-    # bare filename match with no way to confirm it's a real system file.
+        if result.returncode == 0:
+            return True
+    if not checked_any:
+        # No package manager available to verify ownership -- never trust
+        # a bare filename match with no way to confirm it's a real system
+        # file.
+        return False
     return False
 
 
