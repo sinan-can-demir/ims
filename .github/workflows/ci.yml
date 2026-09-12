@@ -108,17 +108,18 @@ jobs:
       - run: pip install -r requirements.txt
 
       # A `services:` container can't be given a command, and the official
-      # minio/minio image (same one deploy/docker-compose.minio.yml/
-      # deploy/docker-compose.prod.yml already use) has no working default one —
-      # started directly as a step instead, same image/command as those
-      # compose files.
+      # quay.io/minio/minio image (same one deploy/docker-compose.minio.yml/
+      # deploy/docker-compose.prod.yml already use -- pulled from quay.io,
+      # not Docker Hub, since MinIO removed the minio/minio Docker Hub repo)
+      # has no working default one — started directly as a step instead,
+      # same image/command as those compose files.
       - name: Start MinIO
         if: matrix.storage_backend == 's3'
         run: |
           docker run -d --name minio -p 9000:9000 \
             -e MINIO_ROOT_USER=ci_minio_user \
             -e MINIO_ROOT_PASSWORD=ci_minio_password \
-            minio/minio:latest server /data --console-address ":9001"
+            quay.io/minio/minio:latest server /data --console-address ":9001"
           for i in $(seq 1 30); do
             curl -sf http://localhost:9000/minio/health/live && exit 0
             sleep 1
@@ -282,7 +283,7 @@ jobs:
       - name: Scan minio image for vulnerabilities
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: minio/minio:latest@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+          image-ref: quay.io/minio/minio:latest@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
           severity: CRITICAL,HIGH
           exit-code: "0"
           ignore-unfixed: true
