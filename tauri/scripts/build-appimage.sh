@@ -108,6 +108,11 @@ if ! kill -0 "$APP_PID" 2>/dev/null; then
 fi
 kill "$APP_PID" 2>/dev/null || true
 wait "$APP_PID" 2>/dev/null || true
+# Under the xvfb-run branch above, $APP_PID is xvfb-run's own wrapper PID,
+# not the AppImage/desktop process it launched -- xvfb-run doesn't reliably
+# forward signals to it, so killing the wrapper alone can leave the real
+# process running. Sweep for it by name too so nothing orphans.
+pkill -f "$(basename "$RESULT_APPIMAGE")" 2>/dev/null || true
 
 echo "==> Smoke test passed: $RESULT_APPIMAGE launched and stayed up for 5s"
 echo "==> This is NOT a full verification -- manually run the AppImage and drive it"

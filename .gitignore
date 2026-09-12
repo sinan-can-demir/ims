@@ -92,3 +92,6 @@ infra/*.tfstate.*
 infra/terraform.tfvars
 infra/*.tfplan
 infra/crash.log
+
+# Local Claude Code subagent definitions -- stay untracked, not repo config.
+.claude/

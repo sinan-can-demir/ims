@@ -101,11 +101,11 @@ any installation step:
 
 1. Download the `.AppImage` file from the
    [latest release](https://github.com/sinan-can-demir/ims/releases/latest).
-2. Make it executable and run it:
+2. Make it executable and run it (the exact filename is `IMS_Desktop-x86_64.AppImage`, with no version number in it):
 
    ```
-   chmod +x ~/Downloads/IMS\ Desktop-0.1.0-1.x86_64.AppImage
-   ~/Downloads/IMS\ Desktop-0.1.0-1.x86_64.AppImage
+   chmod +x ~/Downloads/IMS_Desktop-x86_64.AppImage
+   ~/Downloads/IMS_Desktop-x86_64.AppImage
    ```
 
 There's nothing to uninstall later — just delete the file. It doesn't
