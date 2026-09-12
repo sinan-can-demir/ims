@@ -75,7 +75,7 @@ jobs:
       - name: Build Linux bundle (rpm)
         run: npm run tauri build
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ims-desktop-linux-unsigned
           path: tauri/src-tauri/target/release/bundle/rpm/*.rpm
@@ -94,7 +94,7 @@ jobs:
           APPIMAGE_EXTRACT_AND_RUN: "1"
         run: ./scripts/build-appimage.sh
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ims-desktop-linux-appimage-unsigned
           path: tauri/src-tauri/target/release/bundle/appimage/*.AppImage
@@ -130,7 +130,7 @@ jobs:
       - name: Build Windows bundle (msi + nsis)
         run: npm run tauri build -- --bundles msi,nsis
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ims-desktop-windows-unsigned
           path: |
