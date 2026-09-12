@@ -87,7 +87,16 @@ chmod +x "$RESULT_APPIMAGE"
 echo "==> Built: $RESULT_APPIMAGE"
 
 echo "==> Launch smoke test (5s)"
-"$RESULT_APPIMAGE" &
+# A headless runner (no X11/Wayland session, e.g. CI) has no DISPLAY, and
+# GTK refuses to initialize without one -- that's an environment gap, not
+# the RUNPATH/launch bug this script exists to catch, so give it a virtual
+# framebuffer instead of skipping the smoke test. Local dev machines with
+# a real DISPLAY already set are unaffected.
+if [ -z "${DISPLAY:-}" ] && command -v xvfb-run >/dev/null 2>&1; then
+  xvfb-run --auto-servernum "$RESULT_APPIMAGE" &
+else
+  "$RESULT_APPIMAGE" &
+fi
 APP_PID=$!
 sleep 5
 if ! kill -0 "$APP_PID" 2>/dev/null; then
