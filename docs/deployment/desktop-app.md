@@ -93,6 +93,24 @@ site will have instructions specific to your model.
    automatically. Skipping this step doesn't stop the app from installing
    or working; it's purely about confirming authenticity.
 
+### Not on Fedora/RHEL? Use the AppImage instead
+
+The `.rpm` above only installs on Fedora/RHEL-family systems. Every release
+also ships an `.AppImage` file that runs on most Linux distributions without
+any installation step:
+
+1. Download the `.AppImage` file from the
+   [latest release](https://github.com/sinan-can-demir/ims/releases/latest).
+2. Make it executable and run it:
+
+   ```
+   chmod +x ~/Downloads/IMS\ Desktop-0.1.0-1.x86_64.AppImage
+   ~/Downloads/IMS\ Desktop-0.1.0-1.x86_64.AppImage
+   ```
+
+There's nothing to uninstall later — just delete the file. It doesn't
+integrate with your applications menu the way an installed `.rpm` does.
+
 ## Opening it for the first time
 
 Find "IMS Desktop" in your applications menu, just like any other program,
