@@ -115,7 +115,20 @@ def verify_owned_by_package(path: Path) -> bool:
 
 
 def find_stock_copy(name: str) -> Path | None:
-    candidate = ldconfig_lookup(name) or find_lookup(name)
+    import os
+
+    ldc = ldconfig_lookup(name)
+    candidate = ldc or find_lookup(name)
+    if os.environ.get("RESTORE_DEBUG"):
+        print(
+            f"DEBUG {name}: ldconfig_lookup={ldc} candidate={candidate} "
+            f"which_ldconfig={shutil.which('ldconfig')} which_dpkg={shutil.which('dpkg')} "
+            f"which_rpm={shutil.which('rpm')}",
+            file=sys.stderr,
+        )
+        if candidate is not None:
+            verified = verify_owned_by_package(candidate)
+            print(f"DEBUG {name}: verify_owned_by_package({candidate})={verified}", file=sys.stderr)
     if candidate is None:
         return None
     if not verify_owned_by_package(candidate):
