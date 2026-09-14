@@ -183,7 +183,8 @@ instead of each platform's artifact drifting independently.
    ```
 3. The workflow re-checks the version files (failing loud if the tag
    doesn't match, or if the three files disagree with each other), builds
-   **unsigned** artifacts for Linux (`.rpm`) and Windows (`.msi`/`.nsis`),
+   **unsigned** artifacts for Linux (`.rpm`/`.deb`/`.AppImage`) and Windows
+   (`.msi`/`.nsis`),
    and opens a **draft** GitHub Release with them attached. It does not
    sign anything and does not publish anything automatically — matching
    the same manual, local-only, private-key-never-in-CI constraint as
@@ -202,6 +203,7 @@ for it at all); Windows artifacts ship unsigned until #229 lands.
 Every published `.rpm` should be signed before it's distributed (see #213).
 This is a **manual, local-only step** — the private signing key never
 leaves the maintainer's machine and is never stored in CI, on purpose.
+The `.deb` and `.AppImage` aren't signed yet (tracked separately in #339).
 
 One-time setup:
 

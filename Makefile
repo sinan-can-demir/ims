@@ -186,16 +186,19 @@ format:
 desktop-dev:
 	cd tauri && npm run tauri dev
 
+# Builds both Linux formats (rpm + deb, per tauri.conf.json's bundle.targets)
+# -- both are pure-Rust bundlers, so this works the same regardless of
+# whether rpmbuild/dpkg-deb happen to be installed on this machine.
 desktop-build:
 	cd tauri && npm run tauri build
 
-# Not chained into desktop-build/desktop-release -- the default rpm/msi/nsis
-# flow (tauri.conf.json's bundle.targets) stays untouched. AppImage needs
-# its own wrapper because a plain `tauri build --bundles appimage` produces
-# a build that segfaults on launch (see issue #212); build-appimage.sh
+# Not chained into desktop-build/desktop-release -- the default rpm/deb/msi/
+# nsis flow (tauri.conf.json's bundle.targets) stays untouched. AppImage
+# needs its own wrapper because a plain `tauri build --bundles appimage`
+# produces a build that segfaults on launch (see issue #212); build-appimage.sh
 # works around that by restoring stock system libraries linuxdeploy would
-# otherwise corrupt. Local-only like desktop-sign -- the fix embeds the
-# build host's own libraries, so it isn't safe to run in CI.
+# otherwise corrupt. Also runs in CI now (#336, release.yml) since that fix
+# is verified to hold on a fresh runner too, not just this dev machine.
 desktop-build-appimage:
 	./tauri/scripts/build-appimage.sh
 
