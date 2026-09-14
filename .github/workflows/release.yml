@@ -70,15 +70,25 @@ jobs:
       - run: npm install
 
       # No --bundles flag, unlike build-windows below -- tauri.conf.json's
-      # bundle.targets (rpm/msi/nsis) already narrows itself to just rpm on
-      # a Linux host, matching the existing local `make desktop-build`.
-      - name: Build Linux bundle (rpm)
+      # bundle.targets (rpm/deb/msi/nsis) already narrows itself to the two
+      # Linux formats on a Linux host, matching the existing local
+      # `make desktop-build`. Both are pure-Rust bundlers -- no system
+      # rpmbuild/dpkg-deb tool needed at build time (verified: neither is in
+      # the apt-get install list above, and a local build on a host missing
+      # both still produces working rpm+deb output).
+      - name: Build Linux bundles (rpm + deb)
         run: npm run tauri build
 
       - uses: actions/upload-artifact@v7
         with:
           name: ims-desktop-linux-unsigned
           path: tauri/src-tauri/target/release/bundle/rpm/*.rpm
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ims-desktop-linux-deb-unsigned
+          path: tauri/src-tauri/target/release/bundle/deb/*.deb
           if-no-files-found: error
 
       # scripts/build-appimage.sh applies the real fix from #212 (linuxdeploy's
@@ -166,6 +176,7 @@ jobs:
             --generate-notes \
             --title "IMS Desktop ${GITHUB_REF_NAME}" \
             artifacts/ims-desktop-linux-unsigned/*.rpm \
+            artifacts/ims-desktop-linux-deb-unsigned/*.deb \
             artifacts/ims-desktop-linux-appimage-unsigned/*.AppImage \
             artifacts/ims-desktop-windows-unsigned/*.msi \
             artifacts/ims-desktop-windows-unsigned/*.exe

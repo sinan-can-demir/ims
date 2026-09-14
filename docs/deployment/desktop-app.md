@@ -93,11 +93,30 @@ site will have instructions specific to your model.
    automatically. Skipping this step doesn't stop the app from installing
    or working; it's purely about confirming authenticity.
 
-### Not on Fedora/RHEL? Use the AppImage instead
+### On Debian or Ubuntu? Use the `.deb` instead
 
 The `.rpm` above only installs on Fedora/RHEL-family systems. Every release
-also ships an `.AppImage` file that runs on most Linux distributions without
-any installation step:
+also ships a `.deb` file for Debian/Ubuntu-family systems (Debian, Ubuntu,
+Linux Mint, Pop!_OS, and similar):
+
+1. Download the `.deb` file from the
+   [latest release](https://github.com/sinan-can-demir/ims/releases/latest).
+2. Double-click the downloaded file, same as the `.rpm` above, or install it
+   from a terminal:
+
+   ```
+   sudo apt install ~/Downloads/IMS\ Desktop_0.1.0_amd64.deb
+   ```
+
+   (adjust the path if you saved the file somewhere other than Downloads).
+
+The `.deb` isn't signed yet the way the `.rpm` is (see #339) — this will be
+added in a future release.
+
+### Not on Fedora, Debian, or Ubuntu? Use the AppImage instead
+
+Every release also ships an `.AppImage` file that runs on most Linux
+distributions without any installation step:
 
 1. Download the `.AppImage` file from the
    [latest release](https://github.com/sinan-can-demir/ims/releases/latest).
@@ -109,7 +128,8 @@ any installation step:
    ```
 
 There's nothing to uninstall later — just delete the file. It doesn't
-integrate with your applications menu the way an installed `.rpm` does.
+integrate with your applications menu the way an installed `.rpm`/`.deb`
+does.
 
 ## Opening it for the first time
 
