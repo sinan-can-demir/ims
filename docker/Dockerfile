@@ -3,7 +3,7 @@
 # This is a manifest-list digest, so the correct platform (amd64/arm64) is
 # still resolved at pull time. Re-resolve periodically with:
 #   skopeo inspect docker://docker.io/library/python:3.11-slim
-ARG PYTHON_BASE_IMAGE=python:3.11-slim@sha256:be1575ed968de893bd54f4c56315ff7c4736ce522c1bca08fd521731aafc0d76
+ARG PYTHON_BASE_IMAGE=python:3.11-slim@sha256:9534e5a8e315485d4061ed659af0fd78a284c015f9b73661b41d6bab25604534
 
 # ---- builder: install deps into an isolated venv, nothing else survives ----
 FROM ${PYTHON_BASE_IMAGE} AS builder
@@ -28,17 +28,23 @@ WORKDIR /app
 
 # curl is needed by the HEALTHCHECK below; not present in the slim base image.
 #
-# --only-upgrade openssl/openssl-provider-legacy (pulls the matching
-# libssl3t64 in as a dependency) closes CVE-2026-14456 — the pinned base
-# image's own openssl package (3.5.6-1~deb13u2) lags Debian's security repo
-# (3.5.7-1~deb13u2, confirmed via `apt-cache policy` against this exact
-# base image), because the upstream python:3.11-slim image hasn't been
-# rebuilt with it yet. Re-pinning PYTHON_BASE_IMAGE's digest (the usual fix
-# for a base-image CVE, see that ARG's comment) doesn't help here — no
-# newer digest exists yet to re-pin to.
+# --only-upgrade closes CVEs where the pinned base image's own packages lag
+# Debian's security repo (confirmed via `apt-cache policy` against this
+# exact base image) because the upstream python:3.11-slim image hasn't been
+# rebuilt with them yet. Re-pinning PYTHON_BASE_IMAGE's digest (the usual
+# fix for a base-image CVE, see that ARG's comment) doesn't help here — no
+# newer digest exists yet to re-pin to:
+#   - openssl/openssl-provider-legacy (pulls the matching libssl3t64 in as
+#     a dependency): CVE-2026-14456
+#   - perl-base: CVE-2026-13221 (CRITICAL) plus the perl-Archive-Tar/
+#     perl-IO-Compress/Storable CVEs bundled into the same package
+#   - gzip: CVE-2026-41992
+#   - libpcre2-8-0: CVE-2026-86145, CVE-2026-89161
+#   - libsqlite3-0: CVE-2026-11822, CVE-2026-11824
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && apt-get install -y --no-install-recommends --only-upgrade \
         openssl openssl-provider-legacy \
+        perl-base gzip libpcre2-8-0 libsqlite3-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # This stage is FROM the base image directly (not the builder), so it still
@@ -51,6 +57,21 @@ RUN pip install --no-cache-dir --upgrade setuptools
 
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
+
+# pip itself is never invoked at runtime (verified: no `pip install` /
+# subprocess call anywhere in app/dashboard/scripts -- installing deps is a
+# build-time-only concern already done above). Removing it also removes its
+# statically bundled `pip/_vendor` copies of msgpack and setuptools, which
+# ship real CVEs (GHSA-6v7p-g79w-8964, CVE-2025-47273) fixed upstream in
+# those projects but frozen at pip's own vendored versions until pip cuts a
+# new release -- neither a `requirements.txt` bump nor a base-image re-pin
+# touches pip's internal vendor bundle.
+RUN rm -rf /opt/venv/lib/python3.11/site-packages/pip \
+        /opt/venv/lib/python3.11/site-packages/pip-*.dist-info \
+        /opt/venv/bin/pip /opt/venv/bin/pip3 /opt/venv/bin/pip3.11 \
+        /usr/local/lib/python3.11/site-packages/pip \
+        /usr/local/lib/python3.11/site-packages/pip-*.dist-info \
+        /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.11
 
 COPY . .
 
