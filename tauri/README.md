@@ -188,11 +188,12 @@ instead of each platform's artifact drifting independently.
    and opens a **draft** GitHub Release with them attached. It does not
    sign anything and does not publish anything automatically — matching
    the same manual, local-only, private-key-never-in-CI constraint as
-   `.rpm` GPG signing (#213) and Windows Authenticode signing (#229, not
-   yet implemented).
-4. Download the unsigned `.rpm` from the draft release, sign it locally
-   (see "Signing a release" below), and replace it on the draft release
-   with the signed file.
+   Linux release signing (#213, #339) and Windows Authenticode signing
+   (#229, not yet implemented).
+4. Download the unsigned `.rpm`/`.deb`/`.AppImage` from the draft release,
+   sign each locally (see "Signing a release" below), and replace them on
+   the draft release with the signed `.rpm` and the `.deb`/`.AppImage` plus
+   their new `.asc` files.
 5. Review/edit the auto-generated release notes, then publish the draft.
 
 Mobile (Android/iOS) isn't part of this workflow yet (#235 — no CI exists
@@ -200,34 +201,49 @@ for it at all); Windows artifacts ship unsigned until #229 lands.
 
 ## Signing a release
 
-Every published `.rpm` should be signed before it's distributed (see #213).
-This is a **manual, local-only step** — the private signing key never
-leaves the maintainer's machine and is never stored in CI, on purpose.
-The `.deb` and `.AppImage` aren't signed yet (tracked separately in #339).
+Every published `.rpm`/`.deb`/`.AppImage` should be signed before it's
+distributed (see #213, #339). This is a **manual, local-only step** — the
+private signing key never leaves the maintainer's machine and is never
+stored in CI, on purpose.
+
+The `.rpm` uses rpm's own embedded-signature format (verified via
+`rpm -K`/`dnf`). The `.deb` and `.AppImage` don't have that package-manager
+integration, so both instead get a **detached GPG signature** — a
+`<file>.asc` published alongside the artifact on the release, verified via
+plain `gpg --verify`. Same signing key across all three formats, just a
+different verification mechanism per format.
 
 One-time setup:
 
 ```sh
-sudo dnf install rpm-sign        # provides `rpmsign`
+sudo dnf install rpm-sign        # provides `rpmsign` -- .rpm only
 gpg --full-generate-key          # RSA and RSA, 4096 bits, 2y expiry
 ```
 
-Then add to `~/.rpmmacros`:
+Then add to `~/.rpmmacros` (.rpm only):
 
 ```
 %_signature gpg
 %_gpg_name IMS Desktop Release Signing Key
 ```
 
-Per release, after `npm run tauri build`:
+Per release, after `npm run tauri build` (and, for the AppImage,
+`./scripts/build-appimage.sh`):
 
 ```sh
 ./sign-release.sh "src-tauri/target/release/bundle/rpm/IMS Desktop-<version>-1.x86_64.rpm"
+./sign-release.sh "src-tauri/target/release/bundle/deb/IMS Desktop_<version>_amd64.deb"
+./sign-release.sh "src-tauri/target/release/bundle/appimage/IMS_Desktop-x86_64.AppImage"
 ```
 
-This prompts for your GPG passphrase, signs the package, and verifies it.
-The public key lives at [`keys/RPM-GPG-KEY-ims-desktop`](keys/RPM-GPG-KEY-ims-desktop)
-— safe to commit, that's the whole point of public-key signing. See
+Each prompts for your GPG passphrase and verifies the result. The `.rpm`
+gets signed in place; the `.deb`/`.AppImage` each get a `<file>.asc`
+written next to them — attach both the artifact and its `.asc` to the
+release. The public key lives at
+[`keys/RPM-GPG-KEY-ims-desktop`](keys/RPM-GPG-KEY-ims-desktop) — safe to
+commit, that's the whole point of public-key signing; the filename is a
+holdover from when only the `.rpm` was signed, but it's the same key used
+for all three formats now. See
 [docs/deployment/desktop-app.md](../docs/deployment/desktop-app.md) for how
 end users import it to verify a download.
 

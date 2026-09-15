@@ -110,8 +110,19 @@ Linux Mint, Pop!_OS, and similar):
 
    (adjust the path if you saved the file somewhere other than Downloads).
 
-The `.deb` isn't signed yet the way the `.rpm` is (see #339) — this will be
-added in a future release.
+3. **(Optional but recommended) Verify the download is genuine.** Every
+   `.deb` release also ships a `<filename>.deb.asc` signature file:
+
+   ```
+   curl -sO https://raw.githubusercontent.com/sinan-can-demir/ims/main/tauri/keys/RPM-GPG-KEY-ims-desktop
+   gpg --import RPM-GPG-KEY-ims-desktop
+   gpg --verify ~/Downloads/IMS\ Desktop_0.1.0_amd64.deb.asc ~/Downloads/IMS\ Desktop_0.1.0_amd64.deb
+   ```
+
+   You should see `Good signature from "IMS Desktop Release Signing Key..."`.
+   This is the same signing key used for the `.rpm` above, just a different
+   verification mechanism since `.deb` doesn't have the `.rpm`'s built-in
+   signature format.
 
 ### Not on Fedora, Debian, or Ubuntu? Use the AppImage instead
 
@@ -130,6 +141,18 @@ distributions without any installation step:
 There's nothing to uninstall later — just delete the file. It doesn't
 integrate with your applications menu the way an installed `.rpm`/`.deb`
 does.
+
+3. **(Optional but recommended) Verify the download is genuine.** Every
+   AppImage release also ships an `IMS_Desktop-x86_64.AppImage.asc`
+   signature file, the same way the `.deb` above does:
+
+   ```
+   curl -sO https://raw.githubusercontent.com/sinan-can-demir/ims/main/tauri/keys/RPM-GPG-KEY-ims-desktop
+   gpg --import RPM-GPG-KEY-ims-desktop
+   gpg --verify ~/Downloads/IMS_Desktop-x86_64.AppImage.asc ~/Downloads/IMS_Desktop-x86_64.AppImage
+   ```
+
+   You should see `Good signature from "IMS Desktop Release Signing Key..."`.
 
 ## Opening it for the first time
 
