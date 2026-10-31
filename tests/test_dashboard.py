@@ -146,7 +146,7 @@ def test_dashboard_sign_out_clears_session_state(client, dashboard_db, monkeypat
     # None of the pre-sign-out keys (auth, stale widget keys, dynamic
     # per-row keys) survive — only whatever the login form itself
     # freshly creates on this render is left.
-    remaining = at.session_state.filtered_state
+    remaining = at.session_state.to_dict()
     assert "user" not in remaining
     assert "some_leftover_widget_key" not in remaining
     assert "line_qty_42" not in remaining
@@ -422,9 +422,9 @@ def test_purchase_orders_page_shows_price_creep_warning(client, dashboard_db):
     # submitted so only the second PO stays DRAFT -- keeps exactly one
     # "Add line" form on the page, avoiding a same-label widget collision
     # between two simultaneously-open drafts.
-    next(s for s in at.selectbox if s.label == "Product (manual)").select(chicken["id"]).run()
-    next(n for n in at.number_input if n.label == "Quantity").set_value(10).run()
-    next(n for n in at.number_input if n.label == "Unit cost (optional)").set_value(2.00).run()
+    next(s for s in at.selectbox if s.label == "Product (manual)").select(chicken["id"])
+    next(n for n in at.number_input if n.label == "Quantity").set_value(10)
+    next(n for n in at.number_input if n.label == "Unit cost (optional)").set_value(2.00)
     next(b for b in at.button if b.label == "Create draft").click().run()
     next(b for b in at.button if b.label == "Submit purchase order").click().run()
     assert not at.exception
@@ -433,16 +433,16 @@ def test_purchase_orders_page_shows_price_creep_warning(client, dashboard_db):
     # from this creation path (create_purchase_order's initial line is
     # deliberately out of scope for price-creep flagging, only
     # add_purchase_order_line is).
-    next(s for s in at.selectbox if s.label == "Product (manual)").select(chicken["id"]).run()
-    next(n for n in at.number_input if n.label == "Quantity").set_value(5).run()
-    next(n for n in at.number_input if n.label == "Unit cost (optional)").set_value(2.00).run()
+    next(s for s in at.selectbox if s.label == "Product (manual)").select(chicken["id"])
+    next(n for n in at.number_input if n.label == "Quantity").set_value(5)
+    next(n for n in at.number_input if n.label == "Unit cost (optional)").set_value(2.00)
     next(b for b in at.button if b.label == "Create draft").click().run()
     assert not at.exception
     assert not at.warning
 
     # Now add a line to that still-DRAFT second PO at a higher cost.
-    next(n for n in at.number_input if n.label == "Qty").set_value(8).run()
-    next(n for n in at.number_input if n.label == "Unit cost").set_value(3.50).run()
+    next(n for n in at.number_input if n.label == "Qty").set_value(8)
+    next(n for n in at.number_input if n.label == "Unit cost").set_value(3.50)
     next(b for b in at.button if b.label == "Add line").click().run()
 
     assert not at.exception
@@ -536,10 +536,10 @@ def test_waste_entry_page_logs_waste_and_decrements_stock(client, dashboard_db):
     at.run()
 
     product_select = next(s for s in at.selectbox if s.label == "Product")
-    product_select.select(tomatoes["id"]).run()
+    product_select.select(tomatoes["id"])
 
     quantity_input = next(n for n in at.number_input if n.label == "Quantity")
-    quantity_input.set_value(12).run()
+    quantity_input.set_value(12)
 
     submit = next(b for b in at.button if b.label == "Log waste")
     submit.click().run()
@@ -563,10 +563,10 @@ def test_waste_entry_page_rejects_waste_exceeding_current_stock(client, dashboar
     at.run()
 
     product_select = next(s for s in at.selectbox if s.label == "Product")
-    product_select.select(tomatoes["id"]).run()
+    product_select.select(tomatoes["id"])
 
     quantity_input = next(n for n in at.number_input if n.label == "Quantity")
-    quantity_input.set_value(999).run()
+    quantity_input.set_value(999)
 
     submit = next(b for b in at.button if b.label == "Log waste")
     submit.click().run()
