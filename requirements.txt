@@ -3,7 +3,7 @@ python-multipart==0.0.32
 uvicorn[standard]==0.52.4
 gunicorn==26.2.0
 sqlalchemy==2.0.52
-psycopg2-binary==2.9.12
+psycopg2-binary==2.9.13
 pydantic==2.13.5
 alembic==1.19.2
 pytest==9.1.1
