@@ -12,6 +12,11 @@
 # FEATURE_STORE_PATH/MODELS_DIR at s3://<bucket>/... URIs in .env, and
 # create the bucket first (e.g. via the MinIO console at :9001, or `mc mb`).
 #
+# Also works on top of prod.yml (prod no longer starts MinIO itself):
+#
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.prod.yml \
+#     -f deploy/docker-compose.minio.yml --project-directory . up -d
+#
 # Skip this file entirely to keep using local disk (the default).
 
 services:
@@ -24,8 +29,12 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
     ports:
-      - "9000:9000" # S3 API
-      - "9001:9001" # Web console
+      # Loopback-only (same reasoning as deploy/docker-compose.yml): this
+      # overlay can be stacked on prod.yml, and the S3 API + admin console
+      # must not be reachable from the network. Reach the console over an
+      # SSH tunnel, or put a proxy in front deliberately.
+      - "127.0.0.1:9000:9000" # S3 API
+      - "127.0.0.1:9001:9001" # Web console
     volumes:
       - minio_data:/data
     healthcheck:
