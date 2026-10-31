@@ -29,36 +29,22 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-ims}
     command: alembic -c config/alembic.ini upgrade head
 
-  # S3-compatible object storage for the data pipeline — see #22 and
-  # app/core/storage.py. Runs by default in prod (self-hosted's zero-cost
-  # S3-compatible backend), independent of whether DATA_LAKE_ROOT etc. are
-  # actually pointed at it yet — local disk (this file's default) works
-  # fine with MinIO just sitting idle. Never published to the host, same
-  # as `db` above — only reachable from other containers on the internal
-  # Docker network.
-  minio:
-    # Digest-pinned (#285) -- see deploy/docker-compose.yml's db.image
-    # comment for why. Re-pin both together when a CVE lands.
-    image: quay.io/minio/minio:latest@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
-    container_name: ims_minio
-    restart: unless-stopped
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
-    volumes:
-      - minio_data:/data
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
+  # No object-storage service here. The data pipeline defaults to local disk
+  # (the named volumes below), so prod doesn't need one to run. To use S3,
+  # either point the S3_* / AWS_* / *_ROOT vars in .env at any
+  # S3-compatible endpoint (api and dashboard load .env), or stack the
+  # optional deploy/docker-compose.minio.yml overlay on top of this file.
+  # See docs/deployment/self-hosted.md "S3 storage (optional)".
 
   api:
     restart: unless-stopped
-    depends_on:
-      minio:
-        condition: service_healthy
+    # Explicit rather than inherited from the base file: the base publishes
+    # 8000 on loopback only (dev default), but prod's plain-HTTP mode is
+    # documented as http://<server-ip>:8000 (docs/deployment/self-hosted.md,
+    # step 3), so prod keeps it reachable on all interfaces. Behind the Caddy
+    # overlay the proxy reaches api:8000 over the Docker network instead.
+    ports: !override
+      - "8000:8000"
     # `!override` replaces the base file's `.:/app:Z` dev source bind-mount
     # (running the built image as-is) with just the 4 pipeline directories —
     # local-fallback mode (no S3/MinIO configured) previously had nowhere
@@ -78,12 +64,6 @@ services:
       # Required so /metrics can merge counters across Gunicorn's worker
       # processes — see config/gunicorn.conf.py and app/core/metrics.py.
       PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus_multiproc
-      # MinIO wiring — only actually used once DATA_LAKE_ROOT etc. (in .env)
-      # are pointed at s3:// URIs; harmless no-op while they stay local.
-      S3_ENDPOINT_URL: http://minio:9000
-      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
-      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
-      S3_URL_STYLE: path
     # Gunicorn + UvicornWorker instead of the base file's single-worker dev
     # command — real concurrency for production traffic. WEB_CONCURRENCY
     # defaults to 4, tuned for the "1-2 vCPU / 2-4GB RAM" box the deployment
@@ -96,9 +76,6 @@ services:
 
   dashboard:
     restart: unless-stopped
-    depends_on:
-      minio:
-        condition: service_healthy
     volumes: !override
       - data_lake_data:/app/data_lake
       - warehouse_data:/app/warehouse
@@ -108,10 +85,6 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-ims}
-      S3_ENDPOINT_URL: http://minio:9000
-      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
-      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
-      S3_URL_STYLE: path
     # Unlike `api`, the dashboard has no app-level auth (no bearer-token
     # equivalent) — Caddy's basic_auth is its only protection. So, unlike
     # api's port staying published here, the dashboard's port is hidden by
@@ -126,4 +99,3 @@ volumes:
   warehouse_data:
   feature_store_data:
   models_data:
-  minio_data:

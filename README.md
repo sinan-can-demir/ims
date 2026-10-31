@@ -55,9 +55,9 @@ An event-driven inventory platform with a full analytics pipeline and ML-powered
 - [x] Self-hosted deployment path (Docker Compose + optional Caddy HTTPS) —
       verified against a real running deployment, including public
       reachability
-- [x] S3-compatible object storage for the data pipeline — MinIO by default
-      for self-hosted (runs alongside the stack, zero extra cost), real AWS
-      S3 for the AWS path; local disk stays the default either way. See
+- [x] S3-compatible object storage for the data pipeline — opt-in: any
+      S3-compatible endpoint, an optional MinIO overlay for self-hosted,
+      or real AWS S3; local disk stays the default. See
       [docs/deployment/self-hosted.md](docs/deployment/self-hosted.md#s3--minio-storage-optional)
 - [x] `scripts/backup.sh` / `scripts/restore.sh` — one archive covering
       both Postgres and the local pipeline artifacts (data lake, feature
@@ -590,7 +590,7 @@ decisions no wizard should make silently.
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_REGION` | unset | S3-compatible object storage credentials — only used if one of the 4 paths above is an `s3://` URI |
 | `S3_ENDPOINT_URL` | unset | S3-compatible endpoint (e.g. `http://minio:9000`); leave unset for real AWS S3 |
 | `S3_URL_STYLE` | unset | `path` for MinIO/most self-hosted S3-compatible servers; unset (AWS's default `vhost` style) for real AWS S3 |
-| `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | unset | MinIO's own admin credentials — `deploy/docker-compose.prod.yml`/`deploy/docker-compose.minio.yml` only, required to start the `minio` container. See [docs/deployment/self-hosted.md](docs/deployment/self-hosted.md#s3--minio-storage-optional) |
+| `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | unset | MinIO's own admin credentials — `deploy/docker-compose.minio.yml` only (the optional overlay), required to start the `minio` container; the prod stack does not need them. See [docs/deployment/self-hosted.md](docs/deployment/self-hosted.md#s3--minio-storage-optional) |
 | `MLFLOW_TRACKING_URI` | `sqlite:///./mlflow.db` | MLflow model registry backend, used by `make train` only — see [docs/model-registry.md](docs/model-registry.md) |
 | `MLFLOW_EXPERIMENT_NAME` | `prophet-demand-forecasting` | MLflow experiment name for training runs |
 | `WAREHOUSE_START_DATE` / `WAREHOUSE_END_DATE` | `2020-01-01` / `2030-12-31` | Date range for the generated `dim_dates` warehouse table |
