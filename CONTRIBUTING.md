@@ -39,6 +39,12 @@ optional locally but useful if you're touching `inventory_service.py`.
 `make test-e2e` runs the bash-based end-to-end suite and needs the full Docker
 stack (`make up`) running first.
 
+The desktop app's Rust unit tests (Docker/WSL2 failure classification,
+`tauri/src-tauri/src/docker/classify.rs`) run with `cargo test` from
+`tauri/src-tauri/` — this needs the same webkit/GTK dev packages as a desktop
+build (see `.github/workflows/ci.yml`'s `test-rust` job for the list). CI runs
+them on every PR.
+
 ## Data pipeline / dbt changes
 
 If you're touching `app/scripts/export_events.py`, `build_warehouse.py`, or

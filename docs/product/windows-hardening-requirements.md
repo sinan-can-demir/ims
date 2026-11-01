@@ -118,8 +118,8 @@ Each fix is its own PR, referencing the IDs above.
 |---|---|---|
 | SEC-1, SEC-2 | loopback binding / drop Postgres port in `deploy/docker-compose.yml` | planned |
 | SEC-3, SEC-4 | per-install secrets for the desktop path | planned (auth-critical, extra review) |
-| SEC-5 | CORS test + comment fix | planned |
-| REL-1 | Rust tests in `docker.rs` | planned |
+| SEC-5 | CORS test + comment fix | done (#364); real WebView2 origin still pending #374 |
+| REL-1 | Rust tests in `docker.rs` | done (#366) |
 | REL-2 | `CREATE_NO_WINDOW` under `cfg(windows)` | planned |
 | INS-1 | `webviewInstallMode` in `tauri.conf.json` | planned |
 | SEC-7 (checksums, docs) | `.sha256` + verify docs | planned |
