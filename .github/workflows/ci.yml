@@ -169,6 +169,36 @@ jobs:
       - name: dbt test
         run: make dbt-test
 
+  # Unit tests for the desktop app's Rust side (#366, REL-1) -- chiefly the
+  # Docker/WSL2/virtualization failure classification in
+  # tauri/src-tauri/src/docker/classify.rs. That logic is platform-independent
+  # once separated from process spawning, so it runs here on Linux rather
+  # than adding test time to the slower build-windows job below. Still needs
+  # the webkit/GTK dev packages: `cargo test` compiles the whole crate,
+  # tauri included -- same package list as release.yml's Linux build.
+  test-rust:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tauri/src-tauri
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      # Same unversioned-on-purpose ref as build-windows below.
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tauri/src-tauri
+
+      - run: cargo test
+
   # Builds the Windows desktop bundle as a smoke test (#228) -- catches a
   # Windows-specific build break (e.g. a Windows-only compile error in
   # docker.rs, or a bundle.resources path that only resolves on Linux) at PR

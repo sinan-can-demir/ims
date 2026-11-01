@@ -5,23 +5,9 @@ use tauri::{AppHandle, Manager};
 
 const HEALTH_URL: &str = "http://localhost:8000/health";
 
-pub enum DaemonStatus {
-    NotInstalled,
-    /// Windows-only: `docker info` failed and the CPU's virtualization
-    /// firmware flag reads back positively disabled. Checked ahead of
-    /// `Wsl2Missing` below since it's the more fundamental cause when both
-    /// are true -- WSL2 itself can't install without it, so telling the user
-    /// to fix BIOS/UEFI settings first avoids sending them through a WSL2
-    /// install that's going to fail anyway (#262).
-    VirtualizationDisabled,
-    /// Windows-only: `docker info` failed and WSL2 (Docker Desktop's backend
-    /// on Windows) isn't installed. Collapsing this into `NotRunning` would
-    /// tell a non-technical user to "start Docker Desktop" when the actual
-    /// fix is a separate Windows feature install + reboot (#262).
-    Wsl2Missing,
-    NotRunning,
-    Running,
-}
+mod classify;
+
+pub use classify::{DaemonStatus, PortConflict};
 
 /// Where deploy/docker-compose.yml, docker/, app/, dashboard/, etc. live at
 /// runtime -- the actual Docker build context. Two genuinely different
@@ -77,27 +63,17 @@ const DAEMON_CHECK_RETRY_DELAY: Duration = Duration::from_secs(2);
 /// default and only recommended Windows mode) -- Windows containers mode
 /// is out of scope, see #226, since this stack's images are Linux-based.
 pub fn check_daemon() -> DaemonStatus {
-    for attempt in 0..DAEMON_CHECK_ATTEMPTS {
-        match Command::new("docker").arg("info").output() {
-            Ok(output) if output.status.success() => return DaemonStatus::Running,
-            Ok(_) if attempt + 1 < DAEMON_CHECK_ATTEMPTS => {
-                std::thread::sleep(DAEMON_CHECK_RETRY_DELAY);
-            }
-            Ok(_) => return classify_windows_failure(),
-            Err(_) => return DaemonStatus::NotInstalled,
-        }
-    }
-    unreachable!("loop above always returns before exhausting its attempts")
-}
-
-fn classify_windows_failure() -> DaemonStatus {
-    if virtualization_disabled_in_firmware() == Some(true) {
-        DaemonStatus::VirtualizationDisabled
-    } else if wsl2_missing() {
-        DaemonStatus::Wsl2Missing
-    } else {
-        DaemonStatus::NotRunning
-    }
+    classify::check_daemon_with(
+        DAEMON_CHECK_ATTEMPTS,
+        || {
+            Command::new("docker")
+                .arg("info")
+                .output()
+                .map(|o| o.status.success())
+        },
+        || std::thread::sleep(DAEMON_CHECK_RETRY_DELAY),
+        || classify::classify_failure(virtualization_disabled_in_firmware(), wsl2_missing),
+    )
 }
 
 /// Gated on `target_os = "windows"` -- `wsl` isn't a thing to check for on
@@ -111,11 +87,12 @@ fn wsl2_missing() -> bool {
     if !cfg!(target_os = "windows") {
         return false;
     }
-    !Command::new("wsl")
-        .arg("--status")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    classify::wsl2_missing_from(
+        Command::new("wsl")
+            .arg("--status")
+            .output()
+            .map(|o| o.status.success()),
+    )
 }
 
 /// Gated on `target_os = "windows"` for the same reason as `wsl2_missing`.
@@ -148,19 +125,7 @@ fn virtualization_disabled_in_firmware() -> Option<bool> {
         ])
         .output()
         .ok()?;
-    match String::from_utf8_lossy(&output.stdout).trim() {
-        "True" => Some(false),
-        "False" => Some(true),
-        _ => None,
-    }
-}
-
-const SERVICE_PORTS: &[(&str, u16, &str)] =
-    &[("db", 5432, "database"), ("api", 8000, "API"), ("dashboard", 8501, "dashboard")];
-
-pub struct PortConflict {
-    pub port: u16,
-    pub label: &'static str,
+    classify::parse_virtualization_firmware(&String::from_utf8_lossy(&output.stdout))
 }
 
 // std::net::TcpListener::bind is a thin wrapper over the OS socket API on
@@ -185,12 +150,9 @@ fn running_services(project_root: &Path) -> Vec<String> {
         .args(["ps", "--status", "running", "--services"])
         .output();
     match output {
-        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout)
-            .lines()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-            .collect(),
+        Ok(out) if out.status.success() => {
+            classify::parse_running_services(&String::from_utf8_lossy(&out.stdout))
+        }
         _ => Vec::new(),
     }
 }
@@ -201,13 +163,7 @@ fn running_services(project_root: &Path) -> Vec<String> {
 /// outside our own project is a real, actionable conflict (issue #174's
 /// "why this matters": a stray unrelated process already bound to 8501).
 pub fn check_port_conflicts(project_root: &Path) -> Vec<PortConflict> {
-    let running = running_services(project_root);
-    SERVICE_PORTS
-        .iter()
-        .filter(|(service, _, _)| !running.iter().any(|s| s == service))
-        .filter(|(_, port, _)| !port_is_free(*port))
-        .map(|(_, port, label)| PortConflict { port: *port, label })
-        .collect()
+    classify::find_port_conflicts(&running_services(project_root), port_is_free)
 }
 
 /// db's healthcheck status ("healthy"/"unhealthy"/"starting"/...), used to
@@ -220,12 +176,7 @@ pub fn db_health_status(project_root: &Path) -> Option<String> {
         .output()
         .ok()?;
     if output.status.success() {
-        let status = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if status.is_empty() {
-            None
-        } else {
-            Some(status)
-        }
+        classify::parse_db_health(&String::from_utf8_lossy(&output.stdout))
     } else {
         None
     }
