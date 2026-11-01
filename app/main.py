@@ -80,7 +80,25 @@ app.add_middleware(
     # server is remote (Tailscale, #227) rather than same-machine -- but
     # Tailscale's own network-level auth is the boundary there, same as it
     # is for every other service reachable over that tailnet.
+    #
+    # `http://tauri.localhost` is also the origin the *Windows* desktop
+    # release build presents (WebView2 serves the app from that host rather
+    # than the `tauri://localhost` scheme Linux/macOS use) -- so this one
+    # entry covers both Android and Windows, and removing it would break the
+    # Windows app too, not just mobile. Unlike the Linux and Android origins
+    # above, the Windows one isn't yet confirmed against a real Windows
+    # build -- that's part of the real-hardware pass in #374.
+    # tests/test_cors.py pins every origin here (and look-alikes that must
+    # stay rejected) so a regression fails CI instead of only showing up on
+    # someone's machine (#364).
     allow_origin_regex=r"^(http://(localhost|127\.0\.0\.1)(:\d+)?|tauri://localhost|http://tauri\.localhost)$",
+    # Wildcard methods/headers deliberately left as-is (#364 review): no
+    # allow_credentials, so browsers never attach cookies cross-origin, and
+    # auth is a bearer token the client must set explicitly -- the origin
+    # allow-list above is the actual security boundary. Narrowing these to
+    # the methods/headers in use today (GET/POST/PATCH/DELETE,
+    # Authorization/Content-Type) would add little and silently break the
+    # next route or header someone adds.
     allow_methods=["*"],
     allow_headers=["*"],
 )
