@@ -41,8 +41,10 @@ WORKDIR /app
 #   - gzip: CVE-2026-41992
 #   - libpcre2-8-0: CVE-2026-86145, CVE-2026-89161
 #   - libsqlite3-0: CVE-2026-11822, CVE-2026-11824
+#   - apt/libapt-pkg7.0: CVE-2026-109518 (fixed in 3.0.4)
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && apt-get install -y --no-install-recommends --only-upgrade \
+        apt libapt-pkg7.0 \
         openssl openssl-provider-legacy \
         perl-base gzip libpcre2-8-0 libsqlite3-0 \
     && rm -rf /var/lib/apt/lists/*
