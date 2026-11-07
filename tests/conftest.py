@@ -11,7 +11,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.core.auth import create_access_token
 from app.core.security import hash_password
-from app.database import Base, get_db
+from app.database import Base, get_db, normalize_database_url
 from app.main import app
 from app.models.enums import UserRole
 from app.models.organization import Organization
@@ -20,7 +20,7 @@ from app.models.user import User
 TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL")
 
 if TEST_DATABASE_URL:
-    engine = create_engine(TEST_DATABASE_URL)
+    engine = create_engine(normalize_database_url(TEST_DATABASE_URL))
 else:
     engine = create_engine(
         "sqlite://",

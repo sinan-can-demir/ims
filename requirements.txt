@@ -1,4 +1,4 @@
-fastapi==0.141.1
+fastapi==0.162.0
 python-multipart==0.0.32
 uvicorn[standard]==0.54.0
 gunicorn==26.2.0
@@ -8,7 +8,7 @@ pydantic==2.13.5
 alembic==1.20.1
 pytest==9.1.1
 httpx==0.28.1
-pytest-asyncio==1.4.0
+pytest-asyncio==1.4.1.post1
 pandas==3.0.5
 pyarrow==24.0.0
 python-json-logger==4.2.0
@@ -16,15 +16,15 @@ prometheus-client==0.26.0
 slowapi==0.1.10
 bcrypt==5.0.0
 PyJWT==2.15.0
-duckdb==1.5.5
+duckdb==2.0.0
 s3fs==2026.9.0
-dbt-duckdb==1.11.0
+dbt-duckdb==1.11.1
 # Transitive via dbt-core -> mashumaro[msgpack] (unpinned upstream) — pinned
 # directly to close GHSA-6v7p-g79w-8964 (OOB read/crash on Unpacker reuse),
 # fixed in 1.2.1. mashumaro only requires msgpack>=0.5.6, so this is safe.
-msgpack==1.2.3
+msgpack==1.2.4
 joblib==1.6.0
-prophet==1.4.0
+prophet==1.5.0
 streamlit==1.66.1
 plotly==7.1.0
 
