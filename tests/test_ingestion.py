@@ -3,6 +3,8 @@
 import io
 import uuid
 
+import pytest
+
 from app.models.inventory_event import InventoryEvent
 from app.models.user import User
 from app.services.ingestion_service import ingest_events
@@ -230,3 +232,18 @@ def test_bulk_import_endpoint_partial_failure(client):
     body = response.json()
     assert body["rows_succeeded"] == 1
     assert body["rows_failed"] == 1
+
+
+def test_ingest_row_event_id_length_boundary():
+    # Cap is derived from the webhook field limits (50 + ":" + 100 = 151): the
+    # longest event_id the webhook can build is accepted, one more is not.
+    from pydantic import ValidationError
+
+    from app.schemas.ingestion import EVENT_ID_MAX_LENGTH, IngestRowInput
+
+    assert EVENT_ID_MAX_LENGTH == 151
+
+    row = {"sku": "A", "event_type": "SALE", "quantity": 1}
+    assert IngestRowInput(**row, event_id="e" * 151).event_id == "e" * 151
+    with pytest.raises(ValidationError):
+        IngestRowInput(**row, event_id="e" * 152)
