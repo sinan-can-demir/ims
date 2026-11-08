@@ -74,26 +74,41 @@ if st.sidebar.button("🔄 Refresh"):
 # Section 1 — Inventory metrics
 # ---------------------------------------------------------------
 current_qty = load_inventory(selected_product, current_user["organization_id"])
-restock = load_restock(selected_product, current_user["organization_id"])
+
+# A product with no trained model yet (new product, or fewer than the minimum
+# training days of history) has no forecast, so no restock recommendation
+# either. Degrade to inventory-only instead of crashing the whole page --
+# same fallback the fleet overview uses (fleet_service's NO_FORECAST) and the
+# same message the forecast chart in Section 3 already shows.
+try:
+    restock = load_restock(selected_product, current_user["organization_id"])
+except FileNotFoundError:
+    restock = None
 
 col1, col2, col3 = st.columns(3)
 
 with col1:
     st.metric("Current Inventory", f"{current_qty} units")
 
-with col2:
-    st.metric("Projected Demand (7d)", f"{restock['projected_demand_7d']} units")
+if restock is None:
+    st.info(
+        "⚠️ No trained model found for this product, so there is no restock "
+        "recommendation yet. Run make train first."
+    )
+else:
+    with col2:
+        st.metric("Projected Demand (7d)", f"{restock['projected_demand_7d']} units")
 
-with col3:
-    st.metric("Recommended Order", f"{restock['recommended_order_qty']} units")
+    with col3:
+        st.metric("Recommended Order", f"{restock['recommended_order_qty']} units")
 
-col4, col5 = st.columns(2)
+    col4, col5 = st.columns(2)
 
-with col4:
-    st.metric("Safety Stock", f"{restock['safety_stock']} units")
+    with col4:
+        st.metric("Safety Stock", f"{restock['safety_stock']} units")
 
-with col5:
-    st.metric("Days of Stock Remaining", f"{restock['days_of_stock_remaining']} days")
+    with col5:
+        st.metric("Days of Stock Remaining", f"{restock['days_of_stock_remaining']} days")
 
 # ---------------------------------------------------------------
 # Section 2 — Restock alert
@@ -105,21 +120,22 @@ urgency_config = {
     "OK": ("🟢", "success"),
 }
 
-icon, alert_type = urgency_config[restock["urgency"]]
+if restock is not None:
+    icon, alert_type = urgency_config[restock["urgency"]]
 
-if alert_type == "error":
-    st.error(
-        f"{icon} {restock['urgency']} — Restock immediately! "
-        f"Order {restock['recommended_order_qty']} units."
-    )
-elif alert_type == "warning":
-    st.warning(
-        f"{icon} {restock['urgency']} — "
-        f"{restock['days_of_stock_remaining']} days of stock remaining. "
-        f"Order {restock['recommended_order_qty']} units."
-    )
-else:
-    st.success(f"{icon} Stock levels are healthy.")
+    if alert_type == "error":
+        st.error(
+            f"{icon} {restock['urgency']} — Restock immediately! "
+            f"Order {restock['recommended_order_qty']} units."
+        )
+    elif alert_type == "warning":
+        st.warning(
+            f"{icon} {restock['urgency']} — "
+            f"{restock['days_of_stock_remaining']} days of stock remaining. "
+            f"Order {restock['recommended_order_qty']} units."
+        )
+    else:
+        st.success(f"{icon} Stock levels are healthy.")
 
 # ---------------------------------------------------------------
 # Section 3 — Forecast chart
