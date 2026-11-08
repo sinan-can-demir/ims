@@ -118,6 +118,33 @@ def test_webhook_event_id_namespaced_by_source(client, db):
     assert event.created_by_id is None
 
 
+def test_webhook_max_length_source_and_external_id_ingests(client, db):
+    # event_id is "{source}:{external_id}", so the longest legal payload (50-char
+    # source + 100-char external_id) yields a 151-char event_id. It used to be
+    # rejected per-row (and retries never succeed) by IngestRowInput's old
+    # 100-char cap.
+    _set_webhook_secret(db, 1, _SECRET)
+    product = create_product(client)
+    source = "s" * 50
+    external_id = "x" * 100
+    payload = _payload(product["sku"], quantity=7, external_id=external_id)
+    payload["source"] = source
+
+    response = _signed_request(client, 1, payload)
+
+    assert response.status_code == 200, response.json()
+    body = response.json()
+    assert body["rows_failed"] == 0, body
+    assert body["rows_succeeded"] == 1
+
+    from app.models.inventory_event import InventoryEvent
+
+    event_id = f"{source}:{external_id}"
+    assert len(event_id) == 151
+    stored = db.query(InventoryEvent).filter(InventoryEvent.event_id == event_id).first()
+    assert stored is not None
+
+
 def test_webhook_too_many_events_returns_422(client, db):
     """
     events has a max_length=1000 (app/schemas/webhook.py) — a single call
