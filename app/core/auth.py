@@ -1,6 +1,5 @@
 import hashlib
 import hmac
-import os
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -8,19 +7,20 @@ from fastapi import Depends, HTTPException, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
+from app.core.jwt_secret import get_jwt_secret
 from app.core.logging import logger
 from app.database import get_db
 from app.models.enums import UserRole
 from app.models.organization import Organization
 from app.models.user import User
 
-# Falls back to a fixed dev-only value so login works out of the box
-# locally, same convenience as WEBHOOK_SECRET being unset — but unlike
-# that, there's no way to "disable" JWT signing, so an operator who
-# forgets to set this in production gets a predictable secret rather
-# than a broken endpoint. Must be set for real deployments (see
-# .env.example and SECURITY.md).
-_JWT_SECRET = os.getenv("JWT_SECRET") or "insecure-dev-secret-do-not-use-in-production"
+# Falls back to a fixed, public dev-only value (unset OR blank -- see
+# app/core/jwt_secret.py) so login works out of the box locally and for the
+# desktop app. There's no way to "disable" JWT signing, so anywhere else the
+# fallback must never be reached: deploy/docker-compose.prod.yml refuses to
+# start without a real JWT_SECRET, and the app warns loudly at startup
+# whenever the dev default is in use (see SECURITY.md).
+_JWT_SECRET = get_jwt_secret()
 _JWT_ALGORITHM = "HS256"
 _JWT_EXPIRY = timedelta(hours=12)
 

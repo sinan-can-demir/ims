@@ -72,10 +72,18 @@ route requires `Authorization: Bearer <token>`, validated by
   email is checked against a fixed dummy hash so the bcrypt cost is paid
   either way.
 - **`JWT_SECRET` can't be "disabled" the way the old `API_KEY` could.**
-  Signing a JWT always requires a key, so an unset `JWT_SECRET` falls back
+  Signing a JWT always requires a key, so an unset **or blank** `JWT_SECRET`
+  (`JWT_SECRET=` as shipped in `.env.example` counts as blank) falls back
   to a fixed, publicly-known dev-only string instead of turning auth off —
-  a startup log line warns loudly if the app boots without it set,
+  a startup log line warns loudly whenever the app boots on that fallback,
   precisely so this isn't easy to miss in a deployed environment's logs.
+  The same secret signs the Square OAuth `state`, so the fallback also lets
+  anyone forge that. `deploy/docker-compose.prod.yml` refuses to start
+  without a real `JWT_SECRET` (the same `:?` guard as `POSTGRES_PASSWORD`),
+  so the fallback is reachable only in local dev, the quickstart compose
+  file and the desktop app (which still uses it today; a per-install secret is
+  tracked in #369). Before this guard,
+  a blank value fell back with *no* warning at all (#385).
   **You must set `JWT_SECRET` before exposing this app on any network you
   don't fully trust.**
 - **No server-side session storage or revocation list.** A token is valid

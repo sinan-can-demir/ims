@@ -21,6 +21,7 @@ from app.api.suppliers import router as suppliers_router
 from app.api.webhooks import router as webhooks_router
 from app.core.auth import require_current_user
 from app.core.exceptions import DomainError
+from app.core.jwt_secret import is_dev_jwt_secret
 from app.core.logging import RequestLoggingMiddleware, logger
 from app.core.metrics import MetricsMiddleware, metrics_response
 from app.core.rate_limit import enforce_rate_limit, limiter
@@ -29,19 +30,23 @@ from app.core.security_headers import SecurityHeadersMiddleware
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if os.getenv("JWT_SECRET") is None:
+    # is_dev_jwt_secret(), not `os.getenv(...) is None`: JWT_SECRET= (as shipped
+    # in .env.example) arrives as an empty string, which signs with the same
+    # public dev default but used to log nothing (#385).
+    if is_dev_jwt_secret():
         logger.warning(
-            "JWT_SECRET not set — signing tokens with a fixed, publicly-known dev "
-            "secret; anyone can forge a valid-looking login. Set JWT_SECRET before "
+            "JWT_SECRET not set (or blank) — signing tokens with a fixed, publicly-known "
+            "dev secret; anyone can forge a valid-looking login. Set JWT_SECRET before "
             "exposing this app on any network you don't fully trust."
         )
     # Webhook signature verification is per-org (organizations.webhook_secret,
     # Epoch 10 PR 12/#148) now, not a single global env var — a boot-time
     # scan would mean querying every org on every startup for a fact that
-    # can change per-org at any time. require_webhook_signature logs a
-    # warning on every request it lets through unsigned instead, which
-    # covers the same "don't lose visibility into this" goal without that
-    # cost.
+    # can change per-org at any time. require_webhook_signature fails closed
+    # instead: it returns 401 (and logs a webhook_secret_not_configured error)
+    # for any org whose secret is unset, so unsigned requests are never let
+    # through. That covers the same "don't lose visibility into this" goal
+    # without a startup scan.
     yield
 
 

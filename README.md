@@ -580,7 +580,7 @@ decisions no wizard should make silently.
 | `DB_POOL_SIZE` | `5` | SQLAlchemy connection pool size |
 | `DB_MAX_OVERFLOW` | `10` | Extra connections allowed above pool size under load |
 | `CORS_ORIGINS` | `http://localhost:8501` | Comma-separated list of allowed CORS origins |
-| `JWT_SECRET` | unset | Signs/verifies JWTs issued by `POST /api/auth/login`; unset falls back to a fixed, publicly-known dev secret (local dev only — see [SECURITY.md](SECURITY.md)) |
+| `JWT_SECRET` | unset | Signs/verifies JWTs issued by `POST /api/auth/login`; unset or blank falls back to a fixed, publicly-known dev secret (local dev only — the production compose file refuses to start without one; see [SECURITY.md](SECURITY.md)) |
 | `RATE_LIMIT` | `100/minute` | Default rate limit on `/api` routes (slowapi syntax) |
 | `DATA_LAKE_ROOT` | `./data_lake` | Parquet data lake root — local path or an `s3://` URI |
 | `WAREHOUSE_ROOT` | `./warehouse` | Warehouse mart/dim Parquet output — local path or an `s3://` URI |
