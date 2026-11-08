@@ -859,6 +859,35 @@ def test_fleet_overview_urgency_filter_narrows_table(client, dashboard_db, monke
     assert len([b for b in at.button if b.label == "View →"]) == 1
 
 
+def test_product_detail_without_trained_model_degrades_instead_of_crashing(
+    client, dashboard_db, monkeypatch
+):
+    # A product with no trained model has no forecast, hence no restock
+    # recommendation. The page must still render (inventory + a notice), not
+    # raise -- before this, load_restock's FileNotFoundError was unhandled.
+    product = create_product(client, "Untrained")
+    purchase(client, product["id"], 25)
+    user = _make_dashboard_user(dashboard_db)
+
+    def _no_model(*a, **k):
+        raise FileNotFoundError("No trained model found for product. Run make train first.")
+
+    _mock_forecast(monkeypatch, fn=_no_model)
+
+    st.cache_data.clear()
+    at = AppTest.from_file(PRODUCT_DETAIL_PAGE)
+    _signed_in(at, user)
+    at.run()
+
+    assert not at.exception
+    metrics = {m.label: m.value for m in at.metric}
+    assert metrics["Current Inventory"] == "25 units"
+    # Restock-derived metrics are skipped, not rendered with bogus values.
+    assert "Projected Demand (7d)" not in metrics
+    assert "Recommended Order" not in metrics
+    assert any("No trained model found" in i.value for i in at.info)
+
+
 def test_product_detail_deep_link_preselects_product(client, dashboard_db, monkeypatch):
     product_a = create_product(client, "Alpha")
     product_b = create_product(client, "Beta")
