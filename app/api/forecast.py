@@ -14,6 +14,13 @@ from app.services.restock_service import get_restock_recommendation
 router = APIRouter(prefix="/forecast", tags=["forecast"])
 
 
+def _no_model_detail(product_id: int) -> str:
+    # Fixed message, deliberately not str(exc): a raw OS/S3 FileNotFoundError
+    # carries the server-side path or bucket key, which must not reach the
+    # client. The original error is logged server-side instead.
+    return f"No trained model found for product {product_id}. Run make train first."
+
+
 @router.get("/{product_id}", response_model=ForecastResponse)
 def get_forecast(
     product_id: int,
@@ -27,7 +34,10 @@ def get_forecast(
     try:
         df = forecast(product_id, days=days, organization_id=organization_id)
     except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        logger.warning(
+            "forecast_model_not_found", extra={"product_id": product_id, "reason": str(e)}
+        )
+        raise HTTPException(status_code=404, detail=_no_model_detail(product_id))
     except Exception:
         logger.exception("forecast_failed", extra={"product_id": product_id})
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -63,7 +73,10 @@ def get_restock(
     except DomainError:
         raise
     except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        logger.warning(
+            "restock_model_not_found", extra={"product_id": product_id, "reason": str(e)}
+        )
+        raise HTTPException(status_code=404, detail=_no_model_detail(product_id))
     except Exception:
         logger.exception("restock_failed", extra={"product_id": product_id})
         raise HTTPException(status_code=500, detail="Internal server error")

@@ -222,6 +222,37 @@ def test_forecast_endpoint_no_model(client):
     assert response.status_code == 404
 
 
+_PATHY_ERROR = "[Errno 2] No such file or directory: '/srv/ims/models/org_id=1/prophet_1.pkl'"
+
+
+def test_forecast_endpoint_404_does_not_echo_server_paths(client):
+    product = create_product(client, "Pathy")
+    with patch(
+        "app.api.forecast.forecast",
+        side_effect=FileNotFoundError(_PATHY_ERROR),
+    ):
+        response = client.get(f"/api/forecast/{product['id']}")
+
+    assert response.status_code == 404
+    detail = response.json()["detail"]
+    assert detail == f"No trained model found for product {product['id']}. Run make train first."
+    assert "/srv/ims" not in detail
+
+
+def test_restock_endpoint_404_does_not_echo_server_paths(client):
+    product = create_product(client, "Pathy")
+    with patch(
+        "app.services.restock_service.forecast",
+        side_effect=FileNotFoundError(_PATHY_ERROR),
+    ):
+        response = client.get(f"/api/forecast/restock/{product['id']}")
+
+    assert response.status_code == 404
+    detail = response.json()["detail"]
+    assert detail == f"No trained model found for product {product['id']}. Run make train first."
+    assert "/srv/ims" not in detail
+
+
 @pytest.mark.parametrize("days", [0, -1, 91, 10_000])
 def test_forecast_endpoint_rejects_out_of_range_days(client, days):
     response = client.get(f"/api/forecast/99999?days={days}")
