@@ -166,6 +166,81 @@ def test_bulk_import_endpoint_csv_upload(client):
     assert inventory.json()["quantity"] == 25
 
 
+def _create_product_with_sku(client, sku):
+    response = client.post("/api/products", json={"name": f"Item {sku}", "sku": sku})
+    assert response.status_code == 201, response.json()
+    return response.json()
+
+
+def _upload_csv(client, csv_content):
+    files = {"file": ("events.csv", io.BytesIO(csv_content.encode()), "text/csv")}
+    return client.post("/api/inventory/events/bulk", files=files)
+
+
+def test_bulk_import_numeric_sku_and_event_id_columns(client):
+    # All-numeric sku/event_id columns are very common. pandas used to infer
+    # int64 for them, which broke every row twice over: Pydantic won't coerce
+    # int -> str, and "00123" had already become 123 (leading zeros lost), so
+    # it could never match the real SKU.
+    padded_1 = _create_product_with_sku(client, "00123")
+    padded_2 = _create_product_with_sku(client, "00456")
+    lookalike = _create_product_with_sku(client, "123")  # what "00123" would collapse to
+
+    response = _upload_csv(
+        client,
+        "sku,event_type,quantity,event_id\n00123,PURCHASE,2,1001\n00456,PURCHASE,1,1002\n",
+    )
+
+    assert response.status_code == 200, response.json()
+    body = response.json()
+    assert body["rows_failed"] == 0, body
+    assert body["rows_succeeded"] == 2
+    assert [r["event_id"] for r in body["results"]] == ["1001", "1002"]
+
+    assert client.get(f"/api/inventory/{padded_1['id']}").json()["quantity"] == 2
+    assert client.get(f"/api/inventory/{padded_2['id']}").json()["quantity"] == 1
+    # Resolved the exact SKU, not the zero-stripped one.
+    assert client.get(f"/api/inventory/{lookalike['id']}").json()["quantity"] == 0
+
+
+def test_bulk_import_literal_na_like_values_are_not_turned_into_nan(client):
+    # pandas' default NA parsing turns text like "NA", "N/A" and "null" into
+    # NaN, so a SKU or event id that is literally one of those was lost.
+    na_product = _create_product_with_sku(client, "NA")
+    slash_product = _create_product_with_sku(client, "N/A")
+
+    response = _upload_csv(
+        client,
+        "sku,event_type,quantity,event_id\nNA,PURCHASE,3,null\nN/A,PURCHASE,4,None\n",
+    )
+
+    assert response.status_code == 200, response.json()
+    body = response.json()
+    assert body["rows_failed"] == 0, body
+    assert [r["event_id"] for r in body["results"]] == ["null", "None"]
+    assert client.get(f"/api/inventory/{na_product['id']}").json()["quantity"] == 3
+    assert client.get(f"/api/inventory/{slash_product['id']}").json()["quantity"] == 4
+
+
+def test_bulk_import_blank_quantity_fails_only_that_row(client):
+    product = _create_product_with_sku(client, "SKU-BLANKQ")
+
+    response = _upload_csv(
+        client,
+        "sku,event_type,quantity,event_id\n"
+        "SKU-BLANKQ,PURCHASE,5,blankq-1\n"
+        "SKU-BLANKQ,PURCHASE,,blankq-2\n",
+    )
+
+    assert response.status_code == 200, response.json()
+    body = response.json()
+    assert body["rows_succeeded"] == 1
+    assert body["rows_failed"] == 1
+    assert body["results"][1]["status"] == "failed"
+    assert "quantity" in body["results"][1]["error"]
+    assert client.get(f"/api/inventory/{product['id']}").json()["quantity"] == 5
+
+
 def test_bulk_import_endpoint_records_created_by_id(client, db):
     current_user = db.query(User).filter(User.email == "test-client@example.com").first()
     product = create_product(client)
