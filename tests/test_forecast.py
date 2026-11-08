@@ -311,6 +311,75 @@ def test_train_model_rejects_data_below_min_training_days(tmp_path, monkeypatch)
         forecast_service.train_model(1)
 
 
+def _write_feature_store(tmp_path, days_by_product):
+    """Write an org-1 daily_sales.parquet with the given {product_id: n_days}."""
+    frames = []
+    for pid, n_days in days_by_product.items():
+        df = _weekday_shaped_series(n_days=n_days, seed=pid).rename(columns={"y": "units_sold"})
+        df["date"] = df["ds"]
+        df["product_id"] = pid
+        frames.append(df[["product_id", "date", "units_sold"]])
+    org_dir = tmp_path / "org_id=1"
+    org_dir.mkdir(exist_ok=True)
+    pd.concat(frames).to_parquet(org_dir / "daily_sales.parquet")
+
+
+def test_train_all_models_skips_product_with_insufficient_data(tmp_path, monkeypatch):
+    """A product under _MIN_TRAINING_DAYS is reported as skipped, not raised --
+    exercises the real train_model() check (it raises before Prophet/MLflow)."""
+    import app.services.forecast_service as forecast_service
+
+    _write_feature_store(tmp_path, {1: 7})
+    monkeypatch.setattr(forecast_service, "FEATURE_STORE_PATH", tmp_path)
+    monkeypatch.setattr(forecast_service, "MODELS_DIR", tmp_path / "models")
+
+    results = forecast_service.train_all_models(1)
+
+    assert len(results) == 1
+    assert results[0]["product_id"] == 1
+    assert "Need at least 14 days" in results[0]["skipped"]
+
+
+def test_train_all_models_continues_past_a_skipped_product(tmp_path, monkeypatch):
+    """Regression: one new short-history product used to abort the whole run,
+    so every product after it was never retrained."""
+    import app.services.forecast_service as forecast_service
+
+    _write_feature_store(tmp_path, {1: 7, 2: 30})  # short product comes FIRST
+    monkeypatch.setattr(forecast_service, "FEATURE_STORE_PATH", tmp_path)
+
+    def fake_train_model(pid, organization_id=1):
+        if pid == 1:
+            raise forecast_service.InsufficientTrainingDataError("only 7 days")
+        return {"product_id": pid, "training_rows": 30}
+
+    monkeypatch.setattr(forecast_service, "train_model", fake_train_model)
+
+    results = forecast_service.train_all_models(1)
+
+    assert results == [
+        {"product_id": 1, "skipped": "only 7 days"},
+        {"product_id": 2, "training_rows": 30},
+    ]
+
+
+def test_train_all_models_still_raises_on_unexpected_failure(tmp_path, monkeypatch):
+    """Only the expected insufficient-data case is tolerated -- a real
+    training failure must stay loud, not be silently skipped."""
+    import app.services.forecast_service as forecast_service
+
+    _write_feature_store(tmp_path, {1: 30})
+    monkeypatch.setattr(forecast_service, "FEATURE_STORE_PATH", tmp_path)
+
+    def broken_train_model(pid, organization_id=1):
+        raise RuntimeError("prophet exploded")
+
+    monkeypatch.setattr(forecast_service, "train_model", broken_train_model)
+
+    with pytest.raises(RuntimeError, match="prophet exploded"):
+        forecast_service.train_all_models(1)
+
+
 def test_load_model_s3_cache_disambiguated_by_org(tmp_path, monkeypatch):
     """
     Epoch 10 PR 15 (#151): _MODEL_CACHE_DIR is one shared local temp
