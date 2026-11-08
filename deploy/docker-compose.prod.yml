@@ -5,10 +5,11 @@
 #     --project-directory . up -d
 #
 # See docs/deployment/self-hosted.md for the full walkthrough. Requires a
-# .env file (copy .env.example) with, at minimum, POSTGRES_PASSWORD set
-# (fails loudly at startup if unset) and JWT_SECRET set (falls back to a
-# fixed, publicly-known dev secret if unset, rather than failing — see
-# SECURITY.md).
+# .env file (copy .env.example) with, at minimum, POSTGRES_PASSWORD and
+# JWT_SECRET set. Compose refuses to start without either (unset OR empty --
+# .env.example ships both blank): a missing JWT_SECRET would otherwise mean
+# signing every login token with a fixed, publicly-known dev secret (#385; see
+# SECURITY.md). Generate one with: openssl rand -hex 32
 
 services:
   db:
@@ -61,6 +62,9 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-ims}
+      # Signs login tokens (and the Square OAuth state). Required: without it the
+      # app would fall back to a public dev secret anyone can sign tokens with.
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env (generate one with `openssl rand -hex 32`)}
       # Required so /metrics can merge counters across Gunicorn's worker
       # processes — see config/gunicorn.conf.py and app/core/metrics.py.
       PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus_multiproc
@@ -85,6 +89,9 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-ims}
+      # Signs the Square OAuth state, which the api verifies -- must be the same
+      # value as the api's, so both read it from .env.
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env (generate one with `openssl rand -hex 32`)}
     # Unlike `api`, the dashboard has no app-level auth (no bearer-token
     # equivalent) — Caddy's basic_auth is its only protection. So, unlike
     # api's port staying published here, the dashboard's port is hidden by

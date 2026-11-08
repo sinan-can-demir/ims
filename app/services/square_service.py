@@ -20,6 +20,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import DomainError
+from app.core.jwt_secret import get_jwt_secret
 from app.models.organization import Organization
 
 SQUARE_APPLICATION_ID = os.getenv("SQUARE_APPLICATION_ID")
@@ -30,11 +31,10 @@ SQUARE_API_BASE_URL = os.getenv("SQUARE_API_BASE_URL", "https://connect.squareup
 # ever reads sales data, never writes anything back to Square.
 _OAUTH_SCOPE = "ORDERS_READ MERCHANT_PROFILE_READ"
 
-# Same fallback string as app/core/auth.py's _JWT_SECRET -- read
-# independently here rather than importing that module's private name
-# across a service boundary. Used only to sign the OAuth `state`
-# parameter (CSRF protection), not to sign real JWTs.
-_STATE_SECRET = os.getenv("JWT_SECRET") or "insecure-dev-secret-do-not-use-in-production"
+# Same secret as app/core/auth.py's _JWT_SECRET, via the shared helper so the
+# two can never disagree about what "unset" means (#385). Used only to sign
+# the OAuth `state` parameter (CSRF protection), not to sign real JWTs.
+_STATE_SECRET = get_jwt_secret()
 
 # 10 minutes -- long enough for a real login, short enough to bound replay.
 _STATE_MAX_AGE_SECONDS = 600

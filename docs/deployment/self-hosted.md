@@ -36,9 +36,10 @@ cp .env.example .env
 Edit `.env` and set, at minimum:
 - `POSTGRES_PASSWORD` — a real password (the compose config refuses to
   start without one; there's no insecure default in production mode)
-- `JWT_SECRET` — generate with `openssl rand -hex 32`. Leaving this unset
-  falls back to a fixed, publicly-known dev secret rather than disabling
-  auth (there's no way to "disable" JWT signing) — fine for local dev but
+- `JWT_SECRET` — generate with `openssl rand -hex 32`. The compose config
+  refuses to start without one (leaving it blank, as `.env.example` ships
+  it, counts as missing). Without a real secret the app would sign every
+  login with a fixed, publicly-known dev secret — fine for local dev, but
   **not** for anything reachable on the open internet — see
   [`SECURITY.md`](../../SECURITY.md).
 - `CORS_ORIGINS` — if you're also running the dashboard, point this at
