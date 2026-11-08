@@ -1,6 +1,6 @@
 # app/api/purchase_orders.py
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_org_id, require_current_user
@@ -141,5 +141,21 @@ def generate_purchase_order_route(
     current_user: User = Depends(require_current_user),
     organization_id: int = Depends(get_current_org_id),
 ):
-    po = generate_draft_from_forecast(db, product_id, supplier_id, current_user.id, organization_id)
+    try:
+        po = generate_draft_from_forecast(
+            db, product_id, supplier_id, current_user.id, organization_id
+        )
+    except FileNotFoundError:
+        # No trained model for this product yet, so there is no forecast to
+        # size a PO from. Same 404 as GET /api/forecast/restock/{id} for the
+        # same condition, instead of an unhandled 500. The forecast is read
+        # before any PO row is created, so nothing is left behind.
+        #
+        # Fixed message, deliberately not str(e): a raw OS/S3 FileNotFoundError
+        # carries the server-side path or bucket key, which must not reach
+        # the client.
+        raise HTTPException(
+            status_code=404,
+            detail=f"No trained model found for product {product_id}. Run make train first.",
+        )
     return _to_response(po, list_purchase_order_lines(db, po.id, organization_id))

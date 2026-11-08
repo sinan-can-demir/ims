@@ -351,6 +351,30 @@ def test_generate_from_forecast_creates_draft(client):
     assert body["lines"][0]["quantity"] > 0
 
 
+def test_generate_from_forecast_without_trained_model_returns_404(client):
+    supplier = _create_supplier(client)
+    product = create_product(client, "Untrained Flour")
+
+    # A raw OS-style message with a server path, to prove it is never echoed.
+    with patch(
+        "app.services.restock_service.forecast",
+        side_effect=FileNotFoundError(
+            "[Errno 2] No such file or directory: '/srv/ims/models/org_id=1/prophet_1.pkl'"
+        ),
+    ):
+        response = client.post(
+            f"/api/purchase-orders/generate/{product['id']}",
+            params={"supplier_id": supplier["id"]},
+        )
+
+    assert response.status_code == 404
+    detail = response.json()["detail"]
+    assert detail == f"No trained model found for product {product['id']}. Run make train first."
+    assert "/srv/ims" not in detail
+    # The forecast is read before any PO is created -- nothing left behind.
+    assert client.get("/api/purchase-orders").json() == []
+
+
 def test_generate_from_forecast_no_restock_needed(client):
     supplier = _create_supplier(client)
     ingredient = create_product(client, "Flour")
