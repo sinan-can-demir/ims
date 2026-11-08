@@ -75,7 +75,17 @@ def bulk_import_events(
         )
 
     try:
-        df = pd.read_csv(io.BytesIO(raw))
+        # sku and event_id are identifiers, not numbers: read them as text so
+        # all-numeric columns don't become int64 (which Pydantic won't coerce
+        # to str, and which drops leading zeros: "00123" -> 123). Also turn off
+        # pandas' default NA parsing, which silently turns a SKU or event id
+        # that is literally "NA", "N/A" or "null" into NaN. quantity is left
+        # to pandas' inference; IngestRowInput validates/coerces it per row.
+        df = pd.read_csv(
+            io.BytesIO(raw),
+            dtype={"sku": str, "event_id": str},
+            keep_default_na=False,
+        )
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Could not parse CSV: {e}")
 
