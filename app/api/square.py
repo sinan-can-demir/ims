@@ -12,6 +12,7 @@
 # check.
 
 import os
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import RedirectResponse
@@ -51,6 +52,9 @@ def square_oauth_callback(
         square_service.save_connection(db, organization_id, token_response)
     except square_service.SquareOAuthError as e:
         logger.warning("square_oauth_callback_failed", extra={"error": str(e)})
-        return RedirectResponse(url=f"{_DASHBOARD_URL}?square_error={e}")
+        # urlencode, not an f-string: the message can include Square's raw
+        # response body, and an unescaped "&" / "#" in it would add query
+        # parameters to (or cut off) the redirect URL.
+        return RedirectResponse(url=f"{_DASHBOARD_URL}?{urlencode({'square_error': str(e)})}")
 
     return RedirectResponse(url=f"{_DASHBOARD_URL}?square_connected=true")
