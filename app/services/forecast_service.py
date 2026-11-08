@@ -30,6 +30,15 @@ _MODEL_CACHE_DIR = Path(tempfile.gettempdir()) / "ims_model_cache"
 _MIN_TRAINING_DAYS = 14
 
 
+class InsufficientTrainingDataError(ValueError):
+    """A product has fewer than _MIN_TRAINING_DAYS of history to train on.
+
+    A ValueError subclass so existing `except ValueError` / `pytest.raises(ValueError)`
+    callers keep working. Separate type so train_all_models() can skip exactly this
+    expected, per-product condition without also swallowing real training failures.
+    """
+
+
 def _ensure_directories(organization_id: int) -> None:
     storage.mkdir(storage.join(MODELS_DIR, f"org_id={organization_id}"))
     storage.mkdir(storage.join(FEATURE_STORE_PATH, f"org_id={organization_id}"))
@@ -118,7 +127,7 @@ def train_model(product_id: int, organization_id: int = 1) -> dict:
     product_df = df[df["product_id"] == product_id].copy()
 
     if len(product_df) < _MIN_TRAINING_DAYS:
-        raise ValueError(
+        raise InsufficientTrainingDataError(
             f"Product {product_id} has only {len(product_df)} days of data. "
             f"Need at least {_MIN_TRAINING_DAYS} days (two full weeks) to train — "
             "see the _MIN_TRAINING_DAYS comment above for why 7 wasn't enough."
@@ -190,14 +199,32 @@ def train_model(product_id: int, organization_id: int = 1) -> dict:
 
 
 def train_all_models(organization_id: int = 1) -> list[dict]:
-    """Train a model for every product in this org's feature store."""
+    """Train a model for every product in this org's feature store.
+
+    A product with fewer than _MIN_TRAINING_DAYS of history (typically a newly
+    added one) is skipped with a warning and reported as a
+    {"product_id": ..., "skipped": reason} entry, instead of aborting the run --
+    otherwise one new product would stop every product after it from being
+    retrained. Any other failure still raises: only this expected, per-product
+    condition is tolerated.
+    """
 
     df = storage.read_parquet(
         storage.join(FEATURE_STORE_PATH, f"org_id={organization_id}", "daily_sales.parquet")
     )
     product_ids = df["product_id"].unique().tolist()
 
-    return [train_model(pid, organization_id) for pid in product_ids]
+    results = []
+    for pid in product_ids:
+        try:
+            results.append(train_model(pid, organization_id))
+        except InsufficientTrainingDataError as e:
+            logger.warning(
+                "model_training_skipped_insufficient_data",
+                extra={"product_id": pid, "organization_id": organization_id},
+            )
+            results.append({"product_id": pid, "skipped": str(e)})
+    return results
 
 
 def rollback_model(product_id: int, version: int, organization_id: int = 1) -> dict:

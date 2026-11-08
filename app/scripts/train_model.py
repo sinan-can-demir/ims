@@ -42,12 +42,14 @@ def main() -> None:
         [args.organization_id] if args.organization_id is not None else _active_organization_ids()
     )
 
+    skipped = 0
     for org_id in org_ids:
         results = train_all_models(org_id)
         for r in results:
             print(r)
+            skipped += "skipped" in r
 
-    print("All models trained")
+    print("All models trained" if not skipped else f"Training finished ({skipped} skipped)")
 
 
 if __name__ == "__main__":
