@@ -117,13 +117,30 @@ migration that backfilled existing rows and `scripts/rotate_webhook_secret.py`
 for issuing a new secret if the original is lost.) Same constant-time
 comparison via `hmac.compare_digest` either way.
 
-Also rate-limited independently of the `/api` limit below —
-`enforce_webhook_rate_limit` (`app/core/rate_limit.py`), keyed by the
-target `organization_id` rather than client IP, since webhook senders
-(POS/e-commerce platforms) commonly deliver from a shared pool of egress
-IPs across many merchants and IP-keying would let one busy org exhaust
-the bucket for an unrelated org. Default `60/minute`, configurable via
-`WEBHOOK_RATE_LIMIT`.
+Also rate-limited independently of the `/api` limit below, in two layers
+(`app/api/webhooks.py` runs them in this order, and stops at the first
+failure):
+
+1. **Per-IP ceiling** (`enforce_webhook_ip_rate_limit`, before the
+   signature check) — a cheap flood guard so an unsigned flood is rejected
+   without paying for an HMAC and a DB lookup per request. Deliberately
+   generous: `600/minute`, configurable via `WEBHOOK_IP_RATE_LIMIT`, because
+   POS/e-commerce senders share egress IPs across many merchants. Exceeding
+   it returns `429`.
+2. **Per-org limit** (`enforce_webhook_rate_limit`, *after* the signature
+   check) — keyed by the target `organization_id`, not client IP, so one
+   busy org can't exhaust another's bucket. Default `60/minute`,
+   configurable via `WEBHOOK_RATE_LIMIT`. Only requests that pass signature
+   verification are charged to it.
+
+Why the order matters (#386): the org id is part of the URL, so anyone can
+aim traffic at any org. Before this fix the per-org limit ran *before* the
+signature check, so ~61 unsigned requests/minute to `/api/webhooks/1/ingest`
+used up org 1's whole budget and its real, signed deliveries got `429` for
+as long as the attack lasted. Now unsigned or forged requests get `401` and
+spend nothing from the org's bucket. Residual risk: the per-IP ceiling keys
+on `rate_limit_key`, so it inherits that function's `X-Forwarded-For`
+caveats (#387).
 
 ## Rate limiting
 
@@ -133,8 +150,9 @@ the bucket for an unrelated org. Default `60/minute`, configurable via
 `100/minute`, configurable via the `RATE_LIMIT` env var. Limit exceeded
 returns `429`. `/health` and `/metrics` are exempt.
 `/api/webhooks/{organization_id}/ingest` has its own separate, per-org rate
-limit instead (see "Webhook signature verification" above) — not exempt,
-just a different `Limiter` instance with different keying.
+limits instead (a per-IP ceiling plus a per-org limit, see "Webhook
+signature verification" above) — not exempt, just different `Limiter`
+instances with different keying.
 
 Keying is by IP only, deliberately — not by the authenticated user. Partly
 because `POST /api/auth/login` itself has no user identity to key on yet
@@ -166,7 +184,7 @@ routing has already resolved the endpoint, so there's no route-matching to
 get wrong. `/health` and `/metrics` are exempt structurally now (the
 dependency simply isn't attached to those routes) rather than via
 slowapi's `@limiter.exempt` name-based lookup. `/api/webhooks/{organization_id}/ingest`
-gets its own separate per-org-keyed dependency instead of this one — see
+gets its own separate dependencies (per-IP ceiling + per-org limit) instead of this one — see
 "Webhook signature verification" above.
 
 **`rate_limit_key` now trusts a real client IP behind a proxy, instead of
@@ -217,7 +235,7 @@ now cap the size of a single request, independent of the rate limits above:
   ever touches the body) and 50,000 rows (checked after parsing, catches a
   compact-but-huge-row-count file that's small in bytes).
 - `POST /api/webhooks/{organization_id}/ingest` — has its own HMAC trust
-  boundary and per-org rate limit (see "Webhook signature verification"
+  boundary and per-IP + per-org rate limits (see "Webhook signature verification"
   above), plus `WebhookIngestPayload.events` capped at 1000 items per
   request — generous for a near-real-time delta, not a bulk history dump
   (that's what the CSV path above is for).

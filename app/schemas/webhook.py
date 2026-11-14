@@ -27,6 +27,7 @@ class WebhookIngestPayload(BaseModel):
     # POST /api/inventory/events/bulk's job) — 1000 is generous for that
     # use case while still bounding the per-row-DB-round-trip processing
     # cost in ingestion_service.ingest_events(), and this route is
-    # explicitly rate-limit-exempt (SECURITY.md) so there's no secondary
-    # throttle to lean on.
+    # rate-limited per org and per IP (SECURITY.md), but those limit request
+    # count, not events per request, so this cap is what bounds one
+    # request's work.
     events: list[WebhookEventItem] = Field(max_length=1000)

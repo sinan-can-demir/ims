@@ -83,6 +83,11 @@ def enforce_rate_limit(request: Request) -> None:
 
 
 _WEBHOOK_DEFAULT_RATE_LIMIT = os.getenv("WEBHOOK_RATE_LIMIT", "60/minute")
+# Generous on purpose: POS senders share egress IPs across many merchants,
+# so this is only a flood ceiling in front of the HMAC check, not the
+# real per-tenant throttle (that's WEBHOOK_RATE_LIMIT, charged only after
+# the signature verifies).
+_WEBHOOK_IP_DEFAULT_RATE_LIMIT = os.getenv("WEBHOOK_IP_RATE_LIMIT", "600/minute")
 
 
 def webhook_rate_limit_key(request: Request) -> str:
@@ -114,5 +119,28 @@ def enforce_webhook_rate_limit(request: Request) -> None:
     the webhook route (not router-level like `_auth` in app/main.py)
     because the key function needs {organization_id}, which is only
     resolved once FastAPI has matched this specific route.
+
+    Must run AFTER require_webhook_signature (#386). The bucket is keyed
+    by the org id from the URL, which anyone can put in a request; if
+    unsigned requests were charged to it, an attacker with no secret could
+    exhaust a victim org's bucket and make that org's real, signed
+    deliveries get 429. Unsigned requests are bounced by the signature
+    check (401) before reaching this, so only authenticated traffic
+    spends the org's budget.
     """
     webhook_limiter._check_request_limit(request, None, True)
+
+
+# Own Limiter (own bucket namespace), keyed by client IP — the cheap
+# flood ceiling that sits in front of the signature check, so unsigned
+# floods are still rejected without paying for an HMAC + DB lookup each
+# time. Reuses rate_limit_key, so it inherits that function's
+# X-Forwarded-For trust rules (and #387's caveats).
+webhook_ip_limiter = Limiter(
+    key_func=rate_limit_key, default_limits=[_WEBHOOK_IP_DEFAULT_RATE_LIMIT]
+)
+
+
+def enforce_webhook_ip_rate_limit(request: Request) -> None:
+    """Per-IP ceiling for the webhook route; runs BEFORE the signature check."""
+    webhook_ip_limiter._check_request_limit(request, None, True)

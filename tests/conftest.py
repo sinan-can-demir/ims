@@ -10,6 +10,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.auth import create_access_token
+from app.core.rate_limit import webhook_ip_limiter, webhook_limiter
 from app.core.security import hash_password
 from app.database import Base, get_db, normalize_database_url
 from app.main import app
@@ -124,6 +125,8 @@ def client(db):
     # fixture's isolation guarantee (a fresh `db` per test) extends to
     # rate-limit state too, not just the database.
     app.state.limiter.reset()
+    webhook_limiter.reset()
+    webhook_ip_limiter.reset()
 
     def override_get_db():
         yield db
