@@ -68,6 +68,13 @@ services:
       # Required so /metrics can merge counters across Gunicorn's worker
       # processes — see config/gunicorn.conf.py and app/core/metrics.py.
       PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus_multiproc
+      # MUST stay here: this file inherits the base file's `environment`, which
+      # turns the first-run register endpoint ON for the desktop app. Without
+      # this line prod would inherit that and anyone reaching :8000 could claim
+      # admin on a fresh server (#389). Create the first user with
+      # scripts/create_user.py instead; set this to true in .env only if you
+      # deliberately want the browser/desktop wizard against this server.
+      IMS_ENABLE_BOOTSTRAP_REGISTER: ${IMS_ENABLE_BOOTSTRAP_REGISTER:-false}
     # Gunicorn + UvicornWorker instead of the base file's single-worker dev
     # command — real concurrency for production traffic. WEB_CONCURRENCY
     # defaults to 4, tuned for the "1-2 vCPU / 2-4GB RAM" box the deployment

@@ -138,6 +138,7 @@ On a clean Windows 10 and Windows 11 VM:
 - [ ] From a second device on the LAN, `http://<pc-ip>:8000` and `:5432` are unreachable (SEC-1/2)
 - [ ] Reinstall over an existing install: data survives (UC-4)
 - [ ] Uninstall: record what happens to the Docker volume (UC-5)
+- [ ] First-run wizard still creates the first admin: on a fresh install the account form appears, registering succeeds and lands on the dashboard (needs `IMS_ENABLE_BOOTSTRAP_REGISTER=true` in `deploy/docker-compose.yml`, #389; verified only on Linux/Docker, never launched on Windows)
 
 ## Caveats
 

@@ -44,10 +44,21 @@ route requires `Authorization: Bearer <token>`, validated by
   #149). Revisit if a real multi-org self-hosted deployment ever makes
   this matter in practice; see `docs/multi-tenancy.md` for the full
   writeup of what's org-scoped where.
-- **Self-service registration is bootstrap-only, not general-purpose.**
-  `POST /api/auth/register` (added for the desktop installer's first-run
-  wizard, #189 — no self-service `getpass` equivalent existed for a GUI
-  caller) only succeeds while `organization_id=1` has zero users;
+- **Self-service registration is bootstrap-only, not general-purpose, and
+  off unless enabled (#389).**
+  `POST /api/auth/register` and `GET /api/auth/bootstrap-status` (added for
+  the desktop installer's first-run wizard, #189 — no self-service `getpass`
+  equivalent existed for a GUI caller) return `404` unless
+  `IMS_ENABLE_BOOTSTRAP_REGISTER` is truthy (`true`/`1`/`yes`/`on`). Only
+  `deploy/docker-compose.yml` — the stack the desktop app launches — sets it.
+  `deploy/docker-compose.prod.yml` inherits that file's environment, so it
+  pins the value back to `${IMS_ENABLE_BOOTSTRAP_REGISTER:-false}` (off unless
+  an operator opts in via `.env`); the AWS/ECS path never sets it. Before
+  this, the routes were mounted on every deployment, so on a freshly deployed
+  public server the first visitor to reach the API before the operator ran
+  `scripts/create_user.py` could claim the admin account, and registration
+  silently re-opened if org 1 ever had zero users again. When enabled, it
+  only succeeds while `organization_id=1` has zero users;
   hardcodes `role=admin` and `organization_id=1` (no client-settable
   role or org), and is race-safe via `with_for_update()` on the
   organization row rather than a naive count-then-insert, so two

@@ -83,7 +83,9 @@ storage is local disk (named volumes), and S3 is opt-in — see
 
 ## 4. Verify
 
-There's no self-service registration — create your first account with
+There's no self-service registration on a server deploy (the first-run
+endpoint is switched off, `IMS_ENABLE_BOOTSTRAP_REGISTER`, so a stranger can't
+claim the admin account) — create your first account with
 `scripts/create_user.py` (inside the `api` container, or anywhere with
 `DATABASE_URL` pointed at the same Postgres):
 
