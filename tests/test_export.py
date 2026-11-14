@@ -90,7 +90,9 @@ def test_export_schema_columns(client, db, export_paths):
     parquet_files = list(events_root.rglob("*.parquet"))
     assert parquet_files, "No parquet files written"
 
-    df = pd.read_parquet(parquet_files[0])
+    # partitioning=None: assert on the columns physically stored in the file,
+    # not hive partition values (org_id/year/month/day) inferred from the path.
+    df = pd.read_parquet(parquet_files[0], partitioning=None)
 
     expected_columns = {
         "id",

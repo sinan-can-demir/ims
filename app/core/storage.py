@@ -126,6 +126,11 @@ def to_parquet(df: pd.DataFrame, path: str, **kwargs) -> None:
 
 
 def read_parquet(path: str, **kwargs) -> pd.DataFrame:
+    # pandas >= 3.1 (with pyarrow 24) infers hive partition values from the
+    # directory names (org_id=/year=/month=/day=) and adds them as columns
+    # even when reading a single file. IMS only wants the columns physically
+    # stored in the file, so turn partition discovery off explicitly.
+    kwargs.setdefault("partitioning", None)
     return pd.read_parquet(path, storage_options=storage_options(path), **kwargs)
 
 
