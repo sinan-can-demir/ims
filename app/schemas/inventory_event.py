@@ -5,6 +5,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.enums import EventType
+from app.schemas.event_ids import reject_reserved_event_id
 
 
 class InventoryEventCreate(BaseModel):
@@ -23,6 +24,8 @@ class InventoryEventCreate(BaseModel):
         if v == 0:
             raise ValueError("Quantity cannot be zero")
         return v
+
+    _event_id_not_reserved = field_validator("event_id")(reject_reserved_event_id)
 
 
 class InventoryEventResponse(BaseModel):
