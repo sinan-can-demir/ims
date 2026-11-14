@@ -61,6 +61,11 @@ services:
     environment:
       - PYTHONPATH=/app
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/ims
+      # The desktop app launches this file, and its first-run wizard creates
+      # the first admin through POST /api/auth/register. Off everywhere else
+      # (app default); docker-compose.prod.yml pins it off again because it
+      # inherits this list. See SECURITY.md (#389).
+      - IMS_ENABLE_BOOTSTRAP_REGISTER=true
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
 
   dashboard:
