@@ -16,9 +16,10 @@ _DEFAULT_RATE_LIMIT = os.getenv("RATE_LIMIT", "100/minute")
 # plain HTTP on :8000 (see deploy/docker-compose.caddy.yml's comment) — has
 # Docker's published-port NAT preserve the real public client IP as the
 # TCP peer already, no header needed. So: trust X-Forwarded-For's
-# leftmost entry only when the immediate TCP peer is itself a private
-# address — that's exactly the case where "the peer" is our own proxy,
-# not an internet client who could forge the header themselves.
+# rightmost entry (the one our own proxy appended) only when the
+# immediate TCP peer is itself a private address — that's exactly the
+# case where "the peer" is our own proxy, not an internet client who
+# could forge the header themselves.
 _PRIVATE_NETWORKS = tuple(
     ipaddress.ip_network(cidr)
     for cidr in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8")
@@ -50,11 +51,23 @@ def rate_limit_key(request: Request) -> str:
     if peer_ip and _is_trusted_proxy_peer(peer_ip):
         forwarded_for = request.headers.get("X-Forwarded-For")
         if forwarded_for:
-            # Leftmost entry is the original client, appended by the
-            # first (and here, only) proxy hop — revisit this index if a
-            # second hop (e.g. a CDN) is ever added in front of Caddy/ALB.
-            return forwarded_for.split(",")[0].strip()
-
+            # RIGHTMOST entry, not leftmost (#387). Each proxy appends the
+            # address of whoever connected to it, so the right end is the
+            # one our own proxy wrote; everything to its left is whatever
+            # the client chose to send and can be forged. Reading the left
+            # end let an attacker behind the ALB (which appends to, rather
+            # than replaces, a client-supplied header) get a fresh
+            # rate-limit bucket on every request.
+            #
+            # ASSUMPTION — EXACTLY ONE TRUSTED PROXY HOP in front of this
+            # app (Caddy or the ALB). If a second hop is ever added (a CDN
+            # or WAF in front of the ALB/Caddy), the rightmost entry becomes
+            # the FIRST proxy's address, every real client collapses into
+            # one shared bucket, and one noisy client can rate-limit
+            # everyone. At that point this must change to "skip N trusted
+            # hops from the right" (a configurable hop count). Revisit
+            # before adding any second proxy. See SECURITY.md.
+            return forwarded_for.split(",")[-1].strip()
     return peer_ip or "unknown"
 
 
