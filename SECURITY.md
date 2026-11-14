@@ -138,9 +138,9 @@ aim traffic at any org. Before this fix the per-org limit ran *before* the
 signature check, so ~61 unsigned requests/minute to `/api/webhooks/1/ingest`
 used up org 1's whole budget and its real, signed deliveries got `429` for
 as long as the attack lasted. Now unsigned or forged requests get `401` and
-spend nothing from the org's bucket. Residual risk: the per-IP ceiling keys
-on `rate_limit_key`, so it inherits that function's `X-Forwarded-For`
-caveats (#387).
+spend nothing from the org's bucket. The per-IP ceiling keys on
+`rate_limit_key`, so it uses the same rightmost-`X-Forwarded-For` rule and
+one-proxy assumption described under "Rate limiting" below (#387).
 
 ## Rate limiting
 
@@ -194,7 +194,7 @@ network, or the ALB over its VPC), and in both cases the raw TCP peer
 `request.client.host` sees is the proxy itself, not the real client — so
 every real client behind the same proxy was sharing one rate-limit bucket.
 `rate_limit_key` (`app/core/rate_limit.py`) now trusts `X-Forwarded-For`'s
-leftmost entry, but **only** when the immediate TCP peer's address is
+**rightmost** entry (see "Why rightmost" below), but **only** when the immediate TCP peer's address is
 itself private (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`,
 `127.0.0.0/8`) — i.e. only when the peer can only be our own proxy, never
 an arbitrary internet client, who could otherwise forge the header to reset
@@ -202,6 +202,34 @@ their own bucket on every request. The one deployment path with no proxy at
 all (`deploy/docker-compose.prod.yml` alone, plain HTTP on `:8000`) doesn't need
 this: Docker's published-port NAT already preserves the real public client
 IP as the TCP peer.
+
+**Why rightmost, and the one-proxy assumption (#387).** Each proxy appends the
+address of whoever connected to it, so the *right* end of
+`X-Forwarded-For` is the entry our own proxy wrote and everything to its left
+is client-supplied. Originally this read the leftmost entry, which is
+forgeable behind the ALB: its default `xff_header_processing_mode` is
+`append`, so a client sending `X-Forwarded-For: <random>` got `<random>,
+<real ip>` and a fresh rate-limit bucket on every request, bypassing the IP
+limit on `POST /api/auth/login` (per-account lockout still applied, but
+password spraying across many accounts was unthrottled). Caddy is not
+affected either way: verified against a real `caddy:2-alpine` that it
+overwrites a client-supplied `X-Forwarded-For` with the connecting address
+(one entry), so rightmost and leftmost agree there. `infra/alb.tf` now sets
+`xff_header_processing_mode = "append"` explicitly, because this logic
+depends on it (`remove` would leave no client IP; `preserve` would leave only
+forged values).
+
+**This is only correct with exactly ONE trusted proxy hop. Revisit it
+before adding a second one** (a CDN, WAF or another load balancer in front of
+Caddy/ALB). With two hops the rightmost entry is the first proxy's address,
+so every real client shares a single bucket and one noisy client can
+rate-limit everyone. The fix at that point is a configurable "number of
+trusted hops, counted from the right" instead of a fixed last entry. We chose
+plain rightmost over a hop-count setting now because every documented
+deployment has exactly one hop and a hop-count env var is one more setting
+that silently weakens the limit if set wrong. Not verified against a live
+ALB (no AWS access): this rests on AWS's documented `append` behaviour, and
+`terraform validate` accepting the attribute.
 
 ## Account lockout
 

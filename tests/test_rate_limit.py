@@ -118,10 +118,41 @@ def test_key_func_ignores_forwarded_for_from_public_peer():
     assert rate_limit_key(Request(scope)) == "1.2.3.4"
 
 
-def test_key_func_uses_leftmost_forwarded_for_entry():
+def test_key_func_uses_rightmost_forwarded_for_entry():
+    """
+    #387: the ALB appends the real client IP to whatever the client sent,
+    so "forged, real" from a private peer must key on "real" (the entry our
+    own proxy wrote), never on the attacker-chosen left side.
+    """
     scope = {
         "type": "http",
-        "headers": [(b"x-forwarded-for", b"9.9.9.9, 172.18.0.5")],
+        "headers": [(b"x-forwarded-for", b"6.6.6.6, 9.9.9.9")],
+        "client": ("10.0.1.5", 1234),
+    }
+    assert rate_limit_key(Request(scope)) == "9.9.9.9"
+
+
+def test_key_func_forged_forwarded_for_cannot_pick_a_fresh_bucket():
+    """Different forged left-hand values, same real client -> same key."""
+    keys = {
+        rate_limit_key(
+            Request(
+                {
+                    "type": "http",
+                    "headers": [(b"x-forwarded-for", f"{forged}, 9.9.9.9".encode())],
+                    "client": ("10.0.1.5", 1234),
+                }
+            )
+        )
+        for forged in ("1.1.1.1", "2.2.2.2", "3.3.3.3, 4.4.4.4", "not-an-ip")
+    }
+    assert keys == {"9.9.9.9"}
+
+
+def test_key_func_tolerates_whitespace_around_forwarded_for_entries():
+    scope = {
+        "type": "http",
+        "headers": [(b"x-forwarded-for", b"6.6.6.6 ,   9.9.9.9  ")],
         "client": ("172.18.0.5", 1234),
     }
     assert rate_limit_key(Request(scope)) == "9.9.9.9"
