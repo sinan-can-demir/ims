@@ -28,7 +28,9 @@ def test_single_event_rejects_reserved_ids(client, event_id):
     assert client.get(f"/api/inventory/{product['id']}").json()["quantity"] == 0
 
 
-@pytest.mark.parametrize("event_id", ["evt-1", "po-12", "po-12-line-x", "my-po-1-line-2", "component"])
+@pytest.mark.parametrize(
+    "event_id", ["evt-1", "po-12", "po-12-line-x", "my-po-1-line-2", "component"]
+)
 def test_ordinary_ids_still_accepted(client, event_id):
     product = create_product(client)
     r = client.post(
