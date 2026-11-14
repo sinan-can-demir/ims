@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_webhook_signature
-from app.core.rate_limit import enforce_webhook_rate_limit
+from app.core.rate_limit import enforce_webhook_ip_rate_limit, enforce_webhook_rate_limit
 from app.database import get_db
 from app.schemas.ingestion import IngestResponse
 from app.schemas.webhook import WebhookIngestPayload
@@ -16,12 +16,18 @@ router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 @router.post(
     "/{organization_id}/ingest",
     response_model=IngestResponse,
-    # Rate limit before signature check, not after — deliberately the
-    # opposite order from the _auth list in app/main.py (which does auth
-    # first). A flood of requests should get the cheap 429 rejection
-    # before paying the cost of reading the full body for HMAC
-    # verification.
-    dependencies=[Depends(enforce_webhook_rate_limit), Depends(require_webhook_signature)],
+    # Order matters (#386); FastAPI runs these in list order and stops at
+    # the first one that raises:
+    #   1. per-IP ceiling  - cheap flood rejection before any HMAC/DB work
+    #   2. signature check - unsigned/forged requests get 401 here
+    #   3. per-org limit   - charged ONLY by verified requests, so an
+    #      attacker without the secret can't burn a victim org's bucket
+    #      (the org id in the URL is attacker-chosen).
+    dependencies=[
+        Depends(enforce_webhook_ip_rate_limit),
+        Depends(require_webhook_signature),
+        Depends(enforce_webhook_rate_limit),
+    ],
 )
 def webhook_ingest(
     organization_id: int, payload: WebhookIngestPayload, db: Session = Depends(get_db)

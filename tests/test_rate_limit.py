@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from slowapi.wrappers import LimitGroup
 from starlette.requests import Request
 
-from app.core.rate_limit import rate_limit_key, webhook_limiter
+from app.core.rate_limit import rate_limit_key, webhook_ip_limiter, webhook_limiter
 from app.main import app
 
 from .utils import create_product
@@ -196,3 +196,88 @@ def test_webhook_rate_limit_is_isolated_per_org(client, client_org2, db, second_
             secret=_ORG2_WEBHOOK_SECRET,
         )
         assert other_org.status_code == 200
+
+
+@contextmanager
+def _tight_webhook_ip_limit(limit_string: str):
+    original = webhook_ip_limiter._default_limits
+    webhook_ip_limiter._default_limits = [
+        LimitGroup(
+            limit_string, webhook_ip_limiter._key_func, None, False, None, None, None, 1, False
+        )
+    ]
+    webhook_ip_limiter.reset()
+    try:
+        yield webhook_ip_limiter
+    finally:
+        webhook_ip_limiter._default_limits = original
+        webhook_ip_limiter.reset()
+
+
+def test_unsigned_webhook_requests_do_not_exhaust_the_orgs_bucket(client, db):
+    """
+    #386: the per-org bucket is keyed by the URL's organization_id, which
+    anyone can send. Unsigned requests must get 401 and must NOT spend
+    that org's budget, or an attacker with no secret could make the org's
+    real signed deliveries 429.
+    """
+    _set_webhook_secret(db, 1, _ORG1_WEBHOOK_SECRET)
+    product = create_product(client, "Flooded Widget")
+
+    with _tight_webhook_limit("2/minute"):
+        for _ in range(5):
+            unsigned = client.post("/api/webhooks/1/ingest", json=_webhook_payload(product["sku"]))
+            assert unsigned.status_code == 401
+
+        signed = _signed_webhook_request(
+            client, 1, _webhook_payload(product["sku"]), secret=_ORG1_WEBHOOK_SECRET
+        )
+        assert signed.status_code == 200
+
+
+def test_wrong_signature_webhook_requests_do_not_exhaust_the_orgs_bucket(client, db):
+    _set_webhook_secret(db, 1, _ORG1_WEBHOOK_SECRET)
+    product = create_product(client, "Forged Widget")
+
+    with _tight_webhook_limit("2/minute"):
+        for _ in range(5):
+            forged = _signed_webhook_request(
+                client,
+                1,
+                _webhook_payload(product["sku"]),
+                secret="not-the-secret",  # noqa: S106 -- test value
+            )
+            assert forged.status_code == 401
+
+        signed = _signed_webhook_request(
+            client, 1, _webhook_payload(product["sku"]), secret=_ORG1_WEBHOOK_SECRET
+        )
+        assert signed.status_code == 200
+
+
+def test_webhook_per_ip_ceiling_rejects_unsigned_flood_with_429(client, db):
+    """The cheap per-IP ceiling still stops a flood before the HMAC check."""
+    _set_webhook_secret(db, 1, _ORG1_WEBHOOK_SECRET)
+    product = create_product(client, "Ceiling Widget")
+
+    with _tight_webhook_ip_limit("3/minute"):
+        statuses = [
+            client.post("/api/webhooks/1/ingest", json=_webhook_payload(product["sku"])).status_code
+            for _ in range(5)
+        ]
+    assert statuses == [401, 401, 401, 429, 429]
+
+
+def test_webhook_per_org_limit_still_applies_to_signed_requests(client, db):
+    """Moving the per-org limit after the signature must not remove it."""
+    _set_webhook_secret(db, 1, _ORG1_WEBHOOK_SECRET)
+    product = create_product(client, "Signed Flood Widget")
+
+    with _tight_webhook_limit("2/minute"):
+        statuses = [
+            _signed_webhook_request(
+                client, 1, _webhook_payload(product["sku"]), secret=_ORG1_WEBHOOK_SECRET
+            ).status_code
+            for _ in range(3)
+        ]
+    assert statuses == [200, 200, 429]
