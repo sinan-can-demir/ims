@@ -5,6 +5,17 @@ resource "aws_lb" "main" {
   security_groups    = [aws_security_group.alb.id]
   subnets            = aws_subnet.public[*].id
 
+  # Explicit on purpose (#387). "append" is AWS's default, but the app's
+  # rate limiter (app/core/rate_limit.py rate_limit_key) depends on it: it
+  # reads the RIGHTMOST X-Forwarded-For entry, which is only trustworthy
+  # because the ALB appends the real client IP after anything the client
+  # sent. Do NOT switch to "remove" (the app would see no client IP and
+  # every user would share one rate-limit bucket) or "preserve" (the ALB
+  # would stop adding the real IP, leaving only client-forged values).
+  # Also assumes the ALB is the ONLY proxy hop; adding a CDN/WAF in front of
+  # it means rate_limit_key must change too (see SECURITY.md).
+  xff_header_processing_mode = "append"
+
   tags = {
     Name = "${local.name_prefix}-alb"
   }
