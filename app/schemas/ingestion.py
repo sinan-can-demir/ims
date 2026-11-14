@@ -3,6 +3,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 from app.models.enums import EventType
+from app.schemas.event_ids import reject_reserved_event_id
 from app.schemas.webhook import WEBHOOK_EXTERNAL_ID_MAX_LENGTH, WEBHOOK_SOURCE_MAX_LENGTH
 
 # The longest event_id any caller can legitimately produce: the webhook
@@ -36,6 +37,8 @@ class IngestRowInput(BaseModel):
         if v == 0:
             raise ValueError("Quantity cannot be zero")
         return v
+
+    _event_id_not_reserved = field_validator("event_id")(reject_reserved_event_id)
 
 
 class IngestRowResult(BaseModel):
