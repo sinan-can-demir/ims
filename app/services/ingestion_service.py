@@ -9,6 +9,7 @@
 # row doesn't fail the whole batch.
 
 from pydantic import ValidationError
+from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import DomainError
@@ -16,6 +17,35 @@ from app.core.logging import logger
 from app.schemas.ingestion import IngestRowInput
 from app.services.inventory_service import record_event
 from app.services.product_service import get_product_by_sku
+
+# Postgres SQLSTATEs that mean "this transaction lost a race, try again":
+# deadlock_detected and serialization_failure. Anything else is not retried.
+_RETRYABLE_SQLSTATES = {"40P01", "40001"}
+
+# Deliberately generic: raw driver text can include SQL and parameters.
+_DB_ERROR_MESSAGE = "temporary database error, retry this row"
+
+
+def _is_retryable_db_error(exc: SQLAlchemyError) -> bool:
+    if not isinstance(exc, DBAPIError):
+        return False
+    orig = exc.orig
+    # psycopg2 exposes pgcode, psycopg v3 exposes sqlstate.
+    code = getattr(orig, "pgcode", None) or getattr(orig, "sqlstate", None)
+    return code in _RETRYABLE_SQLSTATES
+
+
+def _record_row(db, row, product_id, created_by_id, organization_id):
+    record_event(
+        db,
+        product_id,
+        row.event_type,
+        row.quantity,
+        row.event_id,
+        created_by_id,
+        organization_id,
+        row.unit_price,
+    )
 
 
 def ingest_events(
@@ -50,16 +80,18 @@ def ingest_events(
             event_id = row.event_id
 
             product = get_product_by_sku(db, row.sku, organization_id)
-            record_event(
-                db,
-                product.id,
-                row.event_type,
-                row.quantity,
-                row.event_id,
-                created_by_id,
-                organization_id,
-                row.unit_price,
-            )
+            try:
+                _record_row(db, row, product.id, created_by_id, organization_id)
+            except SQLAlchemyError as e:
+                # record_event already rolled back. A deadlock/serialization
+                # failure is transient, so retry once; the event_id check
+                # makes the retry idempotent. Other DB errors fall through
+                # to the per-row failure handler below.
+                if not _is_retryable_db_error(e):
+                    raise
+                logger.warning("ingest_row_retry", extra={"event_id": event_id})
+                db.rollback()
+                _record_row(db, row, product.id, created_by_id, organization_id)
 
             results.append(
                 {"row_number": row_number, "event_id": event_id, "status": "success", "error": None}
@@ -75,6 +107,22 @@ def ingest_events(
                     "event_id": event_id,
                     "status": "failed",
                     "error": error_message,
+                }
+            )
+            failed += 1
+
+        except SQLAlchemyError:
+            # Unexpected/persistent DB error (incl. a retry that failed
+            # again). Without this the whole request 500s after earlier rows
+            # already committed and the caller loses every per-row result.
+            db.rollback()
+            logger.exception("ingest_row_db_error", extra={"event_id": event_id})
+            results.append(
+                {
+                    "row_number": row_number,
+                    "event_id": event_id,
+                    "status": "failed",
+                    "error": _DB_ERROR_MESSAGE,
                 }
             )
             failed += 1
