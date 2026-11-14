@@ -21,6 +21,7 @@ from app.core.security import hash_password
 from app.database import get_db
 from app.main import app
 from app.models.enums import UserRole
+from app.models.organization import Organization
 from app.models.user import User
 from app.services.auth_service import authenticate_user, register_first_user
 
@@ -255,6 +256,17 @@ def test_get_current_org_id_reflects_live_row_without_new_token(db, second_org):
 
     resolved = require_current_user(credentials=credentials, db=db)
     assert get_current_org_id(current_user=resolved) == second_org.id
+
+
+@pytest.fixture(autouse=True)
+def _bootstrap_register_enabled(monkeypatch):
+    """
+    The first-run register/bootstrap-status routes are off unless
+    IMS_ENABLE_BOOTSTRAP_REGISTER is set (#389). The existing tests below
+    exercise them as the desktop stack does, so enable it by default; the
+    disabled-by-default tests at the bottom delenv it explicitly.
+    """
+    monkeypatch.setenv("IMS_ENABLE_BOOTSTRAP_REGISTER", "true")
 
 
 def _unauthenticated_client(db):
@@ -576,3 +588,74 @@ def test_login_concurrent_wrong_passwords_lockout_is_exact(db):
     db.refresh(user)
     assert user.failed_login_attempts == 5
     assert user.locked_until is not None
+
+
+# ---------------------------------------------------------------------------
+# Bootstrap routes are opt-in (#389): off by default so a freshly deployed
+# public server can't have its admin account claimed by the first visitor.
+# ---------------------------------------------------------------------------
+
+_REGISTER_BODY = {
+    "email": "stranger@example.com",
+    "password": "correct horse battery",
+    "display_name": "Stranger",
+}
+
+
+def test_register_is_404_by_default_even_when_org_is_empty(db, monkeypatch):
+    monkeypatch.delenv("IMS_ENABLE_BOOTSTRAP_REGISTER", raising=False)
+    client = _unauthenticated_client(db)
+
+    response = client.post("/api/auth/register", json=_REGISTER_BODY)
+
+    assert response.status_code == 404
+    # And no account was created as a side effect.
+    assert db.query(User).count() == 0
+
+
+def test_bootstrap_status_is_404_by_default(db, monkeypatch):
+    monkeypatch.delenv("IMS_ENABLE_BOOTSTRAP_REGISTER", raising=False)
+
+    assert _unauthenticated_client(db).get("/api/auth/bootstrap-status").status_code == 404
+
+
+@pytest.mark.parametrize("value", ["", "false", "0", "no", "off", "  ", "enabled-ish"])
+def test_register_stays_disabled_for_non_truthy_values(db, monkeypatch, value):
+    monkeypatch.setenv("IMS_ENABLE_BOOTSTRAP_REGISTER", value)
+
+    response = _unauthenticated_client(db).post("/api/auth/register", json=_REGISTER_BODY)
+
+    assert response.status_code == 404
+
+
+@pytest.mark.parametrize("value", ["true", "TRUE", "1", "yes", "on", " true "])
+def test_register_enabled_for_truthy_values(db, monkeypatch, value):
+    monkeypatch.setenv("IMS_ENABLE_BOOTSTRAP_REGISTER", value)
+
+    response = _unauthenticated_client(db).post("/api/auth/register", json=_REGISTER_BODY)
+
+    assert response.status_code == 201
+
+
+def test_disabled_register_does_not_break_login_or_create_user_path(db, monkeypatch):
+    """Server deploys use scripts/create_user.py + login; flag off must not touch that."""
+    monkeypatch.delenv("IMS_ENABLE_BOOTSTRAP_REGISTER", raising=False)
+    org = db.query(Organization).first() or Organization(id=1, name="o")
+    db.add(org)
+    db.commit()
+    db.add(
+        User(
+            email="op@example.com",
+            password_hash=hash_password("operator-password"),
+            display_name="Op",
+            organization_id=org.id,
+        )
+    )
+    db.commit()
+
+    response = _unauthenticated_client(db).post(
+        "/api/auth/login", json={"email": "op@example.com", "password": "operator-password"}
+    )
+
+    assert response.status_code == 200
+    assert "access_token" in response.json()
