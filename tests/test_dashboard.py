@@ -907,3 +907,151 @@ def test_product_detail_deep_link_preselects_product(client, dashboard_db, monke
     select = next(s for s in at.selectbox if s.label == "Select Product")
     assert select.value == product_b["id"]
     assert "deep_link_product_id" not in at.session_state
+
+
+# ---------------------------------------------------------------------------
+# Session re-check (#388): require_login() reloads the user on every run, so
+# deactivation / demotion / org changes take effect on the next rerun instead
+# of lasting until the browser session ends.
+# ---------------------------------------------------------------------------
+
+
+def _update_user(dashboard_db, user_id, **changes):
+    session = dashboard_db()
+    try:
+        row = session.query(User).filter(User.id == user_id).one()
+        for key, value in changes.items():
+            setattr(row, key, value)
+        session.commit()
+    finally:
+        session.close()
+
+
+def test_require_login_active_user_stays_signed_in_across_reruns(client, dashboard_db):
+    user = _make_dashboard_user(dashboard_db, email="stay@example.com")
+
+    at = AppTest.from_file(SQUARE_CONNECT_PAGE)
+    _signed_in(at, user)
+    at.run()
+    at.run()
+
+    assert not at.exception
+    assert at.session_state["user"]["id"] == user.id
+    assert not any("session has ended" in w.value for w in at.warning)
+
+
+def test_deactivated_user_is_signed_out_on_next_rerun(client, dashboard_db):
+    user = _make_dashboard_user(dashboard_db, email="deactivated@example.com")
+
+    at = AppTest.from_file(SQUARE_CONNECT_PAGE)
+    _signed_in(at, user)
+    at.run()
+    assert not at.exception
+    assert "user" in at.session_state
+
+    _update_user(dashboard_db, user.id, is_active=False)
+    at.run()
+
+    assert not at.exception
+    assert "user" not in at.session_state
+    assert any("session has ended" in w.value for w in at.warning)
+    # Landed on the login form, and gated content did not render.
+    assert any(t.label == "Email" for t in at.text_input)
+    assert not any("admin-only setting" in i.value for i in at.info)
+
+
+def test_forced_logout_clears_all_session_state(client, dashboard_db):
+    """Same wipe as the Sign out button: no stale widget keys survive."""
+    user = _make_dashboard_user(dashboard_db, email="wipe@example.com")
+
+    at = AppTest.from_file(SQUARE_CONNECT_PAGE)
+    _signed_in(at, user)
+    at.session_state["some_leftover_widget_key"] = "stale-value"
+    at.run()
+
+    _update_user(dashboard_db, user.id, is_active=False)
+    at.run()
+
+    assert "user" not in at.session_state
+    assert "some_leftover_widget_key" not in at.session_state
+
+
+def test_notice_shows_once_then_plain_login_form(client, dashboard_db):
+    user = _make_dashboard_user(dashboard_db, email="once@example.com")
+
+    at = AppTest.from_file(SQUARE_CONNECT_PAGE)
+    _signed_in(at, user)
+    at.run()
+    _update_user(dashboard_db, user.id, is_active=False)
+    at.run()
+    assert any("session has ended" in w.value for w in at.warning)
+
+    at.run()
+    assert not any("session has ended" in w.value for w in at.warning)
+
+
+def test_deleted_user_is_signed_out_on_next_rerun(client, dashboard_db):
+    user = _make_dashboard_user(dashboard_db, email="deleted@example.com")
+
+    at = AppTest.from_file(SQUARE_CONNECT_PAGE)
+    _signed_in(at, user)
+    at.run()
+
+    session = dashboard_db()
+    try:
+        session.query(User).filter(User.id == user.id).delete()
+        session.commit()
+    finally:
+        session.close()
+    at.run()
+
+    assert not at.exception
+    assert "user" not in at.session_state
+    assert any("session has ended" in w.value for w in at.warning)
+
+
+def test_demoted_admin_loses_admin_ui_without_signing_out(client, dashboard_db, monkeypatch):
+    from app.services import square_service
+
+    monkeypatch.setattr(square_service, "SQUARE_APPLICATION_ID", "sandbox-sq0idb-test")
+    admin = _make_dashboard_user(dashboard_db, email="demoted@example.com", role=UserRole.ADMIN)
+
+    at = AppTest.from_file(SQUARE_CONNECT_PAGE)
+    _signed_in(at, admin)
+    at.run()
+    assert not any("admin-only setting" in i.value for i in at.info)  # admin view
+
+    _update_user(dashboard_db, admin.id, role=UserRole.MEMBER)
+    at.run()
+
+    assert not at.exception
+    assert at.session_state["user"]["role"] == UserRole.MEMBER.value
+    assert any("admin-only setting" in i.value for i in at.info)
+
+
+def test_stale_session_role_is_corrected_from_db(client, dashboard_db):
+    """A session snapshot claiming admin does not outrank the DB's member."""
+    member = _make_dashboard_user(dashboard_db, email="stale-role@example.com")
+
+    at = AppTest.from_file(SQUARE_CONNECT_PAGE)
+    _signed_in(at, member)
+    at.session_state["user"]["role"] = UserRole.ADMIN.value  # forged/stale snapshot
+    at.run()
+
+    assert not at.exception
+    assert at.session_state["user"]["role"] == UserRole.MEMBER.value
+    assert any("admin-only setting" in i.value for i in at.info)
+
+
+def test_organization_change_is_picked_up_on_next_rerun(client, dashboard_db, second_org):
+    user = _make_dashboard_user(dashboard_db, email="moved@example.com")
+
+    at = AppTest.from_file(SQUARE_CONNECT_PAGE)
+    _signed_in(at, user)
+    at.run()
+    assert at.session_state["user"]["organization_id"] == user.organization_id
+
+    _update_user(dashboard_db, user.id, organization_id=second_org.id)
+    at.run()
+
+    assert at.session_state["user"]["organization_id"] == second_org.id
