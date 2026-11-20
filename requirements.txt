@@ -1,7 +1,7 @@
 fastapi==0.162.2
 python-multipart==0.0.32
 uvicorn[standard]==0.54.0
-gunicorn==26.2.0
+gunicorn==27.0.1
 sqlalchemy==2.1.6
 psycopg2-binary==2.9.13
 pydantic==2.14.3
