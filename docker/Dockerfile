@@ -43,9 +43,10 @@ WORKDIR /app
 #   - libsqlite3-0: CVE-2026-11822, CVE-2026-11824
 #   - apt/libapt-pkg7.0: CVE-2026-109518 (fixed in 3.0.4)
 #   - zlib1g: CVE-2026-76844, CVE-2026-85091
+#   - libzstd1: CVE-2026-124851 (fixed in 1.5.7+dfsg-1+deb13u1)
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && apt-get install -y --no-install-recommends --only-upgrade \
-        apt libapt-pkg7.0 zlib1g \
+        apt libapt-pkg7.0 zlib1g libzstd1 \
         openssl openssl-provider-legacy \
         perl-base gzip libpcre2-8-0 libsqlite3-0 \
     && rm -rf /var/lib/apt/lists/*
